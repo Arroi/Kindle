@@ -213,9 +213,44 @@ def _video_object(job: dict, status: dict | None = None) -> dict:
            "seconds": job.get("seconds"), "size": job.get("size"), "prompt": job.get("prompt")}
     if status.get("message"):
         obj["message"] = status["message"]
+    if job.get("start_frame_model"):
+        obj["start_frame_model"] = job["start_frame_model"]
     if state == "failed":
         obj["error"] = {"message": status.get("error") or "Generation failed"}
     return obj
+
+
+async def paint_start_frame(request: Request, dep, body: dict) -> tuple[bytes, str]:
+    """World models don't read text. Turn the prompt into a first frame with a running image model."""
+    st = state_of(request)
+    wanted = body.get("start_frame_model")
+    painter = find(request, wanted, "image") if wanted else next(iter(st.manager.ready("image")), None)
+    if painter is None:
+        raise GatewayError(400, f"{dep.served_name} doesn't take text; it starts from an image. To start from a "
+                                "description, also deploy an image model (SD Turbo is small and fast) and KaggleUI "
+                                "paints the first frame with it. Or send an input_reference image.")
+    frame = dep.info.get("start_frame") or {}
+    w, _, h = str(frame.get("size") or "640x360").partition("x")
+    prompt = f"{frame.get('prompt_prefix') or ''}{str(body.get('prompt')).strip()}"
+    out = await painter.backend.images({"prompt": prompt, "width": int(w), "height": int(h), "n": 1,
+                                        "seed": body.get("seed")})
+    images = out.get("images") or []
+    if not images:
+        raise GatewayError(502, "The image model didn't return a starting frame", "api_error")
+    return base64.b64decode(images[0]), painter.served_name
+
+
+@router.post("/v1/start-frames")
+async def start_frame(request: Request):
+    """Preview the first frame a world model would start from (used by the Studio)."""
+    try:
+        check_access(request, "openai")
+        body = await _json(request)
+        dep = find(request, body.get("model"), "world")
+        data, painter = await paint_start_frame(request, dep, body)
+        return {"b64_json": base64.b64encode(data).decode(), "painted_with": painter}
+    except Exception as e:  # noqa: BLE001
+        return openai_error(wrap(e))
 
 
 @router.post("/v1/videos")
@@ -246,6 +281,9 @@ async def create_video(request: Request):
             raise GatewayError(404, f"No video or world model named '{model}' is running", "not_found_error",
                                "model_not_found")
         assert dep.backend
+        painted_with = None
+        if dep.spec.modality == "world" and image is None and str(body.get("prompt") or "").strip():
+            image, painted_with = await paint_start_frame(request, dep, body)
         for k in ("frames", "steps", "fps", "seed", "width", "height"):
             if k in body and isinstance(body[k], str) and body[k].strip():
                 try:
@@ -255,7 +293,8 @@ async def create_video(request: Request):
         worker_id = await dep.backend.job_submit(body, image)
         vid = "video_" + uuid.uuid4().hex[:20]
         job = {"id": vid, "dep": dep.id, "worker_id": worker_id, "model": dep.served_name, "created": time.time(),
-               "prompt": body.get("prompt"), "seconds": body.get("seconds"), "size": body.get("size"), "status": "queued"}
+               "prompt": body.get("prompt"), "seconds": body.get("seconds"), "size": body.get("size"), "status": "queued",
+               "start_frame_model": painted_with}
         st.video_jobs[vid] = job
         return _video_object(job)
     except Exception as e:  # noqa: BLE001

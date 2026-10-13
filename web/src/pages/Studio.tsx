@@ -10,8 +10,9 @@ import type { StudioModel } from "../lib/types";
 import { MODALITY_ICON } from "./Launch";
 import ChatStudio from "./studio/Chat";
 import { ImageStudio, SttStudio, TtsStudio, VideoStudio } from "./studio/Media";
+import WorldStudio from "./studio/World";
 
-function Body({ model }: { model: StudioModel }) {
+function Body({ model, imageModels, admin }: { model: StudioModel; imageModels: StudioModel[]; admin: boolean }) {
   if (model.status !== "ready") {
     return (
       <div className="panel p-6">
@@ -35,7 +36,7 @@ function Body({ model }: { model: StudioModel }) {
     case "video":
       return <VideoStudio key={model.id} model={model} />;
     case "world":
-      return <VideoStudio key={model.id} model={model} world />;
+      return <WorldStudio key={model.id} model={model} imageModels={imageModels} admin={admin} />;
     case "tts":
       return <TtsStudio key={model.id} model={model} />;
     case "stt":
@@ -110,7 +111,13 @@ export default function Studio({ admin }: { admin: boolean }) {
               );
             })}
           </div>
-          {current && <Body model={current} />}
+          {current && (
+            <Body
+              model={current}
+              admin={admin}
+              imageModels={models.filter((m) => m.modality === "image" && m.status === "ready" && m.runtime !== "comfyui")}
+            />
+          )}
         </>
       )}
     </div>

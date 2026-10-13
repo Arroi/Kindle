@@ -79,6 +79,7 @@ The reasoning streams separately from the answer (`reasoning` in OpenAI deltas, 
 | Surface | Endpoints |
 |---|---|
 | OpenAI | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/videos`, `/v1/models` |
+| World models | `/v1/videos` with `actions` plus either `input_reference` (an image) or a `prompt`. A prompt is painted into the first frame by a running image model (pick one with `start_frame_model`). `/v1/start-frames` previews that frame |
 | Anthropic | `/v1/messages` (tools, images, streaming) |
 | Ollama | `/api/chat`, `/api/generate`, `/api/embed`, `/api/tags` |
 
@@ -93,7 +94,7 @@ The reasoning streams separately from the answer (`reasoning` in OpenAI deltas, 
 | Video | Diffusers (Wan 2.1/2.2, CogVideoX, LTX-Video…), slow on T4 |
 | Text-to-speech | Kokoro, Chatterbox, Transformers TTS |
 | Speech-to-text | faster-whisper, Transformers ASR |
-| World | Recipes: Oasis 500M (Minecraft, action-conditioned); Matrix-Game 2.0 (heavy, unverified on T4) |
+| World | Recipes: Oasis 500M (Minecraft, action-conditioned); Matrix-Game 2.0 (heavy, unverified on T4). These start from an image, not text: **describe the scene** and a running image model paints the first frame, or upload one |
 
 Heavy or conflicting stacks (vLLM, Open WebUI, Chatterbox) install into isolated `uv` environments, so they don't break Kaggle's preinstalled PyTorch. Weights go to the ephemeral disk, not `/kaggle/working`.
 

@@ -199,6 +199,7 @@ export interface StudioModel {
   progress: number | null;
   capabilities: string[];
   controls: string | null;
+  start_frame?: { size: string; prompt_prefix?: string } | null;
   options: Record<string, any>;
   interface: Deployment["interface"];
   engine: string;

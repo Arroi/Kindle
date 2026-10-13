@@ -68,4 +68,5 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
                                  options={**spec.options, "recipe": recipe["name"], "src": str(src)},
                                  extra_env=extra_env, label=recipe["title"])
     return WorkerBackend("world", base), {"recipe": recipe["name"], "controls": recipe.get("controls"),
+                                          "start_frame": recipe.get("start_frame"),
                                           "unverified": bool(recipe.get("unverified"))}

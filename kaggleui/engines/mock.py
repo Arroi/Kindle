@@ -169,7 +169,9 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
         from .world_engine import recipe_for
 
         try:
-            info["controls"] = recipe_for(spec).get("controls")
+            recipe = recipe_for(spec)
+            info["controls"] = recipe.get("controls")
+            info["start_frame"] = recipe.get("start_frame")
         except Exception:
             pass
     return MockBackend(spec.modality, ctx.served_name), info

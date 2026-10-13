@@ -365,7 +365,8 @@ def create_app(state: AppState) -> FastAPI:
         for d in state.manager.deployments.values():
             out.append({"id": d.id, "name": d.served_name, "modality": d.spec.modality, "status": d.status,
                         "message": d.message, "progress": d.progress, "capabilities": d.info.get("capabilities", []),
-                        "controls": d.info.get("controls"), "options": d.spec.options,
+                        "controls": d.info.get("controls"), "start_frame": d.info.get("start_frame"),
+                        "options": d.spec.options,
                         "interface": d.interface, "engine": d.spec.model.engine, "runtime": d.info.get("runtime")})
         return out
 

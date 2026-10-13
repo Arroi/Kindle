@@ -8,6 +8,8 @@ requirements: ["einops", "timm", "av", "diffusers"]
 controls: minecraft
 actions_format: oasis
 default_image: sample_data/sample_image_0.png
+# Oasis has no text input. A text description is turned into the first frame by a running image model.
+start_frame: {size: "640x360", prompt_prefix: "Minecraft first-person gameplay screenshot, blocky voxel world, "}
 defaults: {frames: 32, steps: 10, fps: 20}
 max_frames: 300
 command:

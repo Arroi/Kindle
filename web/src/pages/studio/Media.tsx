@@ -19,7 +19,7 @@ import { gateway } from "../../lib/api";
 import { cx } from "../../lib/format";
 import type { StudioModel } from "../../lib/types";
 
-function fileToB64(file: File): Promise<string> {
+export function fileToB64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).split(",", 2)[1] ?? "");
@@ -28,7 +28,7 @@ function fileToB64(file: File): Promise<string> {
   });
 }
 
-function ImagePick({ file, onFile, label }: { file: File | null; onFile: (f: File | null) => void; label: string }) {
+export function ImagePick({ file, onFile, label }: { file: File | null; onFile: (f: File | null) => void; label: string }) {
   const url = file ? URL.createObjectURL(file) : null;
   useEffect(() => () => (url ? URL.revokeObjectURL(url) : undefined), [url]);
   return (
@@ -165,7 +165,7 @@ function Elapsed({ since }: { since: number }) {
 /* Video & World                                                                            */
 /* ======================================================================================== */
 
-interface Segment {
+export interface Segment {
   keys: string[];
   camera?: [number, number];
   frames: number;
@@ -183,7 +183,7 @@ const KEYS: { key: string; label: string; hint: string }[] = [
   { key: "use", label: "RMB", hint: "use / place" },
 ];
 
-function ActionBuilder({ segments, onChange }: { segments: Segment[]; onChange: (s: Segment[]) => void }) {
+export function ActionBuilder({ segments, onChange }: { segments: Segment[]; onChange: (s: Segment[]) => void }) {
   const [frames, setFrames] = useState(4);
   const add = (s: Omit<Segment, "frames">) => onChange([...segments, { ...s, frames }]);
   const look: { cam: [number, number]; icon: typeof ArrowLeft; label: string }[] = [
@@ -232,41 +232,42 @@ function ActionBuilder({ segments, onChange }: { segments: Segment[]; onChange: 
   );
 }
 
-export function VideoStudio({ model, world }: { model: StudioModel; world?: boolean }) {
+/** Submit a /v1/videos job, poll it, and return the finished clip as an object URL. */
+export async function runVideoJob(
+  body: Record<string, unknown>,
+  onProgress: (p: { id: string; progress: number; message: string }) => void,
+): Promise<string> {
+  const res = await gateway.post("/v1/videos", body);
+  const v = await res.json();
+  onProgress({ id: v.id, progress: 0, message: v.start_frame_model ? `First frame painted with ${v.start_frame_model}` : "Queued" });
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const s = await (await gateway.get(`/v1/videos/${v.id}`)).json();
+    onProgress({ id: v.id, progress: (s.progress ?? 0) / 100, message: s.message ?? s.status });
+    if (s.status === "completed") break;
+    if (s.status === "failed") throw new Error(s.error?.message ?? "Generation failed");
+  }
+  const blob = await (await gateway.get(`/v1/videos/${v.id}/content`)).blob();
+  return URL.createObjectURL(blob);
+}
+
+export function VideoStudio({ model }: { model: StudioModel }) {
   const o = model.options ?? {};
   const toast = useToast();
-  const minecraft = world && model.controls === "minecraft";
   const [prompt, setPrompt] = useState("");
   const [image, setImage] = useState<File | null>(null);
-  const [frames, setFrames] = useState<number>(Number(o.frames ?? (world ? 32 : 33)));
-  const [steps, setSteps] = useState<number>(Number(o.steps ?? (world ? 10 : 25)));
+  const [frames, setFrames] = useState<number>(Number(o.frames ?? 33));
+  const [steps, setSteps] = useState<number>(Number(o.steps ?? 25));
   const [seed, setSeed] = useState("");
-  const [segments, setSegments] = useState<Segment[]>([]);
   const [job, setJob] = useState<{ id: string; progress: number; message: string } | null>(null);
   const [videos, setVideos] = useState<{ url: string; prompt: string }[]>([]);
-  const segFrames = segments.reduce((s, x) => s + x.frames, 0);
-
-  useEffect(() => {
-    if (minecraft && segFrames > 0) setFrames(segFrames);
-  }, [minecraft, segFrames]);
 
   async function generate() {
     try {
       const body: Record<string, unknown> = { model: model.name, prompt, frames, steps, seed: seed ? Number(seed) : undefined };
       if (image) body.input_reference_b64 = await fileToB64(image);
-      if (minecraft) body.actions = segments.map(({ keys, camera, frames }) => ({ keys, camera, frames }));
-      const res = await gateway.post("/v1/videos", body);
-      const v = await res.json();
-      setJob({ id: v.id, progress: 0, message: "Queued" });
-      for (;;) {
-        await new Promise((r) => setTimeout(r, 1500));
-        const s = await (await gateway.get(`/v1/videos/${v.id}`)).json();
-        setJob({ id: v.id, progress: (s.progress ?? 0) / 100, message: s.message ?? s.status });
-        if (s.status === "completed") break;
-        if (s.status === "failed") throw new Error(s.error?.message ?? "Generation failed");
-      }
-      const blob = await (await gateway.get(`/v1/videos/${v.id}/content`)).blob();
-      setVideos((vs) => [{ url: URL.createObjectURL(blob), prompt: prompt || (minecraft ? segments.map((s) => s.label).join(", ") : "") }, ...vs]);
+      const url = await runVideoJob(body, setJob);
+      setVideos((vs) => [{ url, prompt }, ...vs]);
     } catch (e) {
       toast(e instanceof Error ? e.message : "Generation failed", "error");
     } finally {
@@ -277,58 +278,63 @@ export function VideoStudio({ model, world }: { model: StudioModel; world?: bool
   return (
     <div className="grid gap-4 lg:grid-cols-[400px_minmax(0,1fr)]">
       <div className="panel space-y-4 p-4">
-        {!minecraft && (
-          <Field label="Prompt">
-            <Textarea rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={world ? "Optional for this world model" : "A red fox trotting through fresh snow, golden hour, slow motion"} />
-          </Field>
-        )}
-        {minecraft && <ActionBuilder segments={segments} onChange={setSegments} />}
-        <ImagePick file={image} onFile={setImage} label={world ? "Starting frame" : "Start image (image-to-video models)"} />
-        <Slider label="Frames" value={frames} min={world ? 4 : 9} max={world ? 300 : 161} onChange={setFrames} />
+        <Field label="Prompt">
+          <Textarea rows={4} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="A red fox trotting through fresh snow, golden hour, slow motion" />
+        </Field>
+        <ImagePick file={image} onFile={setImage} label="Start image (image-to-video models)" />
+        <Slider label="Frames" value={frames} min={9} max={161} onChange={setFrames} />
         <Slider label="Steps" value={steps} min={1} max={60} onChange={setSteps} />
         <Field label="Seed">
           <Input value={seed} onChange={(e) => setSeed(e.target.value.replace(/\D/g, ""))} placeholder="random" />
         </Field>
-        <Button variant="primary" size="lg" className="w-full" busy={!!job} onClick={generate} disabled={!!job || (!world && !prompt.trim() && !image)}>
+        <Button variant="primary" size="lg" className="w-full" busy={!!job} onClick={generate} disabled={!!job || (!prompt.trim() && !image)}>
           <Wand2 className="size-4" /> Generate
         </Button>
-        {job && (
-          <div>
-            <ProgressBar value={job.progress || null} />
-            <div className="mt-1.5 flex justify-between text-[12px] text-fg-2">
-              <span>{job.message}</span>
-              <span className="font-mono">{Math.round(job.progress * 100)}%</span>
-            </div>
-          </div>
-        )}
-        <p className="text-[12px] text-fg-3">
-          {world ? "World models run the upstream inference script per clip, so expect a minute or more." : "Video is slow on T4s: a few minutes per clip at default settings."}
-        </p>
+        {job && <JobProgress job={job} />}
+        <p className="text-[12px] text-fg-3">Video is slow on T4s: a few minutes per clip at default settings.</p>
       </div>
-      <div>
-        {videos.length === 0 ? (
-          <div className="panel grid h-full min-h-[360px] place-items-center p-8 text-center text-fg-3">
-            <div>
-              <div className="display text-[40px]">{model.name}</div>
-              <p className="mt-1 text-[13.5px]">Clips show up here.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {videos.map((v, i) => (
-              <figure key={v.url} className="panel overflow-hidden animate-[rise_.35s_ease_both]">
-                <video src={v.url} controls autoPlay={i === 0} loop className="w-full bg-black" />
-                <figcaption className="flex items-center gap-2 px-3 py-2 text-[12px] text-fg-2">
-                  <span className="min-w-0 flex-1 truncate">{v.prompt}</span>
-                  <a href={v.url} download={`kaggleui-${Date.now()}.mp4`} className="hover:text-fg">
-                    <Download className="size-3.5" />
-                  </a>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        )}
+      <ClipList videos={videos} placeholder={model.name} />
+    </div>
+  );
+}
+
+export function JobProgress({ job }: { job: { progress: number; message: string } }) {
+  return (
+    <div>
+      <ProgressBar value={job.progress || null} />
+      <div className="mt-1.5 flex justify-between gap-3 text-[12px] text-fg-2">
+        <span className="min-w-0 truncate">{job.message}</span>
+        <span className="font-mono">{Math.round(job.progress * 100)}%</span>
       </div>
+    </div>
+  );
+}
+
+export function ClipList({ videos, placeholder }: { videos: { url: string; prompt: string; frame?: string }[]; placeholder: string }) {
+  if (videos.length === 0) {
+    return (
+      <div className="panel grid h-full min-h-[360px] place-items-center p-8 text-center text-fg-3">
+        <div>
+          <div className="display text-[40px]">{placeholder}</div>
+          <p className="mt-1 text-[13.5px]">Clips show up here.</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {videos.map((v, i) => (
+        <figure key={v.url} className="panel overflow-hidden animate-[rise_.35s_ease_both]">
+          <video src={v.url} controls autoPlay={i === 0} loop className="w-full bg-black" />
+          <figcaption className="flex items-center gap-2 px-3 py-2 text-[12px] text-fg-2">
+            {v.frame && <img src={v.frame} alt="Starting frame" title="Starting frame" className="h-8 rounded border border-line" />}
+            <span className="min-w-0 flex-1 truncate">{v.prompt}</span>
+            <a href={v.url} download={`kaggleui-${Date.now()}.mp4`} className="hover:text-fg">
+              <Download className="size-3.5" />
+            </a>
+          </figcaption>
+        </figure>
+      ))}
     </div>
   );
 }

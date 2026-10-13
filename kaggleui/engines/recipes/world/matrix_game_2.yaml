@@ -19,6 +19,7 @@ setup: ["{python} setup.py develop"]
 controls: none
 actions_format: none
 default_image: demo_images/universal/0000.png
+start_frame: {size: "640x352", prompt_prefix: "first-person view, video game screenshot, "}
 defaults: {frames: 150, steps: 0, fps: 16}
 max_frames: 600
 unverified: true

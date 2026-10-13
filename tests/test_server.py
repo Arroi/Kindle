@@ -132,3 +132,22 @@ def test_preset_export(client, state):
 def test_spa_fallback_does_not_swallow_api(client):
     assert client.get("/v1/does-not-exist").status_code == 404
     assert client.get("/models").status_code == 200
+
+
+def test_world_prompt_paints_first_frame_with_image_model(client, state):
+    key = {"Authorization": f"Bearer {state.auth.api_key}"}
+    deploy(client, state, modality="world", model_id="Etched/oasis-500m", variant=None, engine="world_recipe")
+    body = {"model": "oasis-500m", "prompt": "a snowy taiga", "frames": 8}
+    # No image model running: a clear error instead of silently ignoring the text.
+    r = client.post("/v1/videos", json=body, headers=key)
+    assert r.status_code == 400 and "doesn't take text" in r.json()["error"]["message"]
+    # Without a prompt the world model uses its own sample frame.
+    assert client.post("/v1/videos", json={"model": "oasis-500m", "frames": 8}, headers=key).status_code == 200
+
+    deploy(client, state, modality="image", model_id="stabilityai/sd-turbo", variant=None, engine="diffusers")
+    r = client.post("/v1/videos", json=body, headers=key)
+    assert r.status_code == 200 and r.json()["start_frame_model"] == "sd-turbo"
+    r = client.post("/v1/start-frames", json=body, headers=key)
+    import base64
+
+    assert r.status_code == 200 and base64.b64decode(r.json()["b64_json"])[:4] == b"\x89PNG"

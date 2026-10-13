@@ -157,7 +157,12 @@ def main() -> None:
             gr.Markdown(f"## {a.model}")
             with gr.Row():
                 with gr.Column():
-                    prompt = gr.Textbox(label="Prompt", lines=3)
+                    if a.modality == "world":
+                        prompt = gr.Textbox(label="Describe the starting scene (painted by a running image model)",
+                                            lines=3, info="World models start from an image. Leave empty to use the "
+                                                          "uploaded image, or the model's sample frame.")
+                    else:
+                        prompt = gr.Textbox(label="Prompt", lines=3)
                     image = gr.Image(label="Start image (optional)", type="filepath")
                     with gr.Row():
                         frames = gr.Slider(8, 161, value=33, step=1, label="Frames")
