@@ -9,7 +9,7 @@ import uvicorn
 
 from ..config import Paths, default_tunnel
 from ..schemas import Preset, Settings
-from ..secretstore import load_kaggle_secrets
+from ..secretstore import init_local, load_kaggle_secrets
 from .app import create_app
 from .state import AppState
 
@@ -18,6 +18,7 @@ def build_state(*, port: int, tunnel: str | None = None, preset: Preset | None =
                 fake_hw: str | None = None, home: str | None = None) -> AppState:
     secrets = load_kaggle_secrets()
     paths = Paths(home).ensure()
+    init_local(paths.home)
     paths.apply_env()
     settings = preset.settings.model_copy(deep=True) if preset else Settings()
     if tunnel:

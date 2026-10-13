@@ -18,6 +18,7 @@ type Action =
   | { type: "tunnel"; data: Tunnel }
   | { type: "settings"; data: Settings }
   | { type: "credentials"; data: Overview["credentials"] }
+  | { type: "secrets"; data: Record<string, boolean> }
   | { type: "connected"; value: boolean };
 
 const MAX_LOG = 2000;
@@ -68,6 +69,8 @@ function reducer(state: LiveState, a: Action): LiveState {
       return { ...state, overview: { ...ov, settings: a.data } };
     case "credentials":
       return { ...state, overview: { ...ov, credentials: a.data } };
+    case "secrets":
+      return { ...state, overview: { ...ov, secrets: a.data } };
   }
   return state;
 }

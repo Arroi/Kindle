@@ -38,6 +38,8 @@ async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str
 
     def run() -> str:
         kwargs = {"repo_id": repo_id, "max_workers": 8}
+        if os.environ.get("HF_TOKEN"):
+            kwargs["token"] = os.environ["HF_TOKEN"]
         if allow_patterns:
             kwargs["allow_patterns"] = allow_patterns
         return snapshot_download(**kwargs)
@@ -57,8 +59,8 @@ async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str
         name = type(e).__name__
         if "Gated" in name or "401" in str(e) or "403" in str(e):
             raise DeployError(
-                f"{repo_id} is gated. Accept its license at https://huggingface.co/{repo_id} and add an "
-                "HF_TOKEN secret (Add-ons → Secrets), then restart KaggleUI.") from e
+                f"{repo_id} is gated. Accept its license at https://huggingface.co/{repo_id}, add your Hugging "
+                "Face token in KaggleUI (Access & API → Keys & tokens), then restart this deployment.") from e
         if "RepositoryNotFound" in name or "404" in str(e):
             raise DeployError(f"Model {repo_id} wasn't found on Hugging Face") from e
         raise DeployError(f"Download failed: {name}: {e}") from e

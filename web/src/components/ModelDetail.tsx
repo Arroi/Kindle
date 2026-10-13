@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ExternalLink, Loader } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 
 import { api } from "../lib/api";
 import { bytes, cx, params } from "../lib/format";
@@ -219,7 +220,14 @@ export function ModelDetail({
             {item.fit.warnings.map((w) => (
               <li key={w} className="flex items-start gap-1.5 text-tight">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-                {w}
+                <span>
+                  {w}
+                  {w.startsWith("Gated") && (
+                    <Link to="/access#secrets" className="ml-2 whitespace-nowrap font-medium underline underline-offset-4">
+                      Add token →
+                    </Link>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

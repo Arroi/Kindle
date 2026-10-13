@@ -85,7 +85,7 @@ def test_no_engine_is_worst(hw):
 def test_gated_warning_without_token(hw, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     f = assess(text(5, 8, gated=True), hw("t4x2"))
-    assert any("HF_TOKEN" in w for w in f.warnings)
+    assert any("Hugging Face token" in w for w in f.warnings)
 
 
 def test_rank_promotes_top_three_and_skips_unproven():

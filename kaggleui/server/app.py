@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketD
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from .. import __version__, notify
+from .. import __version__, notify, secretstore
 from ..catalog.resolve import ENGINE_LABELS, MODALITY_ENGINES
 from ..engines.world_engine import list_recipes
 from ..gateway import anthropic as anthropic_gw
@@ -170,6 +170,83 @@ def create_app(state: AppState) -> FastAPI:
         state.auth.regenerate(which)
         _write_state(state)
         return {"admin_token": state.auth.admin_token, "password": state.auth.password, "api_key": state.auth.api_key}
+
+    # -- secrets (keys & tokens) ----------------------------------------------------------------
+    async def hf_identity() -> dict:
+        token = os.environ.get("HF_TOKEN")
+        if not token:
+            return {"ok": False, "user": None, "error": None}
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get("https://huggingface.co/api/whoami-v2", headers={"Authorization": f"Bearer {token}"})
+            if r.status_code == 200:
+                return {"ok": True, "user": r.json().get("name"), "error": None}
+            return {"ok": False, "user": None, "error": "Hugging Face rejected this token" if r.status_code == 401
+                    else f"Hugging Face returned {r.status_code}"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "user": None, "error": f"Couldn't reach Hugging Face: {type(e).__name__}"}
+
+    def secrets_payload(hf: dict | None = None) -> dict:
+        data = secretstore.secret_details()
+        if hf is not None:
+            data["hf"] = hf
+        return data
+
+    def secrets_changed() -> None:
+        state.bus.publish("secrets", secret_status())
+
+    @app.get("/_kui/api/secrets")
+    async def get_secrets(request: Request):
+        require_admin(request)
+        return secrets_payload(await hf_identity())
+
+    @app.put("/_kui/api/secrets/{name}")
+    async def put_secret(request: Request, name: str, body: dict = Body(...)):
+        require_admin(request)
+        value = str(body.get("value") or "").strip()
+        if name not in secretstore.EDITABLE:
+            raise HTTPException(400, "That secret can't be set here")
+        if not value:
+            raise HTTPException(400, "Empty value")
+        secretstore.set_secret(name, value)
+        secrets_changed()
+        hf = await hf_identity() if name == "HF_TOKEN" else None
+        return secrets_payload(hf)
+
+    @app.delete("/_kui/api/secrets/{name}")
+    async def delete_secret(request: Request, name: str):
+        require_admin(request)
+        if name not in secretstore.EDITABLE:
+            raise HTTPException(400, "That secret can't be removed here")
+        secretstore.clear_secret(name)
+        secrets_changed()
+        return secrets_payload()
+
+    @app.post("/_kui/api/secrets/reload")
+    async def reload_secrets(request: Request):
+        require_admin(request)
+        before = secret_status()
+        await asyncio.to_thread(secretstore.load_kaggle_secrets, True)
+        after = secret_status()
+        secrets_changed()
+        data = secrets_payload(await hf_identity())
+        data["added"] = [n for n in after if after[n] and not before[n]]
+        return data
+
+    @app.post("/_kui/api/secrets/import")
+    async def import_secrets(request: Request, body: dict = Body(...)):
+        """Used by launch() to hand over Kaggle secrets read in the notebook kernel."""
+        require_admin(request)
+        updated = []
+        for name, value in (body.get("values") or {}).items():
+            if name in secretstore.EDITABLE and value and os.environ.get(name) != value:
+                secretstore.set_secret(name, str(value), source="kaggle")
+                updated.append(name)
+        if updated:
+            secrets_changed()
+        return {"updated": updated}
 
     @app.get("/_kui/api/catalog/meta")
     async def catalog_meta(request: Request):

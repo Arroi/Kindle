@@ -34,9 +34,11 @@ The cell keeps running so the session stays alive. Interrupt it to get the noteb
 
 Interactive sessions stop when idle. For long runs, set up a model once, then click **Deployments → Export launch cell** and use that cell in **Save Version → Save & Run All**. Batch runs last up to about 12 hours and auto-deploy everything in the preset. Batch runs don't show output live, so add a `KAGGLEUI_NOTIFY_URL` secret (an [ntfy.sh](https://ntfy.sh) topic URL or a Discord webhook) to get the link pushed to you.
 
-### Optional Kaggle secrets
+### Keys & tokens (Hugging Face, ngrok, …)
 
-Add these under **Add-ons → Secrets**, attach them to the notebook, then re-run the cell.
+The easiest way: open **Access & API → Keys & tokens** in the panel and paste the key. Your Hugging Face token is checked on the spot, and the panel shows the account it belongs to. Keys entered there stay on the session's temporary disk only, never in `/kaggle/working` or the notebook output.
+
+Or use Kaggle secrets: add them under **Add-ons → Secrets** and **switch each one on for this notebook**. Then press **Reload Kaggle secrets** in the panel, or just re-run the launch cell. Common alternate names work too (`hf_token`, `HUGGINGFACE_TOKEN`, `NGROK_TOKEN`, …).
 
 | Secret | What it does |
 |---|---|

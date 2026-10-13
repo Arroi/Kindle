@@ -204,3 +204,17 @@ export interface StudioModel {
   engine: string;
   runtime?: string;
 }
+
+export interface SecretItem {
+  name: string;
+  set: boolean;
+  source: "kaggle" | "env" | "kaggleui" | null;
+  editable: boolean;
+}
+
+export interface SecretDetails {
+  items: SecretItem[];
+  kaggle: { state: string; error: string | null };
+  hf?: { ok: boolean; user: string | null; error: string | null };
+  added?: string[];
+}

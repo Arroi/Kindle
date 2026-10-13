@@ -108,7 +108,8 @@ export default function System() {
             <span className="readout">Kaggle secrets</span>
           </div>
           <p className="mb-4 text-[13px] text-fg-3">
-            Optional. Add them in the notebook under <b>Add-ons → Secrets</b>, turn them on for this notebook, then restart KaggleUI.
+            Optional. Set them in <a href="/access#secrets" className="text-fg-2 underline underline-offset-4 hover:text-fg">Access & API → Keys & tokens</a>, or add
+            them as Kaggle secrets (<b>Add-ons → Secrets</b>, switched on for this notebook) and press Reload there.
           </p>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {Object.entries(overview.secrets).map(([name, on]) => (

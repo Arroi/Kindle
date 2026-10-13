@@ -134,7 +134,7 @@ def assess(c: Candidate, hw: HardwareProfile) -> Fit:
     disk_needed = 0 if c.attached else (int(w * 1.05) if w else None)
     warnings: list[str] = []
     if c.gated and not os.environ.get("HF_TOKEN"):
-        warnings.append("Gated: add an HF_TOKEN secret and accept the license on Hugging Face")
+        warnings.append("Gated: add your Hugging Face token (Access & API → Keys & tokens) and accept the license on HF")
     if c.experimental:
         warnings.append("Experimental on Kaggle GPUs")
 

@@ -13,7 +13,7 @@ from pathlib import Path
 from . import __version__
 from .config import DEFAULT_PORT, Paths, default_tunnel, load_preset
 from .notify import card_html, card_text
-from .secretstore import load_kaggle_secrets
+from .secretstore import kaggle_sourced, load_kaggle_secrets
 
 
 def _display(html_str: str, text: str) -> None:
@@ -90,6 +90,7 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         existing = None
     if existing and _alive(existing.get("pid")) and existing.get("url"):
         print("KaggleUI is already running (kaggleui.stop() to stop it).", flush=True)
+        _share_secrets(existing)
         _show(existing)
         if block:
             _block(paths, existing)
@@ -112,7 +113,8 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         paths.state_file.unlink()
     log = open(paths.logs / "server.log", "a")
     proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-                            env={**os.environ, "PYTHONUNBUFFERED": "1"})
+                            env={**os.environ, "PYTHONUNBUFFERED": "1",
+                                 "KAGGLEUI_KAGGLE_SECRETS": ",".join(kaggle_sourced())})
     print("Starting KaggleUI…", flush=True)
     deadline = time.time() + 180
     state = None
@@ -131,6 +133,23 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
     if block:
         _block(paths, state)
     return state
+
+
+def _share_secrets(state: dict) -> None:
+    """Re-running the cell after adding a Kaggle secret: hand the new values to the running server."""
+    names = kaggle_sourced()
+    if not names:
+        return
+    try:
+        import httpx
+
+        r = httpx.post(f"http://127.0.0.1:{state['port']}/_kui/api/secrets/import",
+                       headers={"Authorization": f"Bearer {state['admin_token']}"},
+                       json={"values": {n: os.environ[n] for n in names}}, timeout=10)
+        if r.status_code == 200 and r.json().get("updated"):
+            print("Picked up Kaggle secrets: " + ", ".join(r.json()["updated"]), flush=True)
+    except Exception:
+        pass
 
 
 def _tail(path: Path, n: int = 40) -> str:

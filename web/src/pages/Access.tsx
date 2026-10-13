@@ -1,6 +1,7 @@
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { SecretsCard } from "../components/Secrets";
 import { AccessForm, ApiForm, ExposurePicker, StreamingNote, type ApiState } from "../components/settings";
 import { Button, CopyButton, CopyField, Segmented, SectionTitle, useToast } from "../components/ui";
 import { api } from "../lib/api";
@@ -89,6 +90,10 @@ export default function Access() {
   const [locked, setLocked] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (location.hash === "#secrets") window.setTimeout(() => document.getElementById("secrets")?.scrollIntoView({ behavior: "smooth" }), 150);
+  }, []);
+
+  useEffect(() => {
     if (overview && api_ === null) {
       setApi(overview.settings.api);
       setLocked(overview.settings.access.password_enabled);
@@ -116,6 +121,7 @@ export default function Access() {
     <div>
       <SectionTitle kicker="Security & integration" title="Access & API" />
       <div className="grid gap-4 xl:grid-cols-2">
+        <SecretsCard />
         <Card kicker="Who can get in" title="Access">
           <div className="mb-5">
             <CopyField label="Admin token (control panel)" value={overview.credentials.admin_token} secret />

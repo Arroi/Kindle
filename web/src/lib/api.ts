@@ -6,6 +6,7 @@ import type {
   Modality,
   Overview,
   SearchResult,
+  SecretDetails,
   Session,
   Settings,
   StudioModel,
@@ -81,6 +82,11 @@ export const api = {
   restartTunnel: () => request("/_kui/api/tunnels/main/restart", { method: "POST" }),
   preset: () => request<{ preset: unknown; cell: string }>("/_kui/api/preset"),
   studioModels: () => request<StudioModel[]>("/_kui/api/studio/models"),
+  secrets: () => request<SecretDetails>("/_kui/api/secrets"),
+  setSecret: (name: string, value: string) =>
+    request<SecretDetails>(`/_kui/api/secrets/${name}`, { method: "PUT", body: json({ value }) }),
+  clearSecret: (name: string) => request<SecretDetails>(`/_kui/api/secrets/${name}`, { method: "DELETE" }),
+  reloadSecrets: () => request<SecretDetails>("/_kui/api/secrets/reload", { method: "POST" }),
 };
 
 /** Calls to the public gateway from the Studio (cookie auth + studio header). */
