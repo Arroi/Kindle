@@ -1,7 +1,7 @@
 import { Brain, ChevronDown, ImagePlus, Send, SlidersHorizontal, Square, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Button, Field, Slider, Textarea } from "../../components/ui";
+import { Button, Field, Segmented, Select, Slider, Textarea } from "../../components/ui";
 import { cx } from "../../lib/format";
 import { renderMarkdown } from "../../lib/markdown";
 import type { StudioModel } from "../../lib/types";
@@ -17,6 +17,15 @@ interface Msg {
 }
 
 type Handler = (msg: any) => void;
+
+type Effort = "default" | "none" | "low" | "medium" | "high";
+const EFFORTS: { value: Effort; label: string }[] = [
+  { value: "default", label: "Auto" },
+  { value: "none", label: "Off" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Med" },
+  { value: "high", label: "High" },
+];
 
 /** One WebSocket per Studio, multiplexed by request id. */
 function useStudioSocket() {
@@ -95,8 +104,10 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
   const [system, setSystem] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   const [maxTokens, setMaxTokens] = useState(2048);
+  const [effort, setEffort] = useState<Effort>("default");
   const scroller = useRef<HTMLDivElement>(null);
   const vision = model.capabilities.includes("vision");
+  const thinking = model.capabilities.includes("thinking");
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -119,7 +130,12 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
       ),
     ];
     const id = send(
-      { op: "chat", model: model.name, messages: apiMessages, params: { temperature, max_tokens: maxTokens } },
+      {
+        op: "chat",
+        model: model.name,
+        messages: apiMessages,
+        params: { temperature, max_tokens: maxTokens, ...(effort !== "default" ? { reasoning_effort: effort } : {}) },
+      },
       (ev) => {
         setMessages((prev) => {
           const next = [...prev];
@@ -153,7 +169,13 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
           <span className={cx("size-2 rounded-full", ready ? "bg-signal" : "bg-tight animate-blink")} />
           {ready ? "Streaming over WebSocket" : "Connecting…"}
         </div>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          {thinking && (
+            <div className="mr-1 flex items-center gap-2" title="How much the model reasons before answering">
+              <span className="readout hidden sm:inline">Thinking</span>
+              <Segmented<Effort> size="sm" value={effort} onChange={setEffort} options={EFFORTS} />
+            </div>
+          )}
           <Button size="sm" variant="ghost" onClick={() => setShowParams(!showParams)}>
             <SlidersHorizontal className="size-3.5" /> Settings
           </Button>
@@ -163,12 +185,21 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
         </div>
       </div>
       {showParams && (
-        <div className="grid gap-4 border-b border-line bg-bg-2 px-4 py-4 md:grid-cols-[2fr_1fr_1fr]">
+        <div className="grid gap-4 border-b border-line bg-bg-2 px-4 py-4 md:grid-cols-[2fr_1fr_1fr_1fr]">
           <Field label="System prompt">
             <Textarea rows={2} value={system} onChange={(e) => setSystem(e.target.value)} placeholder="You are a helpful assistant." />
           </Field>
           <Slider label="Temperature" value={temperature} min={0} max={2} step={0.05} onChange={setTemperature} format={(v) => v.toFixed(2)} />
           <Slider label="Max tokens" value={maxTokens} min={64} max={16384} step={64} onChange={setMaxTokens} />
+          <Field label="Reasoning effort" hint="For thinking models (Qwen3, gpt-oss, DeepSeek-R1…). Off = answer directly.">
+            <Select value={effort} onChange={(e) => setEffort(e.target.value as Effort)}>
+              <option value="default">Model default</option>
+              <option value="none">Off (no thinking)</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </Select>
+          </Field>
         </div>
       )}
 

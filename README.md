@@ -62,6 +62,18 @@ client = anthropic.Anthropic(base_url="https://YOUR-URL", api_key="kui-…")
 print(client.messages.create(model="qwen3:8b", max_tokens=256, messages=[{"role": "user", "content": "Hi"}]).content[0].text)
 ```
 
+### Thinking / reasoning effort
+
+Thinking models (Qwen3, gpt-oss, DeepSeek-R1…) can reason before answering. In the Studio, the **Thinking** switch in the chat header (and *Settings → Reasoning effort*) picks **Auto / Off / Low / Med / High**. Over the API, use whichever your client speaks:
+
+| API | Parameter |
+|---|---|
+| OpenAI | `"reasoning_effort": "none" \| "low" \| "medium" \| "high"` (`none` turns thinking off) |
+| Anthropic | `"thinking": {"type": "disabled"}` or `{"type": "enabled", "budget_tokens": 4096}` |
+| Ollama | `"think": false \| true \| "low" \| "medium" \| "high"` |
+
+The reasoning streams separately from the answer (`reasoning` in OpenAI deltas, `thinking` blocks in Anthropic, `message.thinking` in Ollama). How much the levels change depends on the model; "off" is the most reliable switch.
+
 | Surface | Endpoints |
 |---|---|
 | OpenAI | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/videos`, `/v1/models` |

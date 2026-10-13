@@ -98,3 +98,24 @@ async def test_openai_stream_to_ollama_ndjson():
     lines = [json.loads(line) async for line in openai_stream_to_ollama(_agen(chunks), "m")]
     assert [x["message"]["content"] for x in lines[:-1]] == ["a", "b"]
     assert lines[-1]["done"] is True and lines[-1]["done_reason"] == "stop"
+
+
+def test_thinking_controls_map_to_reasoning_effort():
+    base = {"model": "m", "max_tokens": 10, "messages": [{"role": "user", "content": "x"}]}
+    assert anthropic_to_openai({**base, "thinking": {"type": "disabled"}})["reasoning_effort"] == "none"
+    assert anthropic_to_openai({**base, "thinking": {"type": "enabled", "budget_tokens": 1024}})["reasoning_effort"] == "low"
+    assert anthropic_to_openai({**base, "thinking": {"type": "enabled", "budget_tokens": 16000}})["reasoning_effort"] == "high"
+    assert "reasoning_effort" not in anthropic_to_openai(base)
+    assert ollama_chat_to_openai({"messages": [], "think": False})["reasoning_effort"] == "none"
+    assert ollama_chat_to_openai({"messages": [], "think": "medium"})["reasoning_effort"] == "medium"
+    assert "reasoning_effort" not in ollama_chat_to_openai({"messages": [], "think": True})
+
+
+def test_template_engines_get_enable_thinking_switch():
+    from kaggleui.engines.base import OpenAIUpstream
+
+    vllm = OpenAIUpstream("http://x", "m", template_thinking=True)
+    assert vllm._body({"reasoning_effort": "none"})["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "chat_template_kwargs" not in vllm._body({"reasoning_effort": "high"})
+    ollama = OpenAIUpstream("http://x", "m")
+    assert "chat_template_kwargs" not in ollama._body({"reasoning_effort": "none"})

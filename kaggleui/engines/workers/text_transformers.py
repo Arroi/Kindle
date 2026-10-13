@@ -29,9 +29,16 @@ class Chat:
         self.model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch_dtype(options), device_map="auto")
         self.model.eval()
 
-    def _inputs(self, messages: list[dict]):
+    def _inputs(self, messages: list[dict], body: dict | None = None):
+        body = body or {}
         msgs = [{"role": m.get("role", "user"), "content": _content_text(m.get("content"))} for m in messages]
-        ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt")
+        extra = dict(body.get("chat_template_kwargs") or {})
+        if body.get("reasoning_effort") == "none":
+            extra.setdefault("enable_thinking", False)
+        try:
+            ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt", **extra)
+        except TypeError:  # older tokenizers reject unknown template kwargs
+            ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt")
         return ids.to(self.model.device)
 
     def _gen_kwargs(self, body: dict) -> dict:
@@ -46,7 +53,7 @@ class Chat:
     def complete(self, body: dict) -> tuple[str, int, int]:
         import torch
 
-        ids = self._inputs(body.get("messages") or [])
+        ids = self._inputs(body.get("messages") or [], body)
         with torch.no_grad():
             out = self.model.generate(ids, **self._gen_kwargs(body))
         new = out[0][ids.shape[-1]:]
@@ -55,7 +62,7 @@ class Chat:
     def stream(self, body: dict):
         from transformers import TextIteratorStreamer
 
-        ids = self._inputs(body.get("messages") or [])
+        ids = self._inputs(body.get("messages") or [], body)
         streamer = TextIteratorStreamer(self.tok, skip_prompt=True, skip_special_tokens=True)
         t = threading.Thread(target=self.model.generate, kwargs={"input_ids": ids, "streamer": streamer,
                                                                     **self._gen_kwargs(body)})

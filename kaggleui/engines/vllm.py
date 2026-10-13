@@ -59,4 +59,4 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstre
             await asyncio.sleep(1)
         else:
             raise DeployError("vLLM didn't become ready within 30 minutes")
-    return OpenAIUpstream(base, ctx.served_name), {"port": port, "tensor_parallel": tp, "path": path}
+    return OpenAIUpstream(base, ctx.served_name, template_thinking=True), {"port": port, "tensor_parallel": tp, "path": path}

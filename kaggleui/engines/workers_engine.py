@@ -138,7 +138,7 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
                                     options=spec.options, variant=variant, extra_env=extra_env,
                                     label=cfg["label"])
     if cfg["modality"] == "text":
-        backend: Backend = OpenAIUpstream(base, ctx.served_name)
+        backend: Backend = OpenAIUpstream(base, ctx.served_name, template_thinking=True)
     else:
         backend = WorkerBackend(cfg["modality"], base)
     return backend, {"worker": cfg["module"], "path": model_path, "variant": variant}

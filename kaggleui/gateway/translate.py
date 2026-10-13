@@ -40,6 +40,27 @@ def _image_part(block: dict) -> dict | None:
     return None
 
 
+def effort_from_anthropic(thinking: dict | None) -> str | None:
+    """Anthropic ``thinking`` → OpenAI ``reasoning_effort``."""
+    if not isinstance(thinking, dict):
+        return None
+    if thinking.get("type") == "disabled":
+        return "none"
+    budget = int(thinking.get("budget_tokens") or 0)
+    if not budget:
+        return None
+    return "low" if budget < 2048 else "medium" if budget < 8192 else "high"
+
+
+def effort_from_ollama(think) -> str | None:
+    """Ollama ``think`` (bool or "low"/"medium"/"high") → OpenAI ``reasoning_effort``."""
+    if think is False:
+        return "none"
+    if isinstance(think, str) and think in ("low", "medium", "high"):
+        return think
+    return None
+
+
 def anthropic_to_openai(body: dict) -> dict:
     msgs: list[dict] = []
     system = body.get("system")
@@ -80,6 +101,9 @@ def anthropic_to_openai(body: dict) -> dict:
             msgs.append({"role": "user", "content": "\n".join(p["text"] for p in parts) if only_text else parts})
 
     out: dict = {"messages": msgs, "stream": bool(body.get("stream"))}
+    effort = effort_from_anthropic(body.get("thinking"))
+    if effort:
+        out["reasoning_effort"] = effort
     if body.get("max_tokens"):
         out["max_tokens"] = body["max_tokens"]
     for k in ("temperature", "top_p"):
@@ -227,6 +251,9 @@ def ollama_chat_to_openai(body: dict) -> dict:
                                      for i, tc in enumerate(m["tool_calls"])]
             msgs.append(msg)
     out: dict = {"messages": msgs, "stream": body.get("stream", True)}
+    effort = effort_from_ollama(body.get("think"))
+    if effort:
+        out["reasoning_effort"] = effort
     opts = body.get("options") or {}
     if opts.get("num_predict"):
         out["max_tokens"] = opts["num_predict"]

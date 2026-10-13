@@ -96,15 +96,24 @@ async def _raise_for(r: httpx.Response) -> None:
 class OpenAIUpstream(Backend):
     """Text backend for anything serving /v1/chat/completions (Ollama, vLLM, our transformers worker)."""
 
-    def __init__(self, base_url: str, upstream_model: str, native: frozenset[str] = frozenset()):
+    def __init__(self, base_url: str, upstream_model: str, native: frozenset[str] = frozenset(),
+                 template_thinking: bool = False):
         self.modality = "text"
+        self.template_thinking = template_thinking
         self.base_url = base_url.rstrip("/")
         self.upstream_model = upstream_model
         self.native = native
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=600, write=60, pool=10))
 
     def _body(self, body: dict) -> dict:
-        return {**body, "model": self.upstream_model}
+        out = {**body, "model": self.upstream_model}
+        # Ollama understands reasoning_effort directly. vLLM/transformers serve models like Qwen3 whose
+        # chat template has an enable_thinking switch; turn "none" into that switch too.
+        if self.template_thinking and out.get("reasoning_effort") == "none":
+            kwargs = dict(out.get("chat_template_kwargs") or {})
+            kwargs.setdefault("enable_thinking", False)
+            out["chat_template_kwargs"] = kwargs
+        return out
 
     async def chat(self, body: dict) -> dict:
         r = await self.client.post(f"{self.base_url}/v1/chat/completions", json=self._body({**body, "stream": False}))
