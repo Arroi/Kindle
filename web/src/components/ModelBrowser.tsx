@@ -7,7 +7,7 @@ import { bytes, compact, cx, MODALITY_LABEL, params } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, Gpu, Modality } from "../lib/types";
 import { FitGauge } from "./meters";
-import { Button, Chip, Empty, Input, Segmented, Toggle, VerdictTag } from "./ui";
+import { Button, Chip, Empty, Input, Segmented, Select, Toggle, VerdictTag } from "./ui";
 
 export const MODALITY_ORDER: Modality[] = ["text", "image", "video", "tts", "stt", "world"];
 
@@ -138,6 +138,8 @@ const SORTS = [
   { value: "trending", label: "Trending" },
   { value: "downloads", label: "Downloads" },
   { value: "newest", label: "Newest" },
+  { value: "params_asc", label: "Lowest parameters" },
+  { value: "params_desc", label: "Highest parameters" },
 ];
 
 export function ModelBrowser({
@@ -223,7 +225,9 @@ export function ModelBrowser({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Segmented size="sm" value={source} onChange={setSource} options={sources} />
-          <Segmented size="sm" value={sort} onChange={setSortChoice} options={SORTS} />
+          <Select aria-label="Sort models" value={sort} onChange={(e) => setSortChoice(e.target.value)} className="w-auto min-w-[170px]">
+            {SORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
         </div>
       </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -249,6 +253,9 @@ export function ModelBrowser({
           <Toggle checked={unsupported} onChange={setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">Show unsupported</span>} />
         </div>
       </div>
+      {(sort === "params_asc" || sort === "params_desc") && (
+        <p className="mb-4 text-[12px] text-fg-3">Sorted by the shown variant's parameter count. Unknown counts appear last. Load more to include more catalog results.</p>
+      )}
       {errors.length > 0 && (
         <div className="mb-4 rounded-lg border border-tight/40 bg-tight-soft px-3 py-2 text-[13px] text-tight">
           {errors.map(([k, v]) => (

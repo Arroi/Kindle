@@ -112,6 +112,13 @@ class CatalogService:
 
     @staticmethod
     def _sort(items: list[dict], sort: str) -> list[dict]:
+        if sort in ("params_asc", "params_desc"):
+            direction = 1 if sort == "params_asc" else -1
+            # Missing counts belong at the end in both directions. Sort the selected
+            # variant, after fit assessment, before taking the requested page.
+            return sorted(items, key=lambda i: (
+                not bool(i.get("params")), direction * (i.get("params") or 0), i["key"],
+            ))
         if sort == "downloads":
             return sorted(items, key=lambda i: -(i.get("downloads") or 0))
         if sort == "newest":
