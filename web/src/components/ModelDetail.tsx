@@ -1,0 +1,288 @@
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, ExternalLink, Loader } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
+import { api } from "../lib/api";
+import { bytes, cx, params } from "../lib/format";
+import { useLive } from "../lib/live";
+import type { CatalogItem, DeploymentSpec, Variant } from "../lib/types";
+import { FitGauge } from "./meters";
+import { Field, Input, Select, VerdictTag } from "./ui";
+
+export interface ModelChoice {
+  item: CatalogItem;
+  spec: DeploymentSpec;
+}
+
+const CTX = [2048, 4096, 8192, 16384, 32768, 65536];
+
+/** Engine options shown per modality. Values are merged into spec.options. */
+export function OptionsForm({
+  item,
+  options,
+  onChange,
+}: {
+  item: CatalogItem;
+  options: Record<string, any>;
+  onChange: (o: Record<string, any>) => void;
+}) {
+  const set = (k: string, v: unknown) => onChange({ ...options, [k]: v === "" ? undefined : v });
+  const m = item.modality;
+  if (m === "text") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Context length" hint="Longer context uses more VRAM for the KV cache.">
+          <Select value={String(options.ctx ?? 8192)} onChange={(e) => set("ctx", Number(e.target.value))}>
+            {CTX.map((c) => (
+              <option key={c} value={c}>
+                {c.toLocaleString()} tokens
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {item.engine === "vllm" && (
+          <Field label="GPU memory use" hint="Fraction of VRAM vLLM reserves.">
+            <Select value={String(options.gpu_memory_utilization ?? 0.9)} onChange={(e) => set("gpu_memory_utilization", Number(e.target.value))}>
+              {[0.8, 0.85, 0.9, 0.95].map((v) => (
+                <option key={v} value={v}>
+                  {Math.round(v * 100)}%
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+      </div>
+    );
+  }
+  if (m === "image" || m === "video") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Memory mode" hint="Offload keeps idle parts in RAM: slower, fits bigger models.">
+          <Select value={String(options.offload ?? (m === "video" ? "model" : ""))} onChange={(e) => set("offload", e.target.value)}>
+            <option value="">All on GPU (fastest)</option>
+            <option value="model">Model offload (balanced)</option>
+            <option value="sequential">Sequential offload (smallest, slowest)</option>
+          </Select>
+        </Field>
+        <Field label="Weights" hint="4-bit shrinks big models like FLUX to fit a T4.">
+          <Select value={String(options.quantize ?? "")} onChange={(e) => set("quantize", e.target.value)}>
+            <option value="">fp16 (full quality)</option>
+            <option value="nf4">4-bit nf4 (bitsandbytes)</option>
+          </Select>
+        </Field>
+        <Field label="Default steps">
+          <Input type="number" min={1} max={100} value={options.steps ?? ""} placeholder="model default" onChange={(e) => set("steps", e.target.value ? Number(e.target.value) : "")} />
+        </Field>
+        {m === "image" ? (
+          <Field label="Default guidance">
+            <Input type="number" step={0.5} min={0} max={20} value={options.guidance ?? ""} placeholder="model default" onChange={(e) => set("guidance", e.target.value ? Number(e.target.value) : "")} />
+          </Field>
+        ) : (
+          <Field label="Default frames">
+            <Input type="number" min={5} max={241} value={options.frames ?? ""} placeholder="model default" onChange={(e) => set("frames", e.target.value ? Number(e.target.value) : "")} />
+          </Field>
+        )}
+      </div>
+    );
+  }
+  if (m === "world") {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Default frames">
+          <Input type="number" min={4} max={600} value={options.frames ?? ""} placeholder="recipe default" onChange={(e) => set("frames", e.target.value ? Number(e.target.value) : "")} />
+        </Field>
+        <Field label="Default steps">
+          <Input type="number" min={1} max={50} value={options.steps ?? ""} placeholder="recipe default" onChange={(e) => set("steps", e.target.value ? Number(e.target.value) : "")} />
+        </Field>
+      </div>
+    );
+  }
+  return <p className="text-[13px] text-fg-3">No extra settings for this engine.</p>;
+}
+
+function VariantRow({ v, active, onPick }: { v: Variant; active: boolean; onPick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className={cx(
+        "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
+        active ? "border-signal bg-signal-soft" : "border-line hover:border-line-2",
+      )}
+    >
+      <span className={cx("size-3 shrink-0 rounded-full border-2", active ? "border-signal bg-signal" : "border-line-2")} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-mono text-[12.5px]">{v.label}</span>
+        {v.fit?.reasons?.[0] && <span className="block truncate text-[11.5px] text-fg-3">{v.fit.reasons[0]}</span>}
+      </span>
+      <span className="font-mono text-[11.5px] text-fg-2">{bytes(v.size)}</span>
+      {v.fit && <VerdictTag verdict={v.fit.verdict} size="sm" />}
+    </button>
+  );
+}
+
+export function ModelDetail({
+  item: base,
+  actionLabel,
+  onAction,
+  busy,
+  secondary,
+}: {
+  item: CatalogItem;
+  actionLabel: string;
+  onAction: (choice: ModelChoice) => void;
+  busy?: boolean;
+  secondary?: (choice: ModelChoice) => React.ReactNode;
+}) {
+  const { overview } = useLive();
+  const gpus = overview?.system.gpus ?? [];
+  const canDetail = base.source === "hf" || base.source === "ollama";
+  const detail = useQuery({
+    queryKey: ["detail", base.key],
+    queryFn: () => api.detail(base.key),
+    enabled: canDetail,
+    staleTime: 10 * 60_000,
+  });
+  const loaded = detail.data;
+  // "Best" is relative to the list it came from; keep it when the detail view agrees the model fits well.
+  const item =
+    loaded && base.fit.verdict === "best" && loaded.fit.verdict === "good" ? { ...loaded, fit: { ...loaded.fit, verdict: "best" as const } } : (loaded ?? base);
+  const [variant, setVariant] = useState<string | null>(base.variant);
+  const [engine, setEngine] = useState<string | null>(base.engine);
+  const [options, setOptions] = useState<Record<string, any>>({ ...(base.spec?.options ?? {}) });
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    if (detail.data) {
+      setVariant((v) => v ?? detail.data.variant);
+      setOptions((o) => ({ ...(detail.data.spec?.options ?? {}), ...o }));
+    }
+  }, [detail.data]);
+
+  const engines = useMemo(() => {
+    if (item.modality === "text" && item.source === "hf" && item.engine !== "ollama") return ["vllm", "transformers"];
+    return item.engine ? [item.engine] : [];
+  }, [item]);
+
+  const picked = item.variants.find((v) => v.id === variant);
+  const choice: ModelChoice | null = item.spec
+    ? {
+        item,
+        spec: {
+          ...item.spec,
+          model: { ...item.spec.model, variant: variant ?? item.spec.model.variant, engine: engine ?? item.spec.model.engine },
+          name: name.trim() || null,
+          options: Object.fromEntries(
+            Object.entries<unknown>({
+              ...options,
+              // Placement hint for the GPU scheduler; a different variant than the default changes it.
+              vram_estimate:
+                picked?.size && picked.id !== item.variant ? Math.round(picked.size * 1.12 + 0.8e9) : (item.fit.vram_needed ?? undefined),
+            }).filter(([, v]) => v !== undefined && v !== ""),
+          ),
+        },
+      }
+    : null;
+
+  return (
+    <div className="flex min-h-full flex-col">
+      <div className="space-y-6 p-5 sm:p-6">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <VerdictTag verdict={item.fit.verdict} />
+            {item.experimental && <span className="font-mono text-[10px] uppercase text-tight">experimental</span>}
+            {detail.isFetching && <Loader className="size-3.5 animate-spin text-fg-3" />}
+          </div>
+          <h2 className="display text-[38px] leading-none">{item.name}</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11.5px] text-fg-2">
+            <span>{item.id}</span>
+            {item.params ? <span>{params(item.params)} params</span> : null}
+            {item.engine_label && <span>{item.engine_label}</span>}
+            {item.url && (
+              <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-fg-2 hover:text-signal">
+                page <ExternalLink className="size-3" />
+              </a>
+            )}
+          </div>
+          {item.description && <p className="mt-3 text-[14px] text-fg-2">{item.description}</p>}
+        </div>
+
+        <div className="rounded-xl border border-line bg-bg-2 p-4">
+          <div className="readout mb-3">Fit on this machine</div>
+          <FitGauge fit={item.fit} gpus={gpus} />
+          <ul className="mt-3 space-y-1 text-[13px]">
+            {item.fit.reasons.map((r) => (
+              <li key={r} className="text-fg-2">
+                {r}
+              </li>
+            ))}
+            {item.fit.warnings.map((w) => (
+              <li key={w} className="flex items-start gap-1.5 text-tight">
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                {w}
+              </li>
+            ))}
+          </ul>
+          {Object.keys(item.fit.suggest ?? {}).length > 0 && (
+            <div className="mt-3 font-mono text-[11px] text-fg-3">auto-applied: {Object.entries(item.fit.suggest).map(([k, v]) => `${k}=${v}`).join(", ")}</div>
+          )}
+        </div>
+
+        {item.variants.length > 1 && (
+          <div>
+            <div className="readout mb-2">{item.source === "ollama" ? "Size / tag" : "Quantization"}</div>
+            <div className="max-h-[300px] space-y-1.5 overflow-y-auto pr-1 scroll-thin">
+              {item.variants.map((v) => (
+                <VariantRow key={v.id} v={v} active={v.id === (variant ?? item.variant)} onPick={() => setVariant(v.id)} />
+              ))}
+            </div>
+            {picked?.context && <div className="mt-2 font-mono text-[11px] text-fg-3">context window {picked.context}</div>}
+          </div>
+        )}
+
+        {engines.length > 1 && (
+          <Field label="Engine" hint="vLLM is fastest on T4s but experimental; Transformers is the safe fallback.">
+            <Select value={engine ?? ""} onChange={(e) => setEngine(e.target.value)}>
+              {engines.map((e) => (
+                <option key={e} value={e}>
+                  {e === "vllm" ? "vLLM" : "Transformers"}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        {item.engine && (
+          <div>
+            <div className="readout mb-2">Settings</div>
+            <OptionsForm item={item} options={options} onChange={setOptions} />
+          </div>
+        )}
+
+        {item.engine && (
+          <Field label="API model name (optional)" hint="What clients send as 'model'. Defaults to a short name.">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={item.source === "ollama" ? `${item.id}:${variant ?? "latest"}` : item.id.split("/").pop()?.toLowerCase()} />
+          </Field>
+        )}
+      </div>
+
+      <div className="sticky bottom-0 mt-auto flex flex-wrap items-center justify-end gap-2 border-t border-line bg-panel/95 px-5 py-4 backdrop-blur sm:px-6">
+        {!item.engine ? (
+          <span className="mr-auto text-[13px] text-fg-3">{item.description || "KaggleUI can't run this model yet."}</span>
+        ) : (
+          <>
+            {choice && secondary?.(choice)}
+            <button
+              disabled={!choice || busy}
+              onClick={() => choice && onAction(choice)}
+              className="inline-flex h-11 items-center gap-2 rounded-lg bg-signal px-5 text-[15px] font-semibold text-signal-ink transition hover:brightness-110 disabled:opacity-50"
+            >
+              {busy && <Loader className="size-4 animate-spin" />}
+              {actionLabel}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
