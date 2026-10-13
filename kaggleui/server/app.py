@@ -43,6 +43,9 @@ def create_app(state: AppState) -> FastAPI:
             for t in tasks:
                 t.cancel()
             await state.manager.shutdown()
+            from ..engines.ollama import OllamaServer
+
+            await OllamaServer.get().stop()  # only stops an Ollama we started ourselves
             await state.tunnels.close_all()
             await state.catalog.close()
 

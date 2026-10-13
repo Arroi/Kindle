@@ -66,10 +66,13 @@ async def _sse_text(client: httpx.AsyncClient, url: str, body: dict, headers: di
                     ev = json.loads(line[5:])
                 except ValueError:
                     continue
+                # Thinking models (e.g. qwen3) stream reasoning first; it counts as streamed output.
                 for ch in ev.get("choices") or []:
-                    text += (ch.get("delta") or {}).get("content") or ""
+                    delta = ch.get("delta") or {}
+                    text += delta.get("content") or delta.get("reasoning") or delta.get("reasoning_content") or ""
                 if ev.get("type") == "content_block_delta":
-                    text += (ev.get("delta") or {}).get("text") or ""
+                    delta = ev.get("delta") or {}
+                    text += delta.get("text") or delta.get("thinking") or ""
     return text
 
 
@@ -78,17 +81,17 @@ async def _text_checks(c: Checker, name: str) -> None:
     msgs = [{"role": "user", "content": "Reply with the single word: pong"}]
 
     async def oai():
-        r = await cl.post("/v1/chat/completions", json={"model": name, "messages": msgs, "max_tokens": 64})
+        r = await cl.post("/v1/chat/completions", json={"model": name, "messages": msgs, "max_tokens": 256})
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
     async def oai_stream():
-        t = await _sse_text(cl, "/v1/chat/completions", {"model": name, "messages": msgs, "stream": True, "max_tokens": 64})
+        t = await _sse_text(cl, "/v1/chat/completions", {"model": name, "messages": msgs, "stream": True, "max_tokens": 256})
         assert t, "empty stream"
         return t
 
     async def anth():
-        r = await cl.post("/v1/messages", json={"model": name, "max_tokens": 64, "messages": msgs},
+        r = await cl.post("/v1/messages", json={"model": name, "max_tokens": 256, "messages": msgs},
                           headers={"anthropic-version": "2023-06-01"})
         r.raise_for_status()
         data = r.json()
@@ -96,7 +99,7 @@ async def _text_checks(c: Checker, name: str) -> None:
         return "".join(b.get("text", "") for b in data["content"])
 
     async def anth_stream():
-        t = await _sse_text(cl, "/v1/messages", {"model": name, "max_tokens": 64, "messages": msgs, "stream": True},
+        t = await _sse_text(cl, "/v1/messages", {"model": name, "max_tokens": 256, "messages": msgs, "stream": True},
                             {"anthropic-version": "2023-06-01"})
         assert t, "empty stream"
         return t
