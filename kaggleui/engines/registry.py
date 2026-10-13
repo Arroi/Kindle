@@ -6,7 +6,7 @@ from ..schemas import DeploymentSpec
 from .base import Backend
 from .context import DeployError, EngineContext
 
-WORKER_ENGINES = {"diffusers", "diffusers_video", "kokoro", "chatterbox", "transformers_tts", "faster_whisper",
+WORKER_ENGINES = {"diffusers", "diffusers_video", "diffusers_world", "kokoro", "chatterbox", "transformers_tts", "faster_whisper",
                   "transformers_asr", "transformers"}
 
 

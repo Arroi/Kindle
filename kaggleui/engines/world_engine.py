@@ -33,6 +33,8 @@ def recipe_for(spec: DeploymentSpec) -> dict:
 
 async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dict]:
     recipe = recipe_for(spec)
+    if recipe.get("min_sm") and (ctx.hw.min_sm or 0) < recipe["min_sm"]:
+        raise DeployError(f"{recipe['title']} requires an Ampere or newer GPU. T4/P100 aren't supported by this runner.")
     src_root = ctx.paths.envs / "src" / recipe["name"]
     if not (src_root / ".git").exists():
         ctx.progress("installing", None, f"Cloning {recipe['git']}")
@@ -45,6 +47,7 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
     extra_env: dict[str, str] = {}
     if recipe.get("env") == "venv":
         python = await ensure_venv(ctx, f"world-{recipe['name']}", recipe.get("requirements", []) + WORKER_BASE_REQS,
+                                   python=recipe.get("python", "3.11"),
                                    system_site_packages=bool(recipe.get("system_site_packages")),
                                    label=recipe["title"])
         extra_env["PYTHONPATH"] = worker_pythonpath(ctx)
@@ -59,14 +62,18 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
                 raise DeployError(f"Setup step failed: {step}")
         marker.write_text("ok")
 
-    siblings = await repo_files(recipe["repo"])
-    expected = sum(int(s.get("size") or 0) for s in siblings
-                   if any(fnmatch.fnmatch(s["rfilename"], p) for p in recipe.get("allow", ["*"])))
-    weights = await hf_download(ctx, recipe["repo"], recipe.get("allow"), expected or None)
+    if spec.model.source == "attached":
+        weights = spec.model.id
+    else:
+        siblings = await repo_files(spec.model.id)
+        expected = sum(int(s.get("size") or 0) for s in siblings
+                       if any(fnmatch.fnmatch(s["rfilename"], p) for p in recipe.get("allow", ["*"])))
+        weights = await hf_download(ctx, spec.model.id, recipe.get("allow"), expected or None)
 
     _, base = await start_worker(ctx, python=python, module="world", model=weights, engine="world_recipe",
                                  options={**spec.options, "recipe": recipe["name"], "src": str(src)},
                                  extra_env=extra_env, label=recipe["title"])
     return WorkerBackend("world", base), {"recipe": recipe["name"], "controls": recipe.get("controls"),
                                           "start_frame": recipe.get("start_frame"),
+                                          "prompt_conditioning": bool(recipe.get("prompt_conditioning")),
                                           "unverified": bool(recipe.get("unverified"))}

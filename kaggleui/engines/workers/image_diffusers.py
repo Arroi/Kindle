@@ -15,6 +15,12 @@ from .common import WorkerState, create_app, device, parse_args, serve, start_lo
 def load_pipeline(model: str, variant: str | None, options: dict):
     from diffusers import DiffusionPipeline
 
+    pipeline_name = options.get("pipeline")
+    if pipeline_name in ("Cosmos3OmniPipeline", "CosmosTextToWorldPipeline", "CosmosVideoToWorldPipeline"):
+        import diffusers
+
+        DiffusionPipeline = getattr(diffusers, pipeline_name)
+
     dtype = torch_dtype(options)
     kwargs: dict = {"torch_dtype": dtype}
     if variant:
@@ -35,6 +41,11 @@ def load_pipeline(model: str, variant: str | None, options: dict):
             pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
         else:
             raise
+    if type(pipe).__name__ == "Cosmos3OmniPipeline":
+        from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+
+        pipe.scheduler = UniPCMultistepScheduler.from_config(
+            pipe.scheduler.config, flow_shift=options.get("flow_shift", 10.0), use_karras_sigmas=False)
     dev = device()
     offload = options.get("offload")
     if dev == "cuda" and offload == "sequential":

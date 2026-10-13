@@ -62,14 +62,19 @@ def scan(root: Path = Path("/kaggle/input"), max_depth: int = 7) -> list[dict]:
 
         if "model_index.json" in files:
             modality = "image"
+            engine = None
             try:
                 cls = json.loads((d / "model_index.json").read_text()).get("_class_name", "")
-                if any(k in cls for k in ("Video", "I2V", "T2V", "Wan", "LTX", "CogVideo", "Hunyuan")):
+                if cls.startswith("Cosmos"):
+                    modality, engine = "world", "diffusers_world"
+                elif any(k in cls for k in ("MatrixGame", "LingBot", "HunyuanWorld")):
+                    modality = "world"
+                elif any(k in cls for k in ("Video", "I2V", "T2V", "Wan", "LTX", "CogVideo", "Hunyuan")):
                     modality = "video"
             except Exception:
                 pass
             found.append({"path": str(d), "name": label, "modality": modality,
-                          "engine": "diffusers" if modality == "image" else "diffusers_video",
+                          "engine": engine or ("diffusers" if modality == "image" else "diffusers_video" if modality == "video" else None),
                           "size": _dir_weight_size(d)})
             dirnames[:] = []
             continue

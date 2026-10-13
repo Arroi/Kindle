@@ -21,16 +21,16 @@ def repo_cache_dir(repo_id: str) -> Path:
     return home / "hub" / ("models--" + repo_id.replace("/", "--"))
 
 
-async def repo_files(repo_id: str) -> list[dict]:
+async def repo_files(repo_id: str, revision: str | None = None) -> list[dict]:
     import httpx
 
     async with httpx.AsyncClient() as client:
-        info = await hf.model_info(client, repo_id)
+        info = await hf.model_info(client, repo_id, revision=revision)
     return info.get("siblings") or []
 
 
 async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str] | None = None,
-                      expected_size: int | None = None) -> str:
+                      expected_size: int | None = None, revision: str | None = None) -> str:
     """Download (part of) a repo into the shared HF cache and return the local snapshot path."""
     cache = repo_cache_dir(repo_id)
     start_size = dir_size(cache)
@@ -42,7 +42,7 @@ async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str
     # Python's executor shutdown. A supervised child can be stopped immediately.
     with tempfile.TemporaryDirectory(prefix=f"kui-download-{ctx.dep_id}-") as work:
         result_file = Path(work) / "result.json"
-        spec = {"repo_id": repo_id, "allow_patterns": allow_patterns}
+        spec = {"repo_id": repo_id, "allow_patterns": allow_patterns, "revision": revision}
         proc = ManagedProcess(f"download-{ctx.dep_id}", [
             sys.executable, "-m", "kaggleui.engines.download", json.dumps(spec), str(result_file),
         ], env=ctx.env(), on_line=ctx.log)
@@ -88,6 +88,8 @@ def _worker(spec: dict, result_file: Path) -> None:
             kwargs["token"] = os.environ["HF_TOKEN"]
         if spec.get("allow_patterns"):
             kwargs["allow_patterns"] = spec["allow_patterns"]
+        if spec.get("revision"):
+            kwargs["revision"] = spec["revision"]
         result = {"path": snapshot_download(**kwargs)}
     except Exception as exc:
         result = {"error": str(exc), "type": type(exc).__name__}

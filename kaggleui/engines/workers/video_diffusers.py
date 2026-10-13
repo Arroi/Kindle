@@ -38,6 +38,7 @@ def run_job(pipe, payload: dict, defaults: dict, outputs: str, report) -> str:
         "num_frames": frames,
         "width": width - width % 16,
         "height": height - height % 16,
+        "fps": fps,
         "generator": torch.Generator("cuda" if torch.cuda.is_available() else "cpu").manual_seed(seed),
     }
     if payload.get("guidance") is not None:
@@ -49,6 +50,10 @@ def run_job(pipe, payload: dict, defaults: dict, outputs: str, report) -> str:
 
         img = Image.open(io.BytesIO(base64.b64decode(payload["image_b64"]))).convert("RGB")
         call["image"] = img.resize((call["width"], call["height"]))
+        if "video" in params and "image" not in params:
+            call["video"] = [call.pop("image")]
+    elif defaults.get("require_image"):
+        raise ValueError("This world model requires a starting image. Upload one before generating.")
     elif "image" in params and params["image"].default is inspect.Parameter.empty:
         raise ValueError("This model is image-to-video: provide an input image")
 
@@ -61,10 +66,10 @@ def run_job(pipe, payload: dict, defaults: dict, outputs: str, report) -> str:
     call = {k: v for k, v in call.items() if k in params and v is not None}
 
     result = pipe(**call)
-    video = result.frames[0]
+    video = result.video if hasattr(result, "video") else result.frames[0]
     report(0.99, "Encoding video")
     path = os.path.join(outputs, f"video-{int(time.time() * 1000)}.mp4")
-    export_to_video(video, path, fps=fps)
+    export_to_video(video, path, fps=fps, macro_block_size=1)
     return path
 
 

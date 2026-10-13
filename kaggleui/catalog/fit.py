@@ -34,9 +34,9 @@ FLOAT_DTYPES = {"F64", "F32", "BF16", "F16", "FP16"}
 # Engines that can spread one model over several GPUs.
 SPLIT_ENGINES = {"ollama", "vllm", "transformers"}
 # Engines that can keep part of the model in system RAM (slower).
-OFFLOAD_ENGINES = {"diffusers", "diffusers_video", "transformers", "transformers_tts"}
+OFFLOAD_ENGINES = {"diffusers", "diffusers_video", "diffusers_world", "transformers", "transformers_tts"}
 # Minimum CUDA compute capability (sm) per engine.
-ENGINE_MIN_SM = {"vllm": 70}
+ENGINE_MIN_SM = {"vllm": 70, "diffusers_world": 80}
 # Engines that are fine on CPU for small models.
 CPU_FRIENDLY = {"ollama", "faster_whisper", "kokoro", "transformers_asr", "transformers_tts", "mock"}
 
@@ -61,6 +61,7 @@ class Candidate:
     likes: int = 0
     updated: float | None = None  # unix time
     attached: bool = False  # already on disk under /kaggle/input
+    min_sm: int | None = None
 
 
 @dataclass
@@ -159,7 +160,7 @@ def assess(c: Candidate, hw: HardwareProfile) -> Fit:
             return done("tight", "cpu", ["No GPU: runs on CPU, slowly"])
         return done("worst", "none", ["Needs a GPU. Switch the accelerator to GPU T4 ×2"])
 
-    min_sm = ENGINE_MIN_SM.get(c.engine)
+    min_sm = c.min_sm or ENGINE_MIN_SM.get(c.engine)
     if min_sm and (hw.min_sm or 0) < min_sm:
         return done("worst", "none", [f"{c.engine} doesn't support {_gpu_label(hw)} (sm_{hw.min_sm})"])
 

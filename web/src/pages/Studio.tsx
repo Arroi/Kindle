@@ -36,6 +36,7 @@ function Body({ model, imageModels, admin }: { model: StudioModel; imageModels: 
     case "video":
       return <VideoStudio key={model.id} model={model} />;
     case "world":
+      if (model.engine === "diffusers_world") return <VideoStudio key={model.id} model={model} />;
       return <WorldStudio key={model.id} model={model} imageModels={imageModels} admin={admin} />;
     case "tts":
       return <TtsStudio key={model.id} model={model} />;

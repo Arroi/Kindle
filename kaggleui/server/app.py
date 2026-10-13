@@ -44,6 +44,7 @@ def create_app(state: AppState) -> FastAPI:
             for t in tasks:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            await state.imports.close()
             await state.manager.shutdown()
             from ..engines.ollama import OllamaServer
 
@@ -264,7 +265,7 @@ def create_app(state: AppState) -> FastAPI:
 
     @app.get("/_kui/api/catalog/search")
     async def catalog_search(request: Request, modality: str = "text", q: str = "", source: str = "all",
-                             sort: str = "recommended", limit: int = 40, show_unsupported: bool = False,
+                             sort: str = "recommended", limit: int = 40, show_unsupported: bool | None = None,
                              fit: str = "all"):
         require_admin(request)
         if modality not in MODALITIES:
@@ -281,6 +282,27 @@ def create_app(state: AppState) -> FastAPI:
             raise HTTPException(404, "Unknown model") from e
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f"Couldn't load model details: {e}") from e
+
+    @app.get("/_kui/api/catalog/imports")
+    async def model_imports(request: Request):
+        require_admin(request)
+        return state.imports.list()
+
+    @app.post("/_kui/api/catalog/imports")
+    async def import_model(request: Request, body: dict = Body(...)):
+        require_admin(request)
+        try:
+            return state.imports.create(str(body.get("url") or ""), str(body.get("kind") or "auto"),
+                                        str(body.get("name") or ""), str(body.get("revision") or "") or None)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.delete("/_kui/api/catalog/imports/{ident}")
+    async def cancel_import(request: Request, ident: str):
+        require_admin(request)
+        if ident not in state.imports.jobs:
+            raise HTTPException(404, "No such download")
+        return await state.imports.cancel(ident)
 
     @app.get("/_kui/api/deployments")
     async def list_deployments(request: Request):
@@ -381,6 +403,7 @@ def create_app(state: AppState) -> FastAPI:
             out.append({"id": d.id, "name": d.served_name, "modality": d.spec.modality, "status": d.status,
                         "message": d.message, "progress": d.progress, "capabilities": d.info.get("capabilities", []),
                         "controls": d.info.get("controls"), "start_frame": d.info.get("start_frame"),
+                        "prompt_conditioning": bool(d.info.get("prompt_conditioning")),
                         "options": d.spec.options,
                         "interface": d.interface, "engine": d.spec.model.engine, "runtime": d.info.get("runtime")})
         return out

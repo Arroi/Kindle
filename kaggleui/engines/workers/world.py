@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import glob
+import math
 import os
 import random
 import re
@@ -56,6 +57,8 @@ def run_job(recipe: dict, src: str, weights: str, outputs: str, payload: dict, r
     defaults = recipe.get("defaults") or {}
     frames = min(int(payload.get("frames") or defaults.get("frames", 32)), int(recipe.get("max_frames", 300)))
     steps = int(payload.get("steps") or defaults.get("steps", 10))
+    if recipe["name"] == "lingbot_world_base":
+        frames = max(5, 4 * ((frames - 1) // 4) + 1)
     fps = int(payload.get("fps") or defaults.get("fps", 16))
     seed = int(payload.get("seed") or random.randint(0, 2**31 - 1))
 
@@ -73,7 +76,9 @@ def run_job(recipe: dict, src: str, weights: str, outputs: str, payload: dict, r
 
     output = str(job_dir / "out.mp4")
     values = {"python": sys.executable, "weights": weights, "image": image, "actions": actions, "frames": frames,
-              "steps": steps, "fps": fps, "seed": seed, "output": output, "outdir": str(job_dir), "src": src}
+              "steps": steps, "fps": fps, "seed": seed, "output": output, "outdir": str(job_dir), "src": src,
+              "prompt": str(payload.get("prompt") or "A coherent scene with natural motion."),
+              "iterations": max(1, math.ceil((frames - 57) / 40) + 1)}
     cmd = [str(part).format(**values) for part in recipe["command"]]
     print("KUI_WORLD_CMD " + " ".join(cmd), flush=True)
     report(0.01, "Starting")

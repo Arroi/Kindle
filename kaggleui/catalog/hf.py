@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import datetime
+from urllib.parse import quote
 
 import httpx
 
@@ -53,9 +54,12 @@ async def search(client: httpx.AsyncClient, *, pipeline_tag: str | None = None, 
     return items
 
 
-async def model_info(client: httpx.AsyncClient, repo_id: str) -> dict:
+async def model_info(client: httpx.AsyncClient, repo_id: str, revision: str | None = None) -> dict:
     """Full model metadata including per-file sizes (``siblings[].size``)."""
-    r = await client.get(f"{API}/models/{repo_id}", params={"blobs": "true"}, headers=_headers(), timeout=20)
+    path = f"{API}/models/{repo_id}"
+    if revision:
+        path += f"/revision/{quote(revision, safe='')}"
+    r = await client.get(path, params={"blobs": "true"}, headers=_headers(), timeout=20)
     r.raise_for_status()
     info = r.json()
     gg = info.get("gguf")
@@ -105,7 +109,9 @@ def diffusers_files(siblings: list[dict]) -> dict:
     for s in siblings:
         name = s.get("rfilename", "")
         if "/" in name:
-            by_comp.setdefault(name.split("/", 1)[0], []).append(s)
+            component = name.split("/", 1)[0]
+            if component not in ("nemo", "original", "assets", "Cosmos-1.0-Guardrail"):
+                by_comp.setdefault(component, []).append(s)
         else:
             root_files.append(s)
     chosen: list[dict] = [s for s in root_files if s["rfilename"] == "model_index.json"]

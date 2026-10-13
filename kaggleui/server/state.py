@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from ..catalog.imports import ModelImports
 from ..catalog.service import CatalogService
 from ..config import Paths
 from ..deploy.manager import DeploymentManager
@@ -32,6 +33,7 @@ class AppState:
     bus: EventBus = field(init=False)
     probe: Probe = field(init=False)
     catalog: CatalogService = field(init=False)
+    imports: ModelImports = field(init=False)
     tunnels: TunnelManager = field(init=False)
     manager: DeploymentManager = field(init=False)
     interfaces: InterfaceManager = field(init=False)
@@ -40,7 +42,8 @@ class AppState:
         self.auth = Auth()
         self.bus = EventBus()
         self.probe = Probe(self.paths, fake=self.fake_hw)
-        self.catalog = CatalogService(self.probe.snapshot)
+        self.imports = ModelImports(self.paths.models / "imports")
+        self.catalog = CatalogService(self.probe.snapshot, imports_root=self.imports.root)
         self.tunnels = TunnelManager(self.paths, on_change=lambda t: self.bus.publish("tunnel", t.info()))
         self.manager = DeploymentManager(self)
         self.interfaces = InterfaceManager(self)

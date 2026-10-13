@@ -20,6 +20,7 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
   const canPaint = imageModels.length > 0;
   const [start, setStart] = useState<Start>(canPaint ? "describe" : "default");
   const [prompt, setPrompt] = useState("");
+  const [motionPrompt, setMotionPrompt] = useState("");
   const [painter, setPainter] = useState(imageModels[0]?.name ?? "");
   const [painted, setPainted] = useState<string | null>(null);
   const [painting, setPainting] = useState(false);
@@ -58,6 +59,7 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
   async function generate() {
     try {
       const body: Record<string, unknown> = { model: model.name, frames, steps, seed: seed ? Number(seed) : undefined };
+      if (model.prompt_conditioning) body.prompt = motionPrompt || "A coherent scene with natural motion.";
       if (minecraft) body.actions = segments.map(({ keys, camera, frames }) => ({ keys, camera, frames }));
       let frame: string | undefined;
       if (start === "describe") {
@@ -143,6 +145,7 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
           {start === "default" && <p className="text-[12.5px] text-fg-3">Starts from the model's own sample frame.</p>}
         </div>
 
+        {model.prompt_conditioning && <Field label="Scene and motion prompt"><Textarea rows={3} value={motionPrompt} onChange={e => setMotionPrompt(e.target.value)} placeholder="Describe the scene and how it should move…" /></Field>}
         {minecraft && <ActionBuilder segments={segments} onChange={setSegments} />}
         <Slider label="Frames" value={frames} min={4} max={300} onChange={setFrames} />
         <Slider label="Steps" value={steps} min={1} max={60} onChange={setSteps} />

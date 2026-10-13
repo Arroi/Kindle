@@ -1,0 +1,20 @@
+name: lingbot_world_base
+title: LingBot World Base Camera
+repo: robbyant/lingbot-world-base-cam
+git: https://github.com/Robbyant/lingbot-world
+env: venv
+system_site_packages: true
+min_sm: 80
+requirements: ["torch>=2.4", "torchvision>=0.19", "opencv-python>=4.9", "diffusers>=0.31",
+               "transformers==4.51.3", "accelerate>=1.1.1", "tqdm", "imageio[ffmpeg]", "easydict", "ftfy",
+               "imageio-ffmpeg", "numpy<2", "scipy", "sentencepiece"]
+controls: none
+prompt_conditioning: true
+default_image: examples/00/image.jpg
+start_frame: {size: "832x480"}
+defaults: {frames: 33, steps: 20, fps: 16}
+max_frames: 161
+unverified: true
+command: ["{python}", generate.py, --task, i2v-A14B, --size, "480*832", --ckpt_dir, "{weights}",
+          --image, "{image}", --t5_cpu, --convert_model_dtype, --offload_model, "True", --frame_num, "{frames}",
+          --sample_steps, "{steps}", --base_seed, "{seed}", --prompt, "{prompt}", --save_file, "{output}"]

@@ -169,7 +169,7 @@ export interface SearchResult {
   items: CatalogItem[];
   sources: Record<string, string>;
   hardware: { accelerator: string; gpus: number; vram_free: number; ram_available: number; disk_free: number | null; fake: string | null };
-  counts?: { total: number; fits: number; shown: number };
+  counts?: { total: number; fits: number; shown: number; launchable?: number };
   has_more?: boolean;
 }
 
@@ -191,6 +191,7 @@ export interface Session {
 }
 
 export interface StudioModel {
+  prompt_conditioning?: boolean;
   id: string;
   name: string;
   modality: Modality;
@@ -218,4 +219,16 @@ export interface SecretDetails {
   kaggle: { state: string; error: string | null };
   hf?: { ok: boolean; user: string | null; error: string | null };
   added?: string[];
+}
+export interface ModelImport {
+  id: string;
+  name: string;
+  url: string;
+  kind: string;
+  created: number;
+  status: string;
+  progress: number | null;
+  bytes: number;
+  message: string;
+  models: { path: string; name: string; modality: Modality; engine: string | null }[];
 }

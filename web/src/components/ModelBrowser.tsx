@@ -21,7 +21,7 @@ function useDebounced<T>(value: T, ms: number): T {
 }
 
 function SourceBadge({ item }: { item: CatalogItem }) {
-  const label = item.source === "hf" ? "HF" : item.source === "ollama" ? "Ollama" : "Attached";
+  const label = item.source === "hf" ? "HF" : item.source === "ollama" ? "Ollama" : item.capabilities.includes("imported") ? "Imported" : "Attached";
   return (
     <span className="flex items-center gap-1.5">
       <span
@@ -62,13 +62,12 @@ export function ModelCard({
       className={cx(
         "panel group flex h-full w-full min-w-0 flex-col p-5 text-left transition-[border-color,background] duration-150 hover:bg-panel-2",
         selected ? "border-signal ring-1 ring-signal" : "hover:border-line-2",
-        unsupported && "opacity-60",
       )}
       aria-pressed={!!selected}
     >
       <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
         <SourceBadge item={item} />
-        <VerdictTag verdict={f.verdict} size="sm" />
+        {unsupported ? <Chip>Runner unavailable</Chip> : <VerdictTag verdict={f.verdict} size="sm" />}
       </div>
       <div className="mb-1 flex items-baseline gap-2">
         <h3 className="line-clamp-2 min-w-0 break-words text-[18px] font-semibold leading-snug [overflow-wrap:anywhere]">{item.name}</h3>
@@ -92,9 +91,9 @@ export function ModelCard({
         {item.experimental && <Chip tone="warn">experimental</Chip>}
       </div>
       <div className="mt-auto">
-        <FitGauge fit={f} gpus={gpus} />
+        {unsupported ? <p className="text-[12px] text-fg-3">View the published model and its requirements.</p> : <FitGauge fit={f} gpus={gpus} />}
         <div className="mt-2 flex items-start justify-between gap-2">
-          <p className="line-clamp-2 text-[12px] text-fg-2">{f.reasons[0]}</p>
+          <p className="line-clamp-2 text-[12px] text-fg-2">{unsupported ? "This architecture needs a model-specific runner." : f.reasons[0]}</p>
           {f.warnings.length > 0 && (
             <span title={f.warnings.join("\n")} className="mt-0.5 shrink-0 text-tight">
               <AlertTriangle className="size-3.5" />
@@ -134,7 +133,6 @@ function ModelRow({ item, selected, onOpen }: { item: CatalogItem; selected: boo
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-fg-3">
           {item.variant && <span>{item.variant}</span>}
           {item.capabilities.slice(0, 2).map((cap) => <span key={cap}>{cap}</span>)}
-          {!item.engine && <span className="text-tight">Unsupported</span>}
           {item.experimental && <span className="text-tight">Experimental</span>}
         </div>
       </div>
@@ -148,8 +146,8 @@ function ModelRow({ item, selected, onOpen }: { item: CatalogItem; selected: boo
           <span className="text-[11px] text-fg-3 @3xl:hidden">Download</span>
         </div>
         <div className="model-fit">
-          <VerdictTag verdict={item.fit.verdict} size="sm" />
-          <span className="mt-1 block text-[11px] text-fg-3">{item.fit.vram_needed ? `≈${bytes(item.fit.vram_needed)} VRAM` : "Estimate unavailable"}</span>
+          {item.engine ? <VerdictTag verdict={item.fit.verdict} size="sm" /> : <Chip>Runner unavailable</Chip>}
+          <span className="mt-1 block text-[11px] text-fg-3">{!item.engine ? "View model details" : item.fit.vram_needed ? `≈${bytes(item.fit.vram_needed)} VRAM` : "Estimate unavailable"}</span>
         </div>
       </div>
     </button>
@@ -195,30 +193,40 @@ export function ModelBrowser({
   onOpen,
   selectedKey,
   lockModality,
+  initialSource = "all",
 }: {
   modality: Modality;
   onModality?: (m: Modality) => void;
   onOpen: (item: CatalogItem) => void;
   selectedKey?: string | null;
   lockModality?: boolean;
+  initialSource?: string;
 }) {
   const { overview } = useLive();
   const gpus = overview?.system.gpus ?? [];
   const [q, setQ] = useState("");
-  const [source, setSource] = useState("all");
-  const [fitFilter, setFitFilter] = useState<FitFilter>(storedFit);
+  const [source, setSource] = useState(initialSource);
+  const [generalFit, setGeneralFit] = useState<FitFilter>(() => initialSource === "attached" ? "all" : storedFit());
+  const [worldFit, setWorldFit] = useState<FitFilter>("all");
+  const fitFilter = modality === "world" ? worldFit : generalFit;
   // "All models" reads best by popularity (big models mixed in); "Fits" by how well they fit.
   const [sortChoice, setSortChoice] = useState<string | null>(storedSort);
   const [view, setView] = useState(storedView);
-  const sort = sortChoice ?? (fitFilter === "all" ? "trending" : "recommended");
+  const sort = sortChoice ?? (modality === "world" || fitFilter === "fits" ? "recommended" : "trending");
   const [unsupported, setUnsupported] = useState(false);
+  const [launchableOnly, setLaunchableOnly] = useState(false);
+  const showUnsupported = modality === "world" ? !launchableOnly : unsupported;
   const [limit, setLimit] = useState(PAGE);
   const dq = useDebounced(q, 350);
 
-  useEffect(() => setLimit(PAGE), [modality, dq, source, sort, unsupported, fitFilter]);
+  useEffect(() => setLimit(PAGE), [modality, dq, source, sort, showUnsupported, fitFilter]);
 
   function changeFit(v: FitFilter) {
-    setFitFilter(v);
+    if (modality === "world") {
+      setWorldFit(v);
+      return;
+    }
+    setGeneralFit(v);
     try {
       localStorage.setItem(FIT_KEY, v);
     } catch {
@@ -244,13 +252,14 @@ export function ModelBrowser({
     setQ("");
     setSource("all");
     setUnsupported(false);
+    setLaunchableOnly(false);
     changeFit("all");
     changeSort(null);
   }
 
   const query = useQuery({
-    queryKey: ["search", modality, dq, source, sort, unsupported, fitFilter, limit],
-    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: unsupported, fit: fitFilter, limit }),
+    queryKey: ["search", modality, dq, source, sort, showUnsupported, fitFilter, limit],
+    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit }),
     staleTime: 5 * 60_000,
     placeholderData: (prev) => (prev?.modality === modality ? prev : undefined),
   });
@@ -263,11 +272,11 @@ export function ModelBrowser({
       { value: "hf", label: "Hugging Face" },
     ];
     if (modality === "text") base.push({ value: "ollama", label: "Ollama" });
-    base.push({ value: "attached", label: "Attached" });
+    base.push({ value: "attached", label: "Local" });
     return base;
   }, [modality]);
 
-  const errors = Object.entries(query.data?.sources ?? {}).filter(([, s]) => s.startsWith("error"));
+  const errors = Object.entries(query.data?.sources ?? {}).filter(([, s]) => s.startsWith("error") || s.startsWith("partial"));
 
   return (
     <div className="@container">
@@ -276,10 +285,16 @@ export function ModelBrowser({
           {MODALITY_ORDER.map((m) => (
             <button key={m} type="button" aria-pressed={modality === m} onClick={() => {
               onModality(m);
+              if (m === "world") setSource("all");
               if (m !== "text" && source === "ollama") setSource("all");
             }}>{MODALITY_LABEL[m]}</button>
           ))}
         </nav>
+      )}
+      {modality === "world" && (
+        <p className="mb-5 max-w-[80ch] text-[13px] text-fg-2">
+          Browse published world models from Hugging Face. Models marked “Runner unavailable” can be downloaded; launch requires a runner for their architecture. GPU fit is checked separately.
+        </p>
       )}
       <div className="mb-4 flex flex-col gap-3 @4xl:flex-row @4xl:items-center">
         <div className="relative min-w-0 flex-1">
@@ -316,14 +331,14 @@ export function ModelBrowser({
               { value: "fits", label: "Fits this machine" },
             ]}
           />
-          <Toggle checked={unsupported} onChange={setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">Show unsupported</span>} />
+          <Toggle checked={modality === "world" ? launchableOnly : unsupported} onChange={modality === "world" ? setLaunchableOnly : setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">{modality === "world" ? "Launchable only" : "Show unsupported"}</span>} />
         </div>
       </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-fg-3" role="status" aria-live="polite">
         <span>
-          {query.isFetching && !loadingMore ? "Checking catalogs…" : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
+          {query.isFetching && !loadingMore ? "Checking catalogs…" : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models${modality === "world" ? ` · ${query.data.counts.launchable ?? 0} with launch support` : ""} · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
         </span>
-        {(q || source !== "all" || unsupported || fitFilter !== "all" || sortChoice) && (
+        {(q || source !== "all" || (modality === "world" ? launchableOnly : unsupported) || fitFilter !== "all" || sortChoice) && (
           <button type="button" onClick={resetFilters} className="flex items-center gap-1 text-fg-2 hover:text-fg"><X className="size-3" /> Reset filters</button>
         )}
       </div>
@@ -353,7 +368,7 @@ export function ModelBrowser({
         <div className={cx(view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden", query.isPlaceholderData && "opacity-60")} aria-busy={query.isFetching}>
           {view === "list" && (
             <div className="model-header model-columns border-b border-line bg-panel-2 px-5 py-2.5 text-[12px] text-fg-3" aria-hidden="true">
-              <span>Model</span><span>Parameters</span><span>Download</span><span className="text-right">GPU fit</span>
+              <span>Model</span><span>Parameters</span><span>Download</span><span className="text-right">{modality === "world" ? "Support / GPU fit" : "GPU fit"}</span>
             </div>
           )}
           {query.data?.items.map((it) => (
@@ -363,7 +378,7 @@ export function ModelBrowser({
           ))}
         </div>
       )}
-      {query.data?.has_more && query.data.items.length >= limit && (
+      {query.data?.has_more && (query.data.items.length >= limit || modality === "world") && (
         <div className="mt-5 flex justify-center">
           <Button busy={loadingMore} onClick={() => setLimit((l) => Math.min(l + PAGE, 300))} disabled={limit >= 300}>
             {limit >= 300 ? "Search to narrow it down" : "Load more"}

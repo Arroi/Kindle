@@ -11,6 +11,23 @@ One notebook cell turns a free Kaggle GPU into a model host. Run it, open the li
 
 The model catalog offers a compact list with parameter count, download size and GPU fit in separate columns, plus an optional grid. Your sorting and layout choices are remembered between visits. Use **Reset filters** to start a fresh search.
 
+**World discovery** searches Hugging Face tags and families including Matrix-Game, LingBot, Yume, Cosmos and HunyuanWorld. World opens with the broader catalog; **Launchable only** shows configured runtimes, and **Fits this machine** applies the hardware filter. A bundled catalog keeps 18 published checkpoints visible when live search is unavailable.
+
+World runners cover 11 bundled checkpoints: Oasis, Matrix-Game 2.0 and 3.0, LingBot World Base Camera, Cosmos 1.0 Text2World/Video2World 7B, Cosmos Predict 2.5 2B/14B, and Cosmos 3 Edge/Nano/Super. The new runners are **experimental and have not been verified with real GPU inference**. Cosmos uses the official Diffusers pipelines, with `diffusers/base/post-trained` for Predict 2.5. Cosmos, Matrix-Game 3.0 and LingBot require an Ampere or newer GPU; T4/P100 are shown as incompatible. Matrix-Game 3.0 uses its upstream native code with SDPA attention; upstream recommends 64 GB RAM. LingBot Base is a large download (about 160 GB). Native runners produce finite video clips; their upstream real-time controls are not exposed in Studio yet.
+
+Cosmos 1.0 Video2World and Cosmos 3 Edge require a starting image. Cosmos 3 Edge exposes image-to-video generation here; robotics action prediction and audio output are not exposed. Gated models require accepting their Hugging Face terms and saving your HF token in **Access & API → Keys & tokens**. GPU fit remains separate from runner availability. Models marked **Runner unavailable** can be downloaded, but models with 3D outputs or an unimplemented architecture still need a runner.
+
+### Download a custom model
+
+Open **Models → Add model URL** and paste one of:
+
+- A Hugging Face model URL, such as `https://huggingface.co/owner/model`. An optional revision selects a branch; known world models automatically use their configured checkpoint branch.
+- A direct file URL, including Hugging Face `/resolve/` links to GGUF files.
+- A ZIP or TAR archive URL. KaggleUI extracts it and scans for model formats.
+- An HTTPS Git repository URL. Choose **Git repository** if automatic detection doesn't recognize the provider. Git LFS repositories need `git-lfs` available; unresolved LFS pointers are reported as an error.
+
+Downloads show progress and can be cancelled. `.stop()` stops active download processes too. Completed downloads are remembered across KaggleUI restarts and recognized models appear under **Local**, alongside `/kaggle/input` models. GGUF, Transformers, Whisper, Diffusers and the configured world checkpoints reuse their existing runners. Source code repositories or standalone weights without a recognizable model configuration are downloaded as files and aren't automatically executed. Restarting the Kaggle notebook itself may clear notebook storage.
+
 > Unofficial project, not affiliated with Kaggle or Google. Follow Kaggle's terms of use.
 
 ## Run it on Kaggle

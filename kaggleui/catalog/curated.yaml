@@ -47,5 +47,5 @@ stt:
   - {source: hf, id: "Systran/faster-whisper-tiny", name: "Whisper tiny (faster-whisper)", size_gb: 0.08, engine: faster_whisper, blurb: "Smallest; good for testing.", selftest: true}
 
 world:
-  - {source: hf, id: "Etched/oasis-500m", name: "Oasis 500M", size_gb: 2.3, engine: world_recipe, recipe: oasis, blurb: "Action-conditioned Minecraft world model (keyboard → frames).", experimental: true, selftest: true, min_vram_gb: 6}
+  - {source: hf, id: "Etched/oasis-500m", name: "Oasis 500M", size_gb: 2.3, params_b: 0.5, engine: world_recipe, recipe: oasis, blurb: "Action-conditioned Minecraft world model (keyboard → frames).", experimental: true, selftest: true, min_vram_gb: 6}
   - {source: hf, id: "Skywork/Matrix-Game-2.0", name: "Matrix-Game 2.0", size_gb: 21.0, engine: world_recipe, recipe: matrix_game_2, blurb: "Interactive world model built on Wan 2.1. Heavy, unverified on T4.", experimental: true, min_vram_gb: 22}

@@ -8,7 +8,7 @@ import { bytes, cx, params } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, DeploymentSpec, Variant } from "../lib/types";
 import { FitGauge } from "./meters";
-import { Field, Input, Select, VerdictTag } from "./ui";
+import { Button, Field, Input, Select, VerdictTag } from "./ui";
 
 export interface ModelChoice {
   item: CatalogItem;
@@ -55,7 +55,7 @@ export function OptionsForm({
       </div>
     );
   }
-  if (m === "image" || m === "video") {
+  if (m === "image" || m === "video" || (m === "world" && item.engine === "diffusers_world")) {
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Memory mode" hint="Offload keeps idle parts in RAM: slower, fits bigger models.">
@@ -128,12 +128,14 @@ export function ModelDetail({
   onAction,
   busy,
   secondary,
+  onImport,
 }: {
   item: CatalogItem;
   actionLabel: string;
   onAction: (choice: ModelChoice) => void;
   busy?: boolean;
   secondary?: (choice: ModelChoice) => React.ReactNode;
+  onImport?: (url: string) => void;
 }) {
   const { overview } = useLive();
   const gpus = overview?.system.gpus ?? [];
@@ -190,7 +192,7 @@ export function ModelDetail({
       <div className="space-y-6 p-5 sm:p-6">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <VerdictTag verdict={item.fit.verdict} />
+            {item.engine ? <VerdictTag verdict={item.fit.verdict} /> : <span className="text-[12px] text-fg-2">Runner unavailable</span>}
             {item.experimental && <span className="font-mono text-[10px] uppercase text-tight">experimental</span>}
             {detail.isFetching && <Loader className="size-3.5 animate-spin text-fg-3" />}
           </div>
@@ -208,7 +210,14 @@ export function ModelDetail({
           {item.description && <p className="mt-3 text-[14px] text-fg-2">{item.description}</p>}
         </div>
 
-        <div className="rounded-xl border border-line bg-bg-2 p-4">
+        {!item.engine ? (
+          <div className="rounded-xl border border-line bg-bg-2 p-4">
+            <div className="mb-2 text-[14px] font-medium">Runner not available yet</div>
+            <p className="text-[13px] text-fg-2">This model is published on Hugging Face. KaggleUI doesn't have a runtime for it yet, so it can't be deployed from this panel.</p>
+            {item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[13px] text-signal hover:underline">Open model documentation <ExternalLink className="size-3.5" /></a>}
+            {item.url && onImport && <div className="mt-3"><Button onClick={() => onImport(item.url!)}>Download model files</Button></div>}
+          </div>
+        ) : <div className="rounded-xl border border-line bg-bg-2 p-4">
           <div className="readout mb-3">Fit on this machine</div>
           <FitGauge fit={item.fit} gpus={gpus} />
           <ul className="mt-3 space-y-1 text-[13px]">
@@ -234,7 +243,7 @@ export function ModelDetail({
           {Object.keys(item.fit.suggest ?? {}).length > 0 && (
             <div className="mt-3 font-mono text-[11px] text-fg-3">auto-applied: {Object.entries(item.fit.suggest).map(([k, v]) => `${k}=${v}`).join(", ")}</div>
           )}
-        </div>
+        </div>}
 
         {item.variants.length > 1 && (
           <div>
@@ -276,7 +285,7 @@ export function ModelDetail({
 
       <div className="sticky bottom-0 mt-auto flex flex-wrap items-center justify-end gap-2 border-t border-line bg-panel/95 px-5 py-4 backdrop-blur sm:px-6">
         {!item.engine ? (
-          <span className="mr-auto text-[13px] text-fg-3">{item.description || "KaggleUI can't run this model yet."}</span>
+          <span className="mr-auto text-[13px] text-fg-3">This architecture needs a model-specific runner.</span>
         ) : (
           <>
             {choice && secondary?.(choice)}

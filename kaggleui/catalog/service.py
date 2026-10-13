@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import os
 import re
 import time
@@ -15,8 +16,9 @@ import yaml
 
 from ..system.probe import HardwareProfile
 from ..util import parse_params
-from . import attached, hf, ollama
+from . import attached, hf, ollama, world
 from .fit import Candidate, Fit, assess, gguf_size, pick_quant, rank, weights_from_safetensors
+from .imports import saved_models
 from .resolve import ENGINE_LABELS, MODALITY_PIPELINES, resolve_hf
 
 CURATED_PATH = Path(__file__).with_name("curated.yaml")
@@ -24,8 +26,9 @@ VERDICT_ORDER = {"best": 0, "good": 1, "tight": 2, "worst": 3}
 
 
 class CatalogService:
-    def __init__(self, probe: Callable[[], HardwareProfile]):
+    def __init__(self, probe: Callable[[], HardwareProfile], imports_root: Path | None = None):
         self.probe = probe
+        self.imports_root = imports_root
         self.client = httpx.AsyncClient(timeout=20, headers={"User-Agent": "kaggleui/0.1"})
         self.curated: dict[str, list[dict]] = yaml.safe_load(CURATED_PATH.read_text()) or {}
         self._cache: dict[str, tuple[float, Any]] = {}
@@ -46,10 +49,12 @@ class CatalogService:
     # Search
     # =========================================================================================
     async def search(self, modality: str, q: str = "", source: str = "all", sort: str = "recommended",
-                     limit: int = 40, show_unsupported: bool = False, fit: str = "all") -> dict:
+                     limit: int = 40, show_unsupported: bool | None = None, fit: str = "all") -> dict:
         """``fit="all"`` returns every model (tagged); ``fit="fits"`` drops the ones that won't run here."""
         hw = self.probe()
         q = q.strip()
+        if show_unsupported is None:
+            show_unsupported = modality == "world"
         more = {"v": False}  # set by sources whose last fetched page was full
         statuses: dict[str, str] = {}
         items: dict[str, dict] = {}
@@ -58,9 +63,9 @@ class CatalogService:
             existing = items.get(item["key"])
             if existing is None:
                 items[item["key"]] = item
-            elif existing.get("curated") and not item.get("curated"):
+            elif (existing.get("curated") and not item.get("curated")) or modality == "world":
                 # Keep curated settings but take live popularity numbers.
-                for k in ("downloads", "likes", "updated", "capabilities"):
+                for k in ("downloads", "likes", "updated", "capabilities", "params", "library", "pipeline_tag"):
                     if item.get(k) and not existing.get(k):
                         existing[k] = item[k]
 
@@ -72,8 +77,17 @@ class CatalogService:
             statuses["curated"] = "ok"
 
         jobs = []
-        if source in ("all", "hf") and MODALITY_PIPELINES.get(modality):
-            jobs.append(("hf", self._hf_items(modality, q, sort, hw, limit, more)))
+        if source in ("all", "hf"):
+            if modality == "world":
+                # Seed published families first so a temporary Hub outage never
+                # reduces World browsing back to the two built-in recipes.
+                for entry in [*self.curated.get("world", []), *world.ENTRIES]:
+                    if q and q.lower() not in (entry["id"] + " " + entry.get("name", "")).lower():
+                        continue
+                    add(self._world_item(entry, hw))
+                jobs.append(("hf", self._world_items(q, sort, hw, limit, more)))
+            elif MODALITY_PIPELINES.get(modality):
+                jobs.append(("hf", self._hf_items(modality, q, sort, hw, limit, more)))
         if source in ("all", "ollama") and modality == "text":
             jobs.append(("ollama", self._ollama_items(q, sort, limit, more)))
         if source in ("all", "attached"):
@@ -88,7 +102,11 @@ class CatalogService:
                     statuses[name] += " (showing bundled snapshot)"
                 continue
             statuses[name] = "ok"
+            if name == "hf" and more.get("world_errors"):
+                statuses[name] = f"partial: {more['world_errors']} World searches failed; showing available results"
             for it in res:
+                if name == "attached" and q and q.lower() not in (it["id"] + " " + it["name"]).lower():
+                    continue
                 add(it)
 
         all_items = list(items.values())
@@ -101,13 +119,17 @@ class CatalogService:
         if not show_unsupported:
             all_items = [it for it in all_items if it.get("engine")]
         fitting = sum(1 for it in all_items if it["fit"]["verdict"] != "worst")
+        launchable = sum(1 for it in all_items if it.get("engine"))
         total = len(all_items)
         if fit == "fits":
             all_items = [it for it in all_items if it["fit"]["verdict"] != "worst"]
         all_items = self._sort(all_items, sort)
-        has_more = len(all_items) > limit or more["v"]
+        discover_more = more["v"]
+        if modality == "world" and (not show_unsupported or fit == "fits"):
+            discover_more = False  # all configured World runtimes are already seeded
+        has_more = len(all_items) > limit or discover_more
         return {"modality": modality, "items": all_items[:limit], "sources": statuses, "hardware": _hw_summary(hw),
-                "counts": {"total": total, "fits": fitting, "shown": min(len(all_items), limit)},
+                "counts": {"total": total, "fits": fitting, "launchable": launchable, "shown": min(len(all_items), limit)},
                 "has_more": has_more}
 
     @staticmethod
@@ -128,6 +150,49 @@ class CatalogService:
         return sorted(items, key=lambda i: (VERDICT_ORDER.get(i["fit"]["verdict"], 9), -i["fit"]["score"]))
 
     # -- item builders ------------------------------------------------------------------------
+    def _world_item(self, entry: dict, hw: HardwareProfile, raw: dict | None = None, order: int = 0) -> dict:
+        pinned = next((e for e in self.curated.get("world", []) if e["id"] == entry["id"]), None)
+        it = self._from_curated({"source": "hf", **entry}, "world")
+        it["curated"] = pinned is not None
+        it["_order"] = order
+        if raw:
+            live = self._from_hf(raw, "world", hw, order)
+            for key in ("downloads", "likes", "updated", "library", "pipeline_tag"):
+                it[key] = live.get(key)
+            it["params"] = live.get("params") or it.get("params")
+            it["gated"] = live.get("gated", it.get("gated"))
+        return it
+
+    async def _world_items(self, q: str, sort: str, hw: HardwareProfile, want: int,
+                           more: dict) -> list[dict]:
+        searches = world.queries(q, want)
+
+        async def run(params: dict) -> list[dict]:
+            async with self._sem:
+                return await self._cached(f"world-search:{params}:{sort}", 900,
+                                          lambda: hf.search(self.client, sort=sort, **params))
+
+        batches = await asyncio.gather(*(run(params) for params in searches), return_exceptions=True)
+        if all(isinstance(batch, BaseException) for batch in batches):
+            raise RuntimeError("World discovery is unavailable; showing the bundled catalog")
+        more["world_errors"] = sum(isinstance(batch, BaseException) for batch in batches)
+        entries = {e["id"].lower(): e for e in [*world.ENTRIES, *self.curated.get("world", [])]}
+        out, seen = [], set()
+        for params, batch in zip(searches, batches):
+            if isinstance(batch, BaseException):
+                continue
+            if len(batch) >= params["limit"]:
+                more["v"] = True
+            for raw in batch:
+                key = raw["id"].lower()
+                if key in seen or not world.matches(raw):
+                    continue
+                seen.add(key)
+                entry = entries.get(key)
+                out.append(self._world_item(entry, hw, raw, len(out)) if entry
+                           else self._from_hf(raw, "world", hw, len(out)))
+        return out
+
     def _from_curated(self, e: dict, modality: str) -> dict:
         size = int(float(e.get("size_gb", 0)) * 1e9) or None
         params = float(e["params_b"]) * 1e9 if e.get("params_b") else None
@@ -135,6 +200,7 @@ class CatalogService:
             "curated": True, "selftest": bool(e.get("selftest")), "description": e.get("blurb", ""),
             "experimental": bool(e.get("experimental")), "gated": bool(e.get("gated")),
             "options": dict(e.get("options") or {}), "recipe": e.get("recipe"),
+            "min_sm": e.get("min_sm"),
             "min_vram": int(float(e["min_vram_gb"]) * 1e9) if e.get("min_vram_gb") else None,
             "largest": int(float(e["largest_gb"]) * 1e9) if e.get("largest_gb") else None,
             "capabilities": e.get("tags", []), "downloads": 0, "likes": 0, "updated": None,
@@ -259,16 +325,19 @@ class CatalogService:
     async def _attached_items(self, modality: str) -> list[dict]:
         root = Path(os.environ.get("KAGGLEUI_INPUT_DIR", "/kaggle/input"))
         found = await asyncio.to_thread(attached.scan, root)
+        found += await asyncio.to_thread(saved_models, self.imports_root)
         out = []
         for f in found:
             if f["modality"] != modality:
                 continue
             out.append({
                 "key": f"attached:{f['path']}", "source": "attached", "id": f["path"], "name": f["name"],
-                "modality": modality, "engine": f["engine"], "description": "Attached to this notebook: no download",
+                "modality": modality, "engine": f["engine"], "description": "Downloaded from a custom URL" if f.get("imported") else "Attached to this notebook: no download",
                 "params": f.get("params"), "size": f["size"], "variant": None, "variants": [],
-                "downloads": 0, "likes": 0, "updated": None, "gated": False, "capabilities": ["attached"],
-                "experimental": False, "curated": False, "options": {}, "url": None, "attached": True,
+                "downloads": 0, "likes": 0, "updated": None, "gated": False, "capabilities": ["imported" if f.get("imported") else "attached"],
+                "experimental": bool(f.get("experimental")), "curated": False, "options": f.get("options", {}),
+                "recipe": f.get("recipe"), "url": f.get("url"), "attached": True,
+                "min_sm": f.get("min_sm"),
             })
         return out
 
@@ -306,11 +375,12 @@ class CatalogService:
     async def _hf_sizes(self, it: dict) -> None:
         async def fetch() -> dict:
             async with self._sem:
-                return await hf.model_info(self.client, it["id"])
+                return await hf.model_info(self.client, it["id"], revision=(it.get("options") or {}).get("revision"))
 
-        info = await self._cached(f"hf-info:{it['id']}", 6 * 3600, fetch)
+        revision = (it.get("options") or {}).get("revision")
+        info = await self._cached(f"hf-info:{it['id']}:{revision or 'main'}", 6 * 3600, fetch)
         sib = info.get("siblings") or []
-        if it["engine"] in ("diffusers", "diffusers_video"):
+        if it["engine"] in ("diffusers", "diffusers_video", "diffusers_world"):
             sel = hf.diffusers_files(sib)
             has_index = any(s.get("rfilename") == "model_index.json" for s in sib)
             if not has_index or sel["size"] == 0:
@@ -320,6 +390,12 @@ class CatalogService:
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
         elif it["engine"] in ("transformers_asr", "transformers_tts", "transformers"):
             it["size"] = hf.transformers_files(sib)["weights"] or None
+        elif it["engine"] == "world_recipe" and it.get("recipe"):
+            from ..engines.world_engine import list_recipes
+
+            recipe = next(r for r in list_recipes() if r["name"] == it["recipe"])
+            it["size"] = sum(int(s.get("size") or 0) for s in sib
+                             if any(fnmatch.fnmatch(s["rfilename"], p) for p in recipe.get("allow", ["*"]))) or None
         else:
             it["size"] = hf.repo_size(sib) or None
 
@@ -333,6 +409,7 @@ class CatalogService:
             experimental=bool(it.get("experimental")), curated=bool(it.get("curated")),
             downloads=int(it.get("downloads") or 0), likes=int(it.get("likes") or 0), updated=it.get("updated"),
             attached=bool(it.get("attached")),
+            min_sm=it.get("min_sm"),
         )
 
     def _apply_fit(self, it: dict, hw: HardwareProfile) -> Fit:
@@ -408,17 +485,22 @@ class CatalogService:
         return self._finish_detail(it, hw)
 
     async def _hf_detail(self, repo: str, hw: HardwareProfile) -> dict:
-        info = await self._cached(f"hf-info:{repo}", 6 * 3600, lambda: hf.model_info(self.client, repo))
+        entry = world.profile(repo)
+        revision = (entry.get("options") or {}).get("revision") if entry else None
+        info = await self._cached(f"hf-info:{repo}:{revision or 'main'}", 6 * 3600,
+                                  lambda: hf.model_info(self.client, repo, revision=revision))
         modality = None
         for m, entries in self.curated.items():
             if any(e["source"] == "hf" and e["id"] == repo for e in entries):
                 modality = m
+        if not modality and (entry or world.matches(info)):
+            modality = "world"
         if not modality:
             from .resolve import PIPELINE_TO_MODALITY
             modality = PIPELINE_TO_MODALITY.get(info.get("pipeline_tag") or "", "text")
         curated = next((self._from_curated(e, modality) for e in self.curated.get(modality, [])
                         if e["source"] == "hf" and e["id"] == repo), None)
-        it = curated or self._from_hf(info, modality, hw, 0)
+        it = curated or (self._world_item(entry, hw, info) if entry else self._from_hf(info, modality, hw, 0))
         sib = info.get("siblings") or []
         it["card"] = (info.get("cardData") or {}).get("license")
         if it.get("engine") == "ollama":
@@ -434,7 +516,7 @@ class CatalogService:
             pick = max(ok, key=lambda v: v["size"]) if ok else (variants[0] if variants else None)
             if pick:
                 it["variant"], it["size"] = pick["id"], pick["size"]
-        elif it.get("engine") in ("diffusers", "diffusers_video"):
+        elif it.get("engine") in ("diffusers", "diffusers_video", "diffusers_world"):
             sel = hf.diffusers_files(sib)
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
         elif it.get("engine") in ("vllm", "transformers", "transformers_asr", "transformers_tts"):

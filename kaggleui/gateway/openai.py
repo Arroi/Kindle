@@ -282,7 +282,9 @@ async def create_video(request: Request):
                                "model_not_found")
         assert dep.backend
         painted_with = None
-        if dep.spec.modality == "world" and image is None and str(body.get("prompt") or "").strip():
+        if (dep.spec.modality == "world" and dep.spec.model.engine == "world_recipe"
+                and not dep.info.get("prompt_conditioning")
+                and image is None and str(body.get("prompt") or "").strip()):
             image, painted_with = await paint_start_frame(request, dep, body)
         for k in ("frames", "steps", "fps", "seed", "width", "height"):
             if k in body and isinstance(body[k], str) and body[k].strip():

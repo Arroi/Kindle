@@ -151,3 +151,13 @@ def test_world_prompt_paints_first_frame_with_image_model(client, state):
     import base64
 
     assert r.status_code == 200 and base64.b64decode(r.json()["b64_json"])[:4] == b"\x89PNG"
+
+
+def test_diffusers_world_prompt_goes_directly_to_world_runtime(client, state):
+    key = {"Authorization": f"Bearer {state.auth.api_key}"}
+    deploy(client, state, modality="world", model_id="nvidia/Cosmos-Predict2.5-2B", variant=None,
+           engine="diffusers_world")
+    r = client.post("/v1/videos", json={"model": "cosmos-predict2.5-2b", "prompt": "a snowy city", "frames": 8},
+                    headers=key)
+    assert r.status_code == 200
+    assert "start_frame_model" not in r.json()

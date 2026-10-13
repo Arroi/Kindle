@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import world
+
 MODALITY_PIPELINES: dict[str, list[str]] = {
     "text": ["text-generation", "image-text-to-text"],
     "image": ["text-to-image"],
@@ -22,6 +24,7 @@ ENGINE_LABELS = {
     "transformers": "Transformers",
     "diffusers": "Diffusers",
     "diffusers_video": "Diffusers (video)",
+    "diffusers_world": "Diffusers (world)",
     "kokoro": "Kokoro",
     "chatterbox": "Chatterbox",
     "transformers_tts": "Transformers TTS",
@@ -38,7 +41,7 @@ MODALITY_ENGINES = {
     "video": ["diffusers_video"],
     "tts": ["kokoro", "chatterbox", "transformers_tts"],
     "stt": ["faster_whisper", "transformers_asr"],
-    "world": ["world_recipe"],
+    "world": ["world_recipe", "diffusers_world"],
 }
 
 
@@ -62,6 +65,12 @@ def resolve_hf(modality: str, repo_id: str, library: str | None, tags: list[str]
     rid = repo_id.lower()
     tagset = {t.lower() for t in (tags or [])}
     lib = (library or "").lower()
+
+    if modality == "world":
+        entry = world.profile(repo_id)
+        if entry and entry.get("engine"):
+            return Resolution(entry["engine"], experimental=True, note=entry.get("blurb"))
+        return Resolution(None, note="Published world model; a KaggleUI launch integration is needed")
 
     if modality == "text":
         if lib == "gguf" or "gguf" in tagset:
@@ -109,4 +118,4 @@ def resolve_hf(modality: str, repo_id: str, library: str | None, tags: list[str]
                               note="Custom architecture: the generic ASR pipeline may not support it")
         return Resolution(None, note=f"ASR library '{lib or 'unknown'}' isn't supported yet")
 
-    return Resolution(None, note="World models run through curated recipes only")
+    return Resolution(None, note="No supported runtime for this model")

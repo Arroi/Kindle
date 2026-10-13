@@ -4,6 +4,7 @@ import type {
   Deployment,
   DeploymentSpec,
   Modality,
+  ModelImport,
   Overview,
   SearchResult,
   SecretDetails,
@@ -58,6 +59,10 @@ export const api = {
   regenerate: (which: "password" | "api_key") =>
     request<Overview["credentials"]>("/_kui/api/credentials/regenerate", { method: "POST", body: json({ which }) }),
   meta: () => request<CatalogMeta>("/_kui/api/catalog/meta"),
+  modelImports: () => request<ModelImport[]>("/_kui/api/catalog/imports"),
+  importModel: (body: { url: string; kind?: string; name?: string; revision?: string }) =>
+    request<ModelImport>("/_kui/api/catalog/imports", { method: "POST", body: json(body) }),
+  cancelImport: (id: string) => request<ModelImport>(`/_kui/api/catalog/imports/${id}`, { method: "DELETE" }),
   search: (p: {
     modality: Modality;
     q?: string;

@@ -1,0 +1,24 @@
+name: matrix_game_3
+title: Matrix-Game 3.0
+repo: Skywork/Matrix-Game-3.0
+allow: ["base_distilled_model/*", "MG-LightVAE.pth", "Wan2.2_VAE.pth", "google/*", "models_t5_umt5-xxl-enc-bf16.pth", "model_index.json"]
+git: https://github.com/SkyworkAI/Matrix-Game
+subdir: Matrix-Game-3
+env: venv
+python: "3.12"
+min_sm: 80
+requirements: ["torch==2.10.0", "torchvision==0.25.0", "torchaudio==2.10.0", "opencv-python==4.10.0.84",
+               "diffusers>=0.36", "transformers==4.57.3", "accelerate>=1.1.1", "tqdm", "imageio[ffmpeg]",
+               "easydict", "ftfy", "imageio-ffmpeg", "numpy==2.2.6", "scipy", "einops", "pandas",
+               "decord", "tensorboard", "trimesh", "safetensors==0.7.0", "sentencepiece"]
+controls: none
+prompt_conditioning: true
+default_image: demo_images/001/image.png
+start_frame: {size: "1280x704"}
+defaults: {frames: 57, steps: 3, fps: 16}
+max_frames: 497
+unverified: true
+command: ["{python}", generate.py, --size, "704*1280", --ckpt_dir, "{weights}", --fa_version, "0",
+          --t5_cpu, --convert_model_dtype, --num_iterations, "{iterations}", --num_inference_steps, "{steps}",
+          --image, "{image}", --prompt, "{prompt}", --save_name, out, --seed, "{seed}",
+          --vae_type, mg_lightvae, --lightvae_pruning_rate, "0.5", --output_dir, "{outdir}"]

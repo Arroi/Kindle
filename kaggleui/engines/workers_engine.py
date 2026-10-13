@@ -26,6 +26,9 @@ WORKERS: dict[str, dict] = {
     "diffusers_video": {"module": "video_diffusers", "modality": "video", "download": "diffusers",
                         "reqs": ["diffusers>=0.35", "transformers>=4.51", "accelerate>=1.2", "sentencepiece",
                                  "protobuf", "ftfy", "imageio>=2.31", "imageio-ffmpeg"], "label": "Diffusers video"},
+    "diffusers_world": {"module": "video_diffusers", "modality": "world", "download": "diffusers",
+                        "reqs": ["diffusers>=0.41", "transformers>=4.57", "accelerate>=1.2", "sentencepiece",
+                                 "protobuf", "ftfy", "imageio>=2.31", "imageio-ffmpeg", "av", "cosmos_guardrail"], "label": "Diffusers world"},
     "kokoro": {"module": "tts", "modality": "tts", "download": "repo",
                "allow": ["*.json", "*.pth", "voices/*.pt"],
                "reqs": ["kokoro>=0.9.4", "soundfile", "misaki[en]"], "apt": ["espeak-ng"], "label": "Kokoro"},
@@ -53,21 +56,22 @@ async def download_model(spec: DeploymentSpec, ctx: EngineContext, mode: str,
     if spec.model.source == "attached":
         return spec.model.id, spec.model.variant
     repo = spec.model.id
-    siblings = await repo_files(repo)
+    revision = spec.options.get("revision")
+    siblings = await repo_files(repo, revision=revision)
     if mode == "diffusers":
         sel = hf.diffusers_files(siblings)
         if not sel["files"]:
             raise DeployError(f"{repo} isn't a diffusers pipeline repo")
-        path = await hf_download(ctx, repo, sel["files"], sel["size"])
+        path = await hf_download(ctx, repo, sel["files"], sel["size"], revision=revision)
         return path, spec.model.variant or sel["variant"]
     if mode == "transformers":
         sel = hf.transformers_files(siblings)
-        return await hf_download(ctx, repo, sel["files"], sel["size"]), None
+        return await hf_download(ctx, repo, sel["files"], sel["size"], revision=revision), None
     import fnmatch
 
     expected = sum(int(s.get("size") or 0) for s in siblings
                    if not allow or any(fnmatch.fnmatch(s["rfilename"], p) for p in allow))
-    return await hf_download(ctx, repo, allow, expected or None), None
+    return await hf_download(ctx, repo, allow, expected or None, revision=revision), None
 
 
 async def start_worker(ctx: EngineContext, *, python: str, module: str, model: str, engine: str,
@@ -119,6 +123,9 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
     cfg = WORKERS.get(engine)
     if not cfg:
         raise DeployError(f"Unknown engine '{engine}'")
+    if engine == "diffusers_world" and (ctx.hw.min_sm or 0) < 80:
+        raise DeployError("This Cosmos runtime requires an Ampere or newer GPU with bf16 support. "
+                          "Kaggle T4 and P100 GPUs aren't supported by this checkpoint.")
     extra_env: dict[str, str] = {}
     python = sys.executable
     if cfg.get("venv"):
