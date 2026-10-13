@@ -19,7 +19,7 @@ export function initialTheme(): Theme {
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  meta?.setAttribute("content", theme === "dark" ? "#0c0d0f" : "#f1efe9");
+  meta?.setAttribute("content", theme === "dark" ? "#171a1d" : "#f6f7f9");
 }
 
 export function useTheme(): [Theme, () => void] {

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.8"
+__version__ = "0.1.9"
 
 
 def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: int | None = None):
@@ -22,3 +22,10 @@ def stop(home: str | None = None) -> bool:
     from .launcher import stop as _stop
 
     return _stop(home)
+
+
+def restart_tunnel(home: str | None = None) -> dict:
+    """Reconnect the public URL without restarting running models."""
+    from .launcher import restart_tunnel as _restart
+
+    return _restart(home)

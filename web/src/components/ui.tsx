@@ -110,6 +110,7 @@ export function Segmented<T extends string>({
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
+          aria-pressed={value === o.value}
           className={cx(
             "whitespace-nowrap rounded-md font-medium transition-colors",
             size === "sm" ? "px-2.5 py-1 text-[12.5px]" : "px-3.5 py-1.5 text-[13px]",
@@ -206,8 +207,8 @@ export function VerdictTag({ verdict, size = "md" }: { verdict: Verdict; size?: 
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border font-mono uppercase tracking-[0.06em]",
-        size === "sm" ? "px-1.5 py-px text-[9px]" : "px-2 py-0.5 text-[10px]",
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded border font-medium",
+        size === "sm" ? "px-1.5 py-px text-[11px]" : "px-2 py-0.5 text-[12px]",
         styles[verdict],
       )}
     >
@@ -322,10 +323,10 @@ export function Slider({
 
 export function SectionTitle({ kicker, title, children }: { kicker?: string; title: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
-        {kicker && <div className="readout mb-2 text-signal">{kicker}</div>}
-        <h1 className="display text-[40px] sm:text-[52px]">{title}</h1>
+        {kicker && <div className="readout mb-2">{kicker}</div>}
+        <h1 className="display text-[28px] sm:text-[34px]">{title}</h1>
       </div>
       {children}
     </div>

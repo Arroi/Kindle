@@ -9,6 +9,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import psutil
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import ValidationError
@@ -42,6 +43,7 @@ def create_app(state: AppState) -> FastAPI:
         finally:
             for t in tasks:
                 t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             await state.manager.shutdown()
             from ..engines.ollama import OllamaServer
 
@@ -345,14 +347,27 @@ def create_app(state: AppState) -> FastAPI:
             return
         await ws.accept()
         q = state.bus.subscribe()
-        try:
+
+        async def send_events() -> None:
             await ws.send_json({"type": "overview", "data": overview(), "ts": time.time()})
             while True:
-                event = await q.get()
-                await ws.send_json(event)
+                await ws.send_json(await q.get())
+
+        async def wait_disconnect() -> None:
+            while (await ws.receive())["type"] != "websocket.disconnect":
+                pass
+
+        tasks = [asyncio.create_task(send_events()), asyncio.create_task(wait_disconnect())]
+        try:
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                task.result()
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             state.bus.unsubscribe(q)
 
     # =========================================================================================
@@ -456,7 +471,9 @@ async def _metrics_loop(state: AppState) -> None:
 
 def _write_state(state: AppState, status: str = "running") -> None:
     data = {
-        "pid": os.getpid(), "version": __version__, "port": state.port, "status": status, "url": state.main_url(),
+        "pid": os.getpid(), "version": __version__, "port": state.port, "status": status,
+        "url": state.main_url() if status == "running" else None,
+        "process_started_at": psutil.Process().create_time(),
         "tunnel": (state.tunnels.get("main").info() if state.tunnels.get("main") else None),
         "admin_token": state.auth.admin_token,
         "password": state.auth.password if state.settings.access.password_enabled else None,
@@ -470,39 +487,53 @@ def _write_state(state: AppState, status: str = "running") -> None:
     tmp.replace(path)
 
 
-async def _open_main_tunnel(state: AppState) -> None:
+async def _open_main_tunnel(state: AppState) -> bool:
     provider = state.settings.exposure.provider
     await state.tunnels.open("main", state.port, provider)
+    _write_state(state, "starting")
     url = await state.tunnels.wait_url("main", timeout=90)
+    if not url:
+        _write_state(state, "tunnel_error")
+        print("[kaggleui] The public tunnel is not ready. Use kaggleui.restart_tunnel() to retry. "
+              f"Tunnel log: {state.paths.logs / 'tunnel-main.log'}", flush=True)
+        return False
     _write_state(state)
     if url and provider != "none":
         result = await notify.push(url, state.auth.admin_token)
         if result:
             print(f"[kaggleui] notification {result}", flush=True)
+    return True
 
 
 async def _startup(state: AppState) -> None:
     _write_state(state, "starting")
-    await _open_main_tunnel(state)
+    ready = await _open_main_tunnel(state)
 
     last_url = state.main_url()
 
     def on_tunnel(t) -> None:
         nonlocal last_url
         state.bus.publish("tunnel", t.info())
-        if t.name == "main" and t.url and t.url != last_url:
+        if t.name == "main" and t.status == "up" and t.url and t.url != last_url:
             last_url = t.url
-            _write_state(state)
-            print(f"[kaggleui] public URL changed: {t.url}", flush=True)
-            asyncio.create_task(notify.push(t.url, state.auth.admin_token))
+
+            async def announce() -> None:
+                url = await state.tunnels.wait_url("main", timeout=30)
+                if url and state.tunnels.get("main") is t and t.status == "up":
+                    _write_state(state)
+                    print(f"[kaggleui] public URL changed: {url}", flush=True)
+                    await notify.push(url, state.auth.admin_token)
+
+            asyncio.create_task(announce())
 
     state.tunnels.on_change = on_tunnel
     if state.preset:
         for spec in state.preset.deployments:
             state.manager.create(spec)
-    print(notify.card_text(state.main_url(), state.auth.admin_token,
-                           state.auth.password if state.settings.access.password_enabled else None,
-                           state.auth.api_key if state.settings.api.enabled else None), flush=True)
+    if ready:
+        print(notify.card_text(state.main_url(), state.auth.admin_token,
+                              state.auth.password if state.settings.access.password_enabled else None,
+                              state.auth.api_key if state.settings.api.enabled else None), flush=True)
 
 
 def response_json(data) -> Response:

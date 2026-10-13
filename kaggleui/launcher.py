@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
 
+import psutil
+
 from . import __version__
 from .config import DEFAULT_PORT, Paths, default_tunnel, load_preset
 from .notify import card_html, card_text
 from .secretstore import kaggle_sourced, load_kaggle_secrets
+
+STOP_TIMEOUT = 20
 
 
 def _display(html_str: str, text: str) -> None:
@@ -37,16 +40,13 @@ def _read_state(paths: Paths) -> dict | None:
 
 
 def _alive(pid: int | None) -> bool:
-    if not pid:
+    if not isinstance(pid, int) or pid <= 0:
         return False
     try:
-        os.kill(pid, 0)
-    except OSError:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
         return False
-    try:  # an exited server lingers as a zombie until the notebook process reaps it
-        with open(f"/proc/{pid}/stat") as f:
-            return f.read().rsplit(")", 1)[-1].split()[0] != "Z"
-    except OSError:
+    except psutil.AccessDenied:
         return True
 
 
@@ -81,19 +81,95 @@ def stop(home: str | None = None) -> bool:
     if not _running(st):
         print("KaggleUI isn't running.")
         return False
-    os.kill(st["pid"], signal.SIGTERM)
-    for _ in range(40):
-        if not _alive(st["pid"]):
-            break
-        time.sleep(0.5)
-    else:
+    try:
+        server = psutil.Process(st["pid"])
+        started = st.get("process_started_at")
+        if started is not None:
+            matches = abs(server.create_time() - started) < 0.01
+        else:
+            cmd = server.cmdline()
+            matches = "kaggleui" in cmd and "serve" in cmd
+        if not matches:
+            print("The recorded KaggleUI process has already exited.", flush=True)
+            return False
+    except psutil.NoSuchProcess:
+        print("KaggleUI isn't running.", flush=True)
+        return False
+
+    print("Stopping KaggleUI and its model processes…", flush=True)
+    children: dict[tuple[int, float], psutil.Process] = {}
+
+    def remember_children() -> None:
         try:
-            os.killpg(st["pid"], signal.SIGKILL)  # launch() starts the server in its own session
-        except OSError:
-            os.kill(st["pid"], signal.SIGKILL)
-        time.sleep(1)
-    print("KaggleUI stopped.")
+            for child in server.children(recursive=True):
+                children[(child.pid, child.create_time())] = child
+        except psutil.NoSuchProcess:
+            pass
+
+    remember_children()
+    try:
+        server.terminate()
+    except psutil.NoSuchProcess:
+        pass
+    deadline = time.monotonic() + STOP_TIMEOUT
+    while _alive(server.pid) and time.monotonic() < deadline:
+        remember_children()
+        time.sleep(0.1)
+    # Engines and tunnels each create their own session. Killing only the server's
+    # process group misses them, so retain their identities before the parent exits.
+    processes = [*children.values(), server]
+    for proc in processes:
+        try:
+            proc.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _, alive = psutil.wait_procs(processes, timeout=2)
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
+    psutil.wait_procs(alive, timeout=2)
+    remaining = [p.pid for p in processes if _alive(p.pid) and p.is_running()]
+    if remaining:
+        raise RuntimeError(f"KaggleUI could not stop processes {remaining}. See {paths.logs / 'server.log'}.")
+    latest = _read_state(paths)
+    if latest and latest.get("pid") == server.pid:
+        latest["status"] = "stopped"
+        tmp = paths.state_file.with_suffix(".stop.tmp")
+        tmp.write_text(json.dumps(latest))
+        os.chmod(tmp, 0o600)
+        tmp.replace(paths.state_file)
+    print("KaggleUI stopped.", flush=True)
     return True
+
+
+def restart_tunnel(home: str | None = None) -> dict:
+    """Create a new public link while leaving model deployments running."""
+    import httpx
+
+    paths = Paths(home)
+    state = _read_state(paths)
+    if not _running(state):
+        raise RuntimeError("KaggleUI isn't running. Start it with kaggleui.launch().")
+    requested = time.time()
+    response = httpx.post(f"http://127.0.0.1:{state['port']}/_kui/api/tunnels/main/restart",
+                          headers={"Authorization": f"Bearer {state['admin_token']}"}, timeout=10)
+    response.raise_for_status()
+    print("Reconnecting the public tunnel…", flush=True)
+    deadline = time.monotonic() + 100
+    while time.monotonic() < deadline:
+        latest = _read_state(paths)
+        if not _running(latest):
+            raise RuntimeError("KaggleUI stopped while reconnecting.")
+        if latest.get("updated", 0) > requested:
+            if latest.get("status") == "running" and latest.get("url"):
+                _show(latest)
+                return latest
+            if latest.get("status") == "tunnel_error":
+                break
+        time.sleep(0.5)
+    raise RuntimeError(f"The public tunnel didn't connect. Check {paths.logs / 'tunnel-main.log'}.")
 
 
 def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: int | None = None,
@@ -120,6 +196,9 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         if block:
             _block(paths, existing)
         return existing
+    if _running(existing):
+        raise RuntimeError("KaggleUI is running but its tunnel isn't ready. Run kaggleui.restart_tunnel() "
+                           "to reconnect, or kaggleui.stop() before launching again.")
 
     p = load_preset(preset)
     cmd = [sys.executable, "-m", "kaggleui", "serve", "--port", str(port or DEFAULT_PORT),
@@ -136,10 +215,10 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         cmd += ["--home", home]
     if paths.state_file.exists():
         paths.state_file.unlink()
-    log = open(paths.logs / "server.log", "a")
-    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-                            env={**os.environ, "PYTHONUNBUFFERED": "1",
-                                 "KAGGLEUI_KAGGLE_SECRETS": ",".join(kaggle_sourced())})
+    with open(paths.logs / "server.log", "a") as log:
+        proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+                                env={**os.environ, "PYTHONUNBUFFERED": "1",
+                                     "KAGGLEUI_KAGGLE_SECRETS": ",".join(kaggle_sourced())})
     print("Starting KaggleUI…", flush=True)
     deadline = time.time() + 180
     state = None
@@ -148,10 +227,14 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
             print(_tail(paths.logs / "server.log"))
             raise RuntimeError("KaggleUI exited during startup; see the log above.")
         state = _read_state(paths)
+        if state and state.get("status") == "tunnel_error":
+            print(_tail(paths.logs / "server.log"))
+            raise RuntimeError("The public tunnel didn't connect. Run kaggleui.restart_tunnel() to retry.")
         if state and state.get("status") == "running" and state.get("url"):
             break
         time.sleep(0.5)
-    if not state:
+    if not state or state.get("status") != "running" or not state.get("url"):
+        proc.terminate()
         print(_tail(paths.logs / "server.log"))
         raise RuntimeError("KaggleUI didn't start within 3 minutes.")
     _show(state)

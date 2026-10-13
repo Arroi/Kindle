@@ -5,9 +5,9 @@ import {
   LogOut,
   Menu,
   Moon,
-  Rocket,
+  Plus,
   Server,
-  Sparkles,
+  MessageSquare,
   Sun,
   X,
 } from "lucide-react";
@@ -22,10 +22,10 @@ import { GpuMeter, LedMeter } from "./meters";
 import { CopyButton } from "./ui";
 
 const NAV = [
-  { to: "/", label: "Launch", icon: Rocket, end: true },
+  { to: "/", label: "Launch", icon: Plus, end: true },
   { to: "/models", label: "Models", icon: Boxes },
   { to: "/deployments", label: "Deployments", icon: Server },
-  { to: "/studio", label: "Studio", icon: Sparkles },
+  { to: "/studio", label: "Studio", icon: MessageSquare },
   { to: "/access", label: "Access & API", icon: KeyRound },
   { to: "/system", label: "System", icon: Gauge },
 ];
@@ -40,7 +40,7 @@ export function Brand({ small }: { small?: boolean }) {
         <rect x="21" y="7" width="4" height="4" rx="1" fill="var(--signal)" />
         <rect x="21" y="14" width="4" height="11" rx="1" fill="var(--fg)" opacity=".55" />
       </svg>
-      <span className="display text-[26px] leading-none">KaggleUI</span>
+      <span className="text-[19px] font-semibold tracking-tight">KaggleUI</span>
     </div>
   );
 }
@@ -100,7 +100,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const ready = overview?.deployments.filter((d) => d.status === "ready").length ?? 0;
   const busy = overview?.deployments.filter((d) => ["queued", "installing", "downloading", "loading"].includes(d.status)).length ?? 0;
   return (
-    <nav className="flex flex-col gap-0.5">
+    <nav className="flex flex-col gap-1" aria-label="Workspace">
       {NAV.map(({ to, label, icon: Icon, end }) => (
         <NavLink
           key={to}
@@ -110,13 +110,13 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
           className={({ isActive }) =>
             cx(
               "group flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-colors",
-              isActive ? "bg-panel-3 text-fg" : "text-fg-2 hover:bg-panel-2 hover:text-fg",
+              isActive ? "bg-panel-3/60 font-medium text-fg" : "text-fg-2 hover:bg-panel-2 hover:text-fg",
             )
           }
         >
-          {({ isActive }) => (
+          {(
             <>
-              <Icon className={cx("size-[17px]", isActive ? "text-signal" : "")} strokeWidth={1.8} />
+              <Icon className="size-[17px]" strokeWidth={1.7} />
               <span className="flex-1">{label}</span>
               {to === "/deployments" && (ready > 0 || busy > 0) && (
                 <span className="flex items-center gap-1 font-mono text-[10px]">
@@ -150,6 +150,7 @@ function SidebarFooter() {
           onClick={() => api.logout().then(() => location.assign("/"))}
           className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-fg-2 hover:bg-panel-2 hover:text-fg"
           title="Sign out"
+          aria-label="Sign out"
         >
           <LogOut className="size-4" />
         </button>
@@ -164,9 +165,9 @@ function StatusStrip() {
   const s = overview.system;
   const disk = s.disks.find((d) => d.key === "models");
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-bg/70 px-5 py-3 backdrop-blur lg:px-8">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-bg px-5 py-3 lg:px-8">
       <div className="mr-auto flex items-center gap-2.5">
-        <span className="display text-[20px]">{s.accelerator_label}</span>
+        <span className="text-[13px] font-medium">{s.accelerator_label}</span>
         {overview.fake_hw && <span className="rounded border border-info/40 px-1.5 py-px font-mono text-[9.5px] uppercase text-info">simulated</span>}
         {overview.mock && <span className="rounded border border-tight/40 px-1.5 py-px font-mono text-[9.5px] uppercase text-tight">mock engines</span>}
       </div>
@@ -200,10 +201,12 @@ export function Shell({ children }: { children: ReactNode }) {
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
   return (
-    <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-[240px] shrink-0 flex-col border-r border-line bg-bg-2/80 px-3 py-5 backdrop-blur lg:flex">
-        <div className="px-2 pb-6">
+    <div className="flex min-h-dvh">
+      <a href="#main-content" className="skip-link">Skip to content</a>
+      <aside className="sticky top-0 hidden h-dvh w-[216px] shrink-0 flex-col border-r border-line bg-bg-2 px-3 py-5 lg:flex">
+        <div className="px-2 pb-9">
           <Brand />
+          <span className="mt-1 block pl-[42px] text-[11px] text-fg-3">Model workspace</span>
         </div>
         <NavItems />
         <div className="mt-auto px-1">
@@ -238,7 +241,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       <div className="min-w-0 flex-1 pt-14 lg:pt-0">
         <StatusStrip />
-        <main className="mx-auto w-full max-w-[1320px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">{children}</main>
+        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1320px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">{children}</main>
       </div>
     </div>
   );

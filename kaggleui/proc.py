@@ -30,11 +30,19 @@ class ManagedProcess:
 
     async def start(self) -> None:
         env = {**os.environ, **(self.env or {})}
-        self.proc = await asyncio.create_subprocess_exec(
+        starting = asyncio.create_task(asyncio.create_subprocess_exec(
             *self.cmd, env=env, cwd=self.cwd,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             stdin=asyncio.subprocess.DEVNULL, start_new_session=True,
-        )
+        ))
+        try:
+            self.proc = await asyncio.shield(starting)
+        except asyncio.CancelledError:
+            # Cancellation can arrive while the OS is creating the child. Capture
+            # it before returning so it cannot escape deployment cleanup.
+            self.proc = await starting
+            await self.stop(timeout=2)
+            raise
         self._pumps = [asyncio.create_task(self._pump())]
 
     async def _pump(self) -> None:
@@ -80,58 +88,40 @@ class ManagedProcess:
         return rc
 
     async def stop(self, timeout: float = 10) -> None:
-        if not self.running:
+        if not self.proc:
             return
-        assert self.proc
         try:
             os.killpg(self.proc.pid, signal.SIGTERM)
         except ProcessLookupError:
-            return
+            pass
         try:
             await asyncio.wait_for(self.proc.wait(), timeout=timeout)
         except asyncio.TimeoutError:
+            pass
+        finally:
+            # A group leader may exit before its worker children. They still own
+            # the same group even though proc.returncode is already set.
             try:
                 os.killpg(self.proc.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            await self.proc.wait()
+        await self.proc.wait()
+        for task in self._pumps:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*self._pumps, return_exceptions=True)
 
 
 async def run_cmd(cmd: list[str] | str, *, on_line: LineHandler | None = None,
                   env: dict[str, str] | None = None, cwd: str | Path | None = None,
                   timeout: float | None = None) -> int:
     """Run a command to completion, streaming output lines. ``cmd`` as str runs through bash."""
-    full_env = {**os.environ, **(env or {})}
-    if isinstance(cmd, str):
-        proc = await asyncio.create_subprocess_exec(
-            "bash", "-lc", cmd, env=full_env, cwd=str(cwd) if cwd else None,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            stdin=asyncio.subprocess.DEVNULL, start_new_session=True,
-        )
-    else:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, env=full_env, cwd=str(cwd) if cwd else None,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-            stdin=asyncio.subprocess.DEVNULL, start_new_session=True,
-        )
-
-    async def pump() -> None:
-        assert proc.stdout
-        while True:
-            raw = await proc.stdout.readline()
-            if not raw:
-                break
-            line = raw.decode(errors="replace").rstrip("\r\n").split("\r")[-1]
-            if on_line and line:
-                on_line(line)
-
+    args = ["bash", "-lc", cmd] if isinstance(cmd, str) else cmd
+    proc = ManagedProcess("command", args, env=env, cwd=cwd, on_line=on_line)
     try:
-        await asyncio.wait_for(asyncio.gather(pump(), proc.wait()), timeout=timeout)
-    except asyncio.TimeoutError:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        await proc.wait()
+        await proc.start()
+        return await asyncio.wait_for(proc.wait(), timeout=timeout)
+    except BaseException:
+        # Includes task cancellation during install, clone and model creation.
+        await proc.stop(timeout=2)
         raise
-    return proc.returncode or 0

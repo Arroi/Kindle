@@ -57,8 +57,8 @@ export default function Studio({ admin }: { admin: boolean }) {
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div className="readout mb-2 text-signal">Playground</div>
-          <h1 className="display text-[44px] sm:text-[52px]">Studio</h1>
+          <div className="readout mb-2">Workspace / Studio</div>
+          <h1 className="display text-[28px] sm:text-[34px]">Studio</h1>
         </div>
         {ifaceUrl && ifaceName && (
           <a href={ifaceUrl} target="_blank" rel="noreferrer">

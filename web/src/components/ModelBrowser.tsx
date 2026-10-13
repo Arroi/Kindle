@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Download, HardDrive, Heart, Search, Star } from "lucide-react";
+import { AlertTriangle, Download, HardDrive, Heart, LayoutGrid, List, Search, Star, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../lib/api";
@@ -26,16 +26,16 @@ function SourceBadge({ item }: { item: CatalogItem }) {
     <span className="flex items-center gap-1.5">
       <span
         className={cx(
-          "rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-wider",
+          "rounded px-1.5 py-px text-[11px] font-medium",
           item.source === "attached" ? "bg-info/15 text-info" : "bg-panel-3 text-fg-2",
         )}
       >
         {label}
       </span>
       {item.curated && (
-        <span className="flex items-center gap-1 font-mono text-[9.5px] uppercase tracking-wider text-signal" title="Kaggle-tested pick">
+        <span className="flex items-center gap-1 text-[11px] text-fg-2" title="Curated model">
           <Star className="size-3 fill-current" />
-          pick
+          Pick
         </span>
       )}
     </span>
@@ -60,17 +60,18 @@ export function ModelCard({
       type="button"
       onClick={onOpen}
       className={cx(
-        "panel group flex h-full w-full min-w-0 flex-col p-4 text-left transition-[border-color,transform] duration-150 hover:-translate-y-0.5",
+        "panel group flex h-full w-full min-w-0 flex-col p-5 text-left transition-[border-color,background] duration-150 hover:bg-panel-2",
         selected ? "border-signal ring-1 ring-signal" : "hover:border-line-2",
         unsupported && "opacity-60",
       )}
+      aria-pressed={!!selected}
     >
       <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
         <SourceBadge item={item} />
         <VerdictTag verdict={f.verdict} size="sm" />
       </div>
       <div className="mb-1 flex items-baseline gap-2">
-        <h3 className="display line-clamp-2 min-w-0 break-all text-[22px] leading-[1.02] group-hover:text-signal">{item.name}</h3>
+        <h3 className="line-clamp-2 min-w-0 break-words text-[18px] font-semibold leading-snug [overflow-wrap:anywhere]">{item.name}</h3>
       </div>
       {item.source === "hf" && item.name !== item.id && <div className="mb-1 truncate font-mono text-[10.5px] text-fg-3">{item.id}</div>}
       <p className="mb-3 line-clamp-2 min-h-[2.6em] text-[13px] leading-snug text-fg-2">{item.description || " "}</p>
@@ -121,6 +122,40 @@ export function ModelCard({
   );
 }
 
+function ModelRow({ item, selected, onOpen }: { item: CatalogItem; selected: boolean; onOpen: () => void }) {
+  return (
+    <button type="button" className="model-row model-columns" onClick={onOpen} aria-pressed={selected}>
+      <div className="min-w-0">
+        <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <h3 className="min-w-0 break-words font-semibold text-[15px] [overflow-wrap:anywhere]">{item.name}</h3>
+          <SourceBadge item={item} />
+        </div>
+        <p className="line-clamp-1 text-[13px] text-fg-2">{item.description || item.id}</p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-fg-3">
+          {item.variant && <span>{item.variant}</span>}
+          {item.capabilities.slice(0, 2).map((cap) => <span key={cap}>{cap}</span>)}
+          {!item.engine && <span className="text-tight">Unsupported</span>}
+          {item.experimental && <span className="text-tight">Experimental</span>}
+        </div>
+      </div>
+      <div className="model-stats">
+        <div>
+          <span className="block text-[13px] font-medium tabular-nums">{params(item.params) || "Unknown"}</span>
+          <span className="text-[11px] text-fg-3 @3xl:hidden">Parameters</span>
+        </div>
+        <div>
+          <span className="block text-[13px] tabular-nums">{bytes(item.size)}</span>
+          <span className="text-[11px] text-fg-3 @3xl:hidden">Download</span>
+        </div>
+        <div className="model-fit">
+          <VerdictTag verdict={item.fit.verdict} size="sm" />
+          <span className="mt-1 block text-[11px] text-fg-3">{item.fit.vram_needed ? `≈${bytes(item.fit.vram_needed)} VRAM` : "Estimate unavailable"}</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 type FitFilter = "all" | "fits";
 const FIT_KEY = "kaggleui-fit-filter";
 const PAGE = 40;
@@ -142,6 +177,18 @@ const SORTS = [
   { value: "params_desc", label: "Highest parameters" },
 ];
 
+function storedSort(): string | null {
+  try {
+    const value = localStorage.getItem("kaggleui-catalog-sort");
+    return SORTS.some((option) => option.value === value) ? value : null;
+  } catch { return null; }
+}
+
+function storedView(): "list" | "grid" {
+  try { return localStorage.getItem("kaggleui-catalog-view") === "grid" ? "grid" : "list"; }
+  catch { return "list"; }
+}
+
 export function ModelBrowser({
   modality,
   onModality,
@@ -161,7 +208,8 @@ export function ModelBrowser({
   const [source, setSource] = useState("all");
   const [fitFilter, setFitFilter] = useState<FitFilter>(storedFit);
   // "All models" reads best by popularity (big models mixed in); "Fits" by how well they fit.
-  const [sortChoice, setSortChoice] = useState<string | null>(null);
+  const [sortChoice, setSortChoice] = useState<string | null>(storedSort);
+  const [view, setView] = useState(storedView);
   const sort = sortChoice ?? (fitFilter === "all" ? "trending" : "recommended");
   const [unsupported, setUnsupported] = useState(false);
   const [limit, setLimit] = useState(PAGE);
@@ -176,6 +224,28 @@ export function ModelBrowser({
     } catch {
       /* storage unavailable */
     }
+  }
+
+  function changeSort(value: string | null) {
+    setSortChoice(value);
+    try {
+      if (value) localStorage.setItem("kaggleui-catalog-sort", value);
+      else localStorage.removeItem("kaggleui-catalog-sort");
+    } catch { /* storage unavailable */ }
+  }
+
+  function changeView(value: "list" | "grid") {
+    setView(value);
+    try { localStorage.setItem("kaggleui-catalog-view", value); }
+    catch { /* storage unavailable */ }
+  }
+
+  function resetFilters() {
+    setQ("");
+    setSource("all");
+    setUnsupported(false);
+    changeFit("all");
+    changeSort(null);
   }
 
   const query = useQuery({
@@ -202,44 +272,40 @@ export function ModelBrowser({
   return (
     <div className="@container">
       {!lockModality && onModality && (
-        <div className="mb-4">
-          <Segmented
-            value={modality}
-            onChange={(m) => {
+        <nav className="catalog-tabs scroll-thin" aria-label="Model types">
+          {MODALITY_ORDER.map((m) => (
+            <button key={m} type="button" aria-pressed={modality === m} onClick={() => {
               onModality(m);
               if (m !== "text" && source === "ollama") setSource("all");
-            }}
-            options={MODALITY_ORDER.map((m) => ({ value: m, label: MODALITY_LABEL[m] }))}
-          />
-        </div>
+            }}>{MODALITY_LABEL[m]}</button>
+          ))}
+        </nav>
       )}
       <div className="mb-4 flex flex-col gap-3 @4xl:flex-row @4xl:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
           <Input
+            aria-label="Search models"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={modality === "text" ? "Search models (qwen, gemma, coder…)" : `Search ${MODALITY_LABEL[modality].toLowerCase()} models`}
             className="pl-9"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Segmented size="sm" value={source} onChange={setSource} options={sources} />
-          <Select aria-label="Sort models" value={sort} onChange={(e) => setSortChoice(e.target.value)} className="w-auto min-w-[170px]">
+        <div className="flex shrink-0 items-center gap-2">
+          <Select aria-label="Sort models" value={sort} onChange={(e) => changeSort(e.target.value)} className="catalog-sort">
             {SORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
+          <div className="flex h-10 items-center rounded-lg border border-line p-0.5" role="group" aria-label="Model layout">
+            {(["list", "grid"] as const).map((value) => {
+              const Icon = value === "list" ? List : LayoutGrid;
+              return <button key={value} type="button" onClick={() => changeView(value)} aria-label={`${value === "list" ? "List" : "Grid"} view`} aria-pressed={view === value} className={cx("rounded-md p-2 transition-colors", view === value ? "bg-panel-3 text-fg" : "text-fg-3 hover:text-fg")}><Icon className="size-4" /></button>;
+            })}
+          </div>
         </div>
       </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-[13px] text-fg-3">
-          {query.isFetching && !loadingMore
-            ? "Scanning catalogs and sizing against this machine…"
-            : query.data
-              ? query.data.counts
-                ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models · ${query.data.counts.fits} fit ${query.data.hardware.accelerator}`
-                : `${query.data.items.length} models · tagged for ${query.data.hardware.accelerator}`
-              : ""}
-        </div>
+        <Segmented size="sm" value={source} onChange={setSource} options={sources} />
         <div className="flex flex-wrap items-center gap-4">
           <Segmented<FitFilter>
             size="sm"
@@ -247,11 +313,19 @@ export function ModelBrowser({
             onChange={changeFit}
             options={[
               { value: "all", label: "All models" },
-              { value: "fits", label: "Fits this GPU" },
+              { value: "fits", label: "Fits this machine" },
             ]}
           />
           <Toggle checked={unsupported} onChange={setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">Show unsupported</span>} />
         </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-fg-3" role="status" aria-live="polite">
+        <span>
+          {query.isFetching && !loadingMore ? "Checking catalogs…" : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
+        </span>
+        {(q || source !== "all" || unsupported || fitFilter !== "all" || sortChoice) && (
+          <button type="button" onClick={resetFilters} className="flex items-center gap-1 text-fg-2 hover:text-fg"><X className="size-3" /> Reset filters</button>
+        )}
       </div>
       {(sort === "params_asc" || sort === "params_desc") && (
         <p className="mb-4 text-[12px] text-fg-3">Sorted by the shown variant's parameter count. Unknown counts appear last. Load more to include more catalog results.</p>
@@ -266,9 +340,9 @@ export function ModelBrowser({
         </div>
       )}
       {query.isLoading ? (
-        <div className="grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3">
+        <div className={view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden"} aria-label="Loading models" aria-busy="true">
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="panel h-[248px] animate-pulse opacity-60" />
+            <div key={i} className={cx("animate-pulse bg-panel-2", view === "grid" ? "panel h-[248px]" : "m-4 h-16 rounded-md")} />
           ))}
         </div>
       ) : query.error ? (
@@ -276,9 +350,16 @@ export function ModelBrowser({
       ) : query.data && query.data.items.length === 0 ? (
         <Empty title="Nothing found">Try another search, or switch the source filter.</Empty>
       ) : (
-        <div className={cx("grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3", !query.isPlaceholderData && limit === PAGE && "stagger")}>
+        <div className={cx(view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden", query.isPlaceholderData && "opacity-60")} aria-busy={query.isFetching}>
+          {view === "list" && (
+            <div className="model-header model-columns border-b border-line bg-panel-2 px-5 py-2.5 text-[12px] text-fg-3" aria-hidden="true">
+              <span>Model</span><span>Parameters</span><span>Download</span><span className="text-right">GPU fit</span>
+            </div>
+          )}
           {query.data?.items.map((it) => (
-            <ModelCard key={it.key} item={it} gpus={gpus} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
+            view === "grid"
+              ? <ModelCard key={it.key} item={it} gpus={gpus} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
+              : <ModelRow key={it.key} item={it} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
           ))}
         </div>
       )}

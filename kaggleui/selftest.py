@@ -130,6 +130,9 @@ async def _job_checks(c: Checker, name: str, modality: str) -> None:
     async def run():
         body = {"model": name, "prompt": "a red fox running through snow", **SMALL[modality]}
         if modality == "world":
+            # This check runs one model at a time. Without an image deployment,
+            # world models must use their sample frame rather than a text prompt.
+            body.pop("prompt")
             body["actions"] = [{"keys": ["forward"], "frames": 4}, {"keys": ["left"], "camera": [0.3, 0], "frames": 4}]
         r = await cl.post("/v1/videos", json=body)
         r.raise_for_status()

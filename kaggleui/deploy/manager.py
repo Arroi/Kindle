@@ -44,6 +44,7 @@ class Deployment:
     task: asyncio.Task | None = None
     interface: dict[str, Any] = field(default_factory=dict)
     _last_emit: float = 0.0
+    _stop_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     def public(self) -> dict:
         return {
@@ -227,6 +228,13 @@ class DeploymentManager:
         dep = self.deployments.get(dep_id)
         if not dep:
             return
+        async with dep._stop_lock:
+            if dep.status == "stopped":
+                return
+            await self._stop(dep, remove)
+
+    async def _stop(self, dep: Deployment, remove: bool) -> None:
+        dep_id = dep.id
         dep.status = "stopping"
         dep.message = "Stopping"
         self._emit(dep, force=True)
@@ -236,7 +244,10 @@ class DeploymentManager:
                 await dep.task
             except BaseException:
                 pass
-        await self.state.interfaces.stop(dep)
+        try:
+            await self.state.interfaces.stop(dep)
+        except Exception as exc:
+            self._log(dep, f"Interface cleanup: {exc}")
         if dep.backend:
             try:
                 await dep.backend.close()
@@ -245,7 +256,10 @@ class DeploymentManager:
             dep.backend = None
         for proc in dep.processes:
             await proc.stop()
-        await registry.undeploy(dep.spec, dep.id, mock=self.state.mock)
+        try:
+            await registry.undeploy(dep.spec, dep.id, mock=self.state.mock)
+        except Exception as exc:
+            self._log(dep, f"Model cleanup: {exc}")
         self._release(dep)
         dep.status = "stopped"
         dep.message = "Stopped"
@@ -263,5 +277,8 @@ class DeploymentManager:
         return self.create(spec)
 
     async def shutdown(self) -> None:
-        for dep_id in list(self.deployments):
-            await self.stop(dep_id)
+        results = await asyncio.gather(*(self.stop(dep_id) for dep_id in list(self.deployments)),
+                                       return_exceptions=True)
+        for result in results:
+            if isinstance(result, BaseException):
+                print(f"[kaggleui] deployment cleanup: {result}", flush=True)

@@ -9,7 +9,8 @@ import {
   MessageSquare,
   Mic,
   Plug,
-  Rocket,
+  ArrowRight,
+  Check,
   Workflow,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -83,14 +84,14 @@ function Step({
       >
         <span
           className={cx(
-            "grid size-8 shrink-0 place-items-center rounded-md border font-mono text-[12px]",
-            active ? "border-signal bg-signal text-signal-ink" : done ? "border-signal/50 text-signal" : "border-line-2 text-fg-3",
+            "grid size-7 shrink-0 place-items-center rounded-full border text-[12px] font-medium",
+            active ? "border-signal/50 bg-signal-soft text-signal" : done ? "border-line-2 text-signal" : "border-line text-fg-3",
           )}
         >
-          {String(n).padStart(2, "0")}
+          {done ? <Check className="size-3.5" /> : n}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cx("display block text-[24px]", !active && !done && "text-fg-3")}>{title}</span>
+          <span className={cx("block text-[16px] font-semibold", !active && !done && "text-fg-3")}>{title}</span>
           {!active && summary && <span className="mt-0.5 block truncate text-[13px] text-fg-2">{summary}</span>}
         </span>
         {!active && done && <span className="text-[12.5px] text-fg-3 hover:text-fg">Change</span>}
@@ -102,7 +103,7 @@ function Step({
 
 function SheetRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-dashed border-line py-2.5 last:border-0">
+    <div className="flex items-baseline justify-between gap-4 border-b border-line py-2.5 last:border-0">
       <span className="readout shrink-0">{label}</span>
       <span className="min-w-0 truncate text-right text-[13.5px]">{children}</span>
     </div>
@@ -176,17 +177,17 @@ export default function Launch() {
   return (
     <div>
       <div className="mb-8 max-w-3xl">
-        <div className="readout mb-3 text-signal">New deployment</div>
-        <h1 className="display text-[48px] sm:text-[64px]">Put a model on this GPU</h1>
-        <p className="mt-3 text-[15px] text-fg-2">
-          Choose what to host. KaggleUI checks every model against this machine's VRAM, RAM and disk, then installs, downloads and exposes it for you.
+        <div className="readout mb-2">Workspace / Launch</div>
+        <h1 className="display text-[28px] sm:text-[34px]">New deployment</h1>
+        <p className="mt-2 max-w-[58ch] text-[14px] text-fg-2">
+          Choose a model and how you want to use it. We’ll check the hardware requirements and handle setup.
         </p>
       </div>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_288px]">
         <div className="space-y-3">
-          <Step n={1} title="What are you hosting?" summary={MODALITY_LABEL[modality]} active={step === 0} done={step > 0} onEdit={() => setStep(0)}>
-            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 stagger">
+          <Step n={1} title="Model type" summary={MODALITY_LABEL[modality]} active={step === 0} done={step > 0} onEdit={() => setStep(0)}>
+            <div className="grid gap-2 sm:grid-cols-2">
               {TYPES.map(({ m, blurb, engines, experimental }) => {
                 const Icon = MODALITY_ICON[m];
                 const active = m === modality;
@@ -200,17 +201,19 @@ export default function Launch() {
                       setStep(1);
                     }}
                     className={cx(
-                      "group relative flex flex-col items-start rounded-xl border p-4 text-left transition-[border-color,background]",
-                      active ? "border-signal bg-signal-soft" : "border-line bg-bg-2 hover:border-line-2",
+                      "group relative flex flex-col items-start rounded-lg border px-4 py-3.5 text-left transition-[border-color,background]",
+                      active ? "border-signal/50 bg-signal-soft" : "border-line hover:border-line-2 hover:bg-panel-2",
                     )}
                   >
-                    <Icon className={cx("mb-6 size-6", active ? "text-signal" : "text-fg-2 group-hover:text-fg")} strokeWidth={1.6} />
-                    <span className="display text-[26px]">{MODALITY_LABEL[m]}</span>
-                    <span className="mt-1 text-[13px] text-fg-2">{blurb}</span>
-                    <span className="mt-3 font-mono text-[10px] uppercase tracking-wider text-fg-3">{engines}</span>
+                    <span className="mb-1.5 flex items-center gap-2.5">
+                      <Icon className={cx("size-4", active ? "text-signal" : "text-fg-2")} strokeWidth={1.6} />
+                      <span className="text-[14px] font-semibold">{MODALITY_LABEL[m]}</span>
+                    </span>
+                    <span className="text-[12.5px] text-fg-2">{blurb}</span>
+                    <span className="mt-2 text-[11px] text-fg-3">{engines}</span>
                     {experimental && (
-                      <span className="absolute right-3 top-3 rounded border border-tight/40 px-1.5 py-px font-mono text-[9px] uppercase text-tight">
-                        experimental
+                      <span className="absolute right-3 top-3 text-[10px] text-tight">
+                        Experimental
                       </span>
                     )}
                   </button>
@@ -294,7 +297,7 @@ export default function Launch() {
         {/* Build sheet */}
         <aside className="panel sticky top-6 p-5">
           <div className="mb-3 flex items-center justify-between">
-            <span className="readout text-signal">Build sheet</span>
+            <span className="text-[14px] font-semibold">Deployment summary</span>
             <span className="font-mono text-[10px] text-fg-3">{overview?.system.accelerator_label}</span>
           </div>
           <SheetRow label="Type">{MODALITY_LABEL[modality]}</SheetRow>
@@ -315,7 +318,7 @@ export default function Launch() {
           <SheetRow label="Password">{locked ? "On" : "Off"}</SheetRow>
           <SheetRow label="API">{apiState.enabled ? surfaces.join(", ") || "none" : "Off"}</SheetRow>
           <Button variant="primary" size="lg" className="mt-5 w-full" disabled={!choice} busy={busy} onClick={launch}>
-            <Rocket className="size-4" /> Launch
+            Launch model <ArrowRight className="size-4" />
           </Button>
           {!choice && <p className="mt-2 text-center text-[12px] text-fg-3">Pick a model to launch.</p>}
         </aside>

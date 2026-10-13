@@ -9,9 +9,11 @@ import asyncio
 import json
 import os
 import re
+import socket
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 
 from ..config import Paths
 from ..proc import ManagedProcess
@@ -90,25 +92,31 @@ class TunnelManager:
         t.status = "stopped"
         if t.task:
             t.task.cancel()
+            await asyncio.gather(t.task, return_exceptions=True)
         if t.proc:
             await t.proc.stop(timeout=5)
         self._changed(t)
 
     async def close_all(self) -> None:
-        for name in list(self.tunnels):
-            await self.close(name)
+        await asyncio.gather(*(self.close(name) for name in list(self.tunnels)))
 
     async def wait_url(self, name: str, timeout: float = 60) -> str | None:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             t = self.tunnels.get(name)
             if t and t.url and t.status == "up":
+                if t.provider == "cloudflare":
+                    try:
+                        await asyncio.wait_for(asyncio.get_running_loop().getaddrinfo(
+                            urlsplit(t.url).hostname, 443, type=socket.SOCK_STREAM), timeout=3)
+                    except (OSError, asyncio.TimeoutError):
+                        await asyncio.sleep(0.5)
+                        continue
                 return t.url
             if t and t.status == "error" and t.restarts >= 3:
                 return None
             await asyncio.sleep(0.5)
-        t = self.tunnels.get(name)
-        return t.url if t else None
+        return None
 
     # -- supervision --------------------------------------------------------------------------
     async def _supervise(self, t: Tunnel) -> None:
@@ -151,7 +159,7 @@ class TunnelManager:
             m = QUICK_URL_RE.search(line)
             if m and t.url != m.group(0):
                 t.url = m.group(0)
-                t.status = "up"
+                t.status = "starting"
                 t.error = None
                 self._changed(t)
             elif "Registered tunnel connection" in line and t.url:

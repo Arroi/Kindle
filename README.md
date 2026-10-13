@@ -9,6 +9,8 @@ One notebook cell turns a free Kaggle GPU into a model host. Run it, open the li
 - **APIs:** OpenAI-compatible, Anthropic-compatible and Ollama-compatible endpoints, each toggleable, with an API key.
 - **Live system bar:** per-GPU VRAM, RAM, disk, and the time left in the session.
 
+The model catalog offers a compact list with parameter count, download size and GPU fit in separate columns, plus an optional grid. Your sorting and layout choices are remembered between visits. Use **Reset filters** to start a fresh search.
+
 > Unofficial project, not affiliated with Kaggle or Google. Follow Kaggle's terms of use.
 
 ## Run it on Kaggle
@@ -29,6 +31,19 @@ One notebook cell turns a free Kaggle GPU into a model host. Run it, open the li
 5. In the panel: **Launch → pick a type → pick a model → choose interface/password/API → Launch**. Install, download and load progress appear live under **Deployments**. When it shows **Ready**, open **Studio** or call the API.
 
 The cell keeps running so the session stays alive. Interrupt it to get the notebook back; the server keeps running in the background. `kaggleui.stop()` shuts it down.
+
+### If the link won't open
+
+Cloudflare quick tunnels get a new hostname whenever they restart. Use the most recent link printed by the running cell. If Safari says it can't find the server but Brave opens the same link, give Safari a moment to retry its DNS lookup and open the link in a new tab.
+
+If the link fails in every browser, reconnect the tunnel from another notebook cell:
+
+```python
+import kaggleui
+kaggleui.restart_tunnel()
+```
+
+This prints a fresh link and keeps your model deployments running. Startup waits for Cloudflare to connect and for the new hostname to resolve before showing the link.
 
 ### Hosting for hours (browser closed)
 
