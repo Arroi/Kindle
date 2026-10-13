@@ -368,7 +368,7 @@ async def _metrics_loop(state: AppState) -> None:
 
 def _write_state(state: AppState, status: str = "running") -> None:
     data = {
-        "pid": os.getpid(), "port": state.port, "status": status, "url": state.main_url(),
+        "pid": os.getpid(), "version": __version__, "port": state.port, "status": status, "url": state.main_url(),
         "tunnel": (state.tunnels.get("main").info() if state.tunnels.get("main") else None),
         "admin_token": state.auth.admin_token,
         "password": state.auth.password if state.settings.access.password_enabled else None,

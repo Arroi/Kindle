@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 
+from . import __version__
 from .config import DEFAULT_PORT, Paths, default_tunnel, load_preset
 from .notify import card_html, card_text
 from .secretstore import load_kaggle_secrets
@@ -64,6 +65,12 @@ def stop(home: str | None = None) -> bool:
         if not _alive(st["pid"]):
             break
         time.sleep(0.5)
+    else:
+        try:
+            os.killpg(st["pid"], signal.SIGKILL)  # launch() starts the server in its own session
+        except OSError:
+            os.kill(st["pid"], signal.SIGKILL)
+        time.sleep(1)
     print("KaggleUI stopped.")
     return True
 
@@ -73,6 +80,14 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
     load_kaggle_secrets()  # Kaggle secrets are readable from the kernel process; pass them down via env.
     paths = Paths(home).ensure()
     existing = _read_state(paths)
+    if existing and _alive(existing.get("pid")) and existing.get("version") != __version__:
+        # pip upgraded the files under a running server: its Python code is old but it would serve the
+        # new web UI. Restart so both match. (Servers before 0.1.4 didn't record a version.)
+        old = existing.get("version") or "an older version"
+        print(f"KaggleUI was updated ({old} → {__version__}). Restarting the server; relaunch your models "
+              "afterwards.", flush=True)
+        stop(home)
+        existing = None
     if existing and _alive(existing.get("pid")) and existing.get("url"):
         print("KaggleUI is already running (kaggleui.stop() to stop it).", flush=True)
         _show(existing)

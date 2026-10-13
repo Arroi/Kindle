@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Moon, Sun } from "lucide-react";
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { Brand, Shell } from "./components/Shell";
 import { api } from "./lib/api";
@@ -24,11 +26,24 @@ function Loading() {
   );
 }
 
+function VersionBanner({ server }: { server: string }) {
+  if (server === __APP_VERSION__) return null;
+  return (
+    <div className="mb-5 rounded-lg border border-tight/40 bg-tight-soft px-4 py-3 text-[13.5px] text-tight">
+      The page is KaggleUI {__APP_VERSION__} but the server is still {server}. In the notebook run{" "}
+      <code className="font-mono">kaggleui.stop()</code>, then run the launch cell again.
+    </div>
+  );
+}
+
 function AdminApp() {
   const { overview } = useLive();
+  const loc = useLocation();
   if (!overview) return <Loading />;
   return (
     <Shell>
+      <VersionBanner server={overview.version} />
+      <ErrorBoundary resetKey={loc.pathname}>
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/" element={<Launch />} />
@@ -42,6 +57,7 @@ function AdminApp() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
+      </ErrorBoundary>
     </Shell>
   );
 }
@@ -57,9 +73,11 @@ function GuestStudio() {
         </button>
       </header>
       <main className="mx-auto w-full max-w-[1320px] px-4 py-7 sm:px-6 lg:px-8">
-        <Suspense fallback={<Loading />}>
-          <Studio admin={false} />
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={<Loading />}>
+            <Studio admin={false} />
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   );

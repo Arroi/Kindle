@@ -169,8 +169,8 @@ export interface SearchResult {
   items: CatalogItem[];
   sources: Record<string, string>;
   hardware: { accelerator: string; gpus: number; vram_free: number; ram_available: number; disk_free: number | null; fake: string | null };
-  counts: { total: number; fits: number; shown: number };
-  has_more: boolean;
+  counts?: { total: number; fits: number; shown: number };
+  has_more?: boolean;
 }
 
 export interface CatalogMeta {

@@ -231,7 +231,9 @@ export function ModelBrowser({
           {query.isFetching && !loadingMore
             ? "Scanning catalogs and sizing against this machine…"
             : query.data
-              ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models · ${query.data.counts.fits} fit ${query.data.hardware.accelerator}`
+              ? query.data.counts
+                ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models · ${query.data.counts.fits} fit ${query.data.hardware.accelerator}`
+                : `${query.data.items.length} models · tagged for ${query.data.hardware.accelerator}`
               : ""}
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -273,7 +275,7 @@ export function ModelBrowser({
           ))}
         </div>
       )}
-      {query.data && query.data.has_more && query.data.items.length >= limit && (
+      {query.data?.has_more && query.data.items.length >= limit && (
         <div className="mt-5 flex justify-center">
           <Button busy={loadingMore} onClick={() => setLimit((l) => Math.min(l + PAGE, 300))} disabled={limit >= 300}>
             {limit >= 300 ? "Search to narrow it down" : "Load more"}
