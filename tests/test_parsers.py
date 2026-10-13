@@ -91,3 +91,10 @@ def test_attached_scan(tmp_path):
     assert found["text"]["engine"] == "ollama" and found["text"]["size"] == 10
     assert found["image"]["engine"] == "diffusers" and found["image"]["size"] == 20
     assert found["stt"]["engine"] == "transformers_asr"
+
+
+def test_ollama_effective_param_sizes():
+    from kaggleui.catalog.service import CatalogService
+
+    it = CatalogService(lambda: None)._from_ollama({"name": "gemma4", "sizes": ["e4b", "12b"], "downloads": 1})
+    assert [v["params"] for v in it["variants"]] == [4e9, 12e9]

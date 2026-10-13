@@ -53,13 +53,23 @@ export const api = {
   regenerate: (which: "password" | "api_key") =>
     request<Overview["credentials"]>("/_kui/api/credentials/regenerate", { method: "POST", body: json({ which }) }),
   meta: () => request<CatalogMeta>("/_kui/api/catalog/meta"),
-  search: (p: { modality: Modality; q?: string; source?: string; sort?: string; show_unsupported?: boolean }) => {
+  search: (p: {
+    modality: Modality;
+    q?: string;
+    source?: string;
+    sort?: string;
+    show_unsupported?: boolean;
+    fit?: "all" | "fits";
+    limit?: number;
+  }) => {
     const qs = new URLSearchParams({
       modality: p.modality,
       q: p.q ?? "",
       source: p.source ?? "all",
       sort: p.sort ?? "recommended",
       show_unsupported: String(Boolean(p.show_unsupported)),
+      fit: p.fit ?? "all",
+      limit: String(p.limit ?? 40),
     });
     return request<SearchResult>(`/_kui/api/catalog/search?${qs}`);
   },

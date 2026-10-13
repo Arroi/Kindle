@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -45,9 +46,11 @@ class CatalogService:
     # Search
     # =========================================================================================
     async def search(self, modality: str, q: str = "", source: str = "all", sort: str = "recommended",
-                     limit: int = 40, show_unsupported: bool = False) -> dict:
+                     limit: int = 40, show_unsupported: bool = False, fit: str = "all") -> dict:
+        """``fit="all"`` returns every model (tagged); ``fit="fits"`` drops the ones that won't run here."""
         hw = self.probe()
         q = q.strip()
+        more = {"v": False}  # set by sources whose last fetched page was full
         statuses: dict[str, str] = {}
         items: dict[str, dict] = {}
 
@@ -70,9 +73,9 @@ class CatalogService:
 
         jobs = []
         if source in ("all", "hf") and MODALITY_PIPELINES.get(modality):
-            jobs.append(("hf", self._hf_items(modality, q, sort, hw)))
+            jobs.append(("hf", self._hf_items(modality, q, sort, hw, limit, more)))
         if source in ("all", "ollama") and modality == "text":
-            jobs.append(("ollama", self._ollama_items(q)))
+            jobs.append(("ollama", self._ollama_items(q, sort, limit, more)))
         if source in ("all", "attached"):
             jobs.append(("attached", self._attached_items(modality)))
         results = await asyncio.gather(*(j for _, j in jobs), return_exceptions=True)
@@ -97,8 +100,15 @@ class CatalogService:
 
         if not show_unsupported:
             all_items = [it for it in all_items if it.get("engine")]
-        all_items = self._sort(all_items, sort)[:limit]
-        return {"modality": modality, "items": all_items, "sources": statuses, "hardware": _hw_summary(hw)}
+        fitting = sum(1 for it in all_items if it["fit"]["verdict"] != "worst")
+        total = len(all_items)
+        if fit == "fits":
+            all_items = [it for it in all_items if it["fit"]["verdict"] != "worst"]
+        all_items = self._sort(all_items, sort)
+        has_more = len(all_items) > limit or more["v"]
+        return {"modality": modality, "items": all_items[:limit], "sources": statuses, "hardware": _hw_summary(hw),
+                "counts": {"total": total, "fits": fitting, "shown": min(len(all_items), limit)},
+                "has_more": has_more}
 
     @staticmethod
     def _sort(items: list[dict], sort: str) -> list[dict]:
@@ -163,7 +173,7 @@ class CatalogService:
         name = raw["name"]
         variants = []
         for s in raw.get("sizes") or []:
-            p = parse_params(s)
+            p = parse_params(re.sub(r"^e(?=\d)", "", s))  # "e4b" = effective params (Gemma)
             variants.append({"id": s, "ref": f"{name}:{s}", "label": s.upper(), "params": p,
                              "size": gguf_size(p, "Q4_K_M") if p else None})
         if not variants:
@@ -178,22 +188,30 @@ class CatalogService:
             "options": {}, "url": f"https://ollama.com/library/{name}", "_order": order,
         }
 
-    async def _hf_items(self, modality: str, q: str, sort: str, hw: HardwareProfile) -> list[dict]:
+    async def _hf_items(self, modality: str, q: str, sort: str, hw: HardwareProfile, want: int = 40,
+                        more: dict | None = None) -> list[dict]:
+        scale = max(1, -(-want // 40))  # fetch deeper as the user asks for more
+
+        def n(base: int) -> int:
+            return min(base * scale, 300)
+
         queries: list[dict] = []
         if modality == "text":
-            queries = [{"pipeline_tag": "text-generation", "library": "gguf", "limit": 30},
-                       {"pipeline_tag": "text-generation", "limit": 20},
-                       {"pipeline_tag": "image-text-to-text", "library": "gguf", "limit": 10}]
+            queries = [{"pipeline_tag": "text-generation", "library": "gguf", "limit": n(30)},
+                       {"pipeline_tag": "text-generation", "limit": n(20)},
+                       {"pipeline_tag": "image-text-to-text", "library": "gguf", "limit": n(10)}]
         elif modality in ("image", "video"):
-            queries = [{"pipeline_tag": p, "library": "diffusers", "limit": 30} for p in MODALITY_PIPELINES[modality]]
+            queries = [{"pipeline_tag": p, "library": "diffusers", "limit": n(30)} for p in MODALITY_PIPELINES[modality]]
         else:
-            queries = [{"pipeline_tag": p, "limit": 40} for p in MODALITY_PIPELINES[modality]]
+            queries = [{"pipeline_tag": p, "limit": n(40)} for p in MODALITY_PIPELINES[modality]]
 
         async def run(params: dict) -> list[dict]:
             key = f"hf-search:{params}:{q}:{sort}"
             return await self._cached(key, 900, lambda: hf.search(self.client, query=q, sort=sort, **params))
 
         batches = await asyncio.gather(*(run(p) for p in queries))
+        if more is not None and any(len(b) >= p["limit"] for b, p in zip(batches, queries)):
+            more["v"] = True
         out, seen = [], set()
         order = 0
         for batch in batches:
@@ -205,12 +223,17 @@ class CatalogService:
                 order += 1
         return out
 
-    async def _ollama_items(self, q: str) -> list[dict]:
-        async def fetch() -> list[dict]:
-            pages = [ollama.search(self.client, q)]
+    async def _ollama_items(self, q: str, sort: str = "recommended", want: int = 40,
+                            more: dict | None = None) -> list[dict]:
+        pages = min(max(1, -(-want // 20)), 8)
+        order = "newest" if sort == "newest" else "popular"
+
+        async def fetch() -> dict:
+            calls = [ollama.search(self.client, q, "local", order, page) for page in range(1, pages + 1)]
             if not q:
-                pages.append(ollama.search(self.client, "", "embedding"))
-            res = await asyncio.gather(*pages)
+                calls.append(ollama.search(self.client, "", "embedding"))
+            res = await asyncio.gather(*calls)
+            last_full = len(res[pages - 1]) >= 20
             merged, seen = [], set()
             for batch in res:
                 for r in batch:
@@ -219,10 +242,12 @@ class CatalogService:
                         merged.append(r)
             if not merged:
                 raise RuntimeError("no results parsed")
-            return merged
+            return {"items": merged, "last_full": last_full}
 
-        raws = await self._cached(f"ollama-search:{q}", 1800, fetch)
-        return [self._from_ollama(r, i) for i, r in enumerate(raws)]
+        res = await self._cached(f"ollama-search:{q}:{order}:{pages}", 1800, fetch)
+        if more is not None and res["last_full"]:
+            more["v"] = True
+        return [self._from_ollama(r, i) for i, r in enumerate(res["items"])]
 
     async def _attached_items(self, modality: str) -> list[dict]:
         root = Path(os.environ.get("KAGGLEUI_INPUT_DIR", "/kaggle/input"))
@@ -243,18 +268,15 @@ class CatalogService:
     # -- enrichment ---------------------------------------------------------------------------
     async def _enrich(self, items: list[dict]) -> None:
         """Fill in exact sizes: Ollama registry manifests, HF file listings for non-text models."""
-        tasks = []
+        jobs: list = []  # (callable, arg) so nothing beyond the cap is ever created
         for it in items:
             if it["source"] == "ollama":
-                for v in it["variants"][:6]:
-                    if v.get("exact"):
-                        continue
-                    tasks.append(self._ollama_variant_size(v))
+                jobs += [(self._ollama_variant_size, v) for v in it["variants"][:6] if not v.get("exact")]
             elif (it["source"] == "hf" and it.get("engine") and it.get("size") is None
                   and it["modality"] != "text"):
-                tasks.append(self._hf_sizes(it))
-        if tasks:
-            await asyncio.gather(*tasks[:80], return_exceptions=True)
+                jobs.append((self._hf_sizes, it))
+        if jobs:
+            await asyncio.gather(*(fn(arg) for fn, arg in jobs[:160]), return_exceptions=True)
         for it in items:
             if it["source"] == "ollama" and it["variants"]:
                 v = next((v for v in it["variants"] if v["id"] == it["variant"]), it["variants"][0])

@@ -7,7 +7,7 @@ import { bytes, compact, cx, MODALITY_LABEL, params } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, Gpu, Modality } from "../lib/types";
 import { FitGauge } from "./meters";
-import { Chip, Empty, Input, Segmented, Toggle, VerdictTag } from "./ui";
+import { Button, Chip, Empty, Input, Segmented, Toggle, VerdictTag } from "./ui";
 
 export const MODALITY_ORDER: Modality[] = ["text", "image", "video", "tts", "stt", "world"];
 
@@ -121,6 +121,18 @@ export function ModelCard({
   );
 }
 
+type FitFilter = "all" | "fits";
+const FIT_KEY = "kaggleui-fit-filter";
+const PAGE = 40;
+
+function storedFit(): FitFilter {
+  try {
+    return localStorage.getItem(FIT_KEY) === "fits" ? "fits" : "all";
+  } catch {
+    return "all";
+  }
+}
+
 const SORTS = [
   { value: "recommended", label: "Best fit" },
   { value: "trending", label: "Trending" },
@@ -145,16 +157,32 @@ export function ModelBrowser({
   const gpus = overview?.system.gpus ?? [];
   const [q, setQ] = useState("");
   const [source, setSource] = useState("all");
-  const [sort, setSort] = useState("recommended");
+  const [fitFilter, setFitFilter] = useState<FitFilter>(storedFit);
+  // "All models" reads best by popularity (big models mixed in); "Fits" by how well they fit.
+  const [sortChoice, setSortChoice] = useState<string | null>(null);
+  const sort = sortChoice ?? (fitFilter === "all" ? "trending" : "recommended");
   const [unsupported, setUnsupported] = useState(false);
+  const [limit, setLimit] = useState(PAGE);
   const dq = useDebounced(q, 350);
 
+  useEffect(() => setLimit(PAGE), [modality, dq, source, sort, unsupported, fitFilter]);
+
+  function changeFit(v: FitFilter) {
+    setFitFilter(v);
+    try {
+      localStorage.setItem(FIT_KEY, v);
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
   const query = useQuery({
-    queryKey: ["search", modality, dq, source, sort, unsupported],
-    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: unsupported }),
+    queryKey: ["search", modality, dq, source, sort, unsupported, fitFilter, limit],
+    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: unsupported, fit: fitFilter, limit }),
     staleTime: 5 * 60_000,
     placeholderData: (prev) => (prev?.modality === modality ? prev : undefined),
   });
+  const loadingMore = query.isFetching && query.isPlaceholderData && (query.data?.items.length ?? 0) < limit;
 
   const sources = useMemo(() => {
     const base = [
@@ -195,14 +223,29 @@ export function ModelBrowser({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Segmented size="sm" value={source} onChange={setSource} options={sources} />
-          <Segmented size="sm" value={sort} onChange={setSort} options={SORTS} />
+          <Segmented size="sm" value={sort} onChange={setSortChoice} options={SORTS} />
         </div>
       </div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-[13px] text-fg-3">
-          {query.isFetching ? "Scanning catalogs and sizing against this machine…" : query.data ? `${query.data.items.length} models · tagged for ${query.data.hardware.accelerator}` : ""}
+          {query.isFetching && !loadingMore
+            ? "Scanning catalogs and sizing against this machine…"
+            : query.data
+              ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models · ${query.data.counts.fits} fit ${query.data.hardware.accelerator}`
+              : ""}
         </div>
-        <Toggle checked={unsupported} onChange={setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">Show unsupported</span>} />
+        <div className="flex flex-wrap items-center gap-4">
+          <Segmented<FitFilter>
+            size="sm"
+            value={fitFilter}
+            onChange={changeFit}
+            options={[
+              { value: "all", label: "All models" },
+              { value: "fits", label: "Fits this GPU" },
+            ]}
+          />
+          <Toggle checked={unsupported} onChange={setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">Show unsupported</span>} />
+        </div>
       </div>
       {errors.length > 0 && (
         <div className="mb-4 rounded-lg border border-tight/40 bg-tight-soft px-3 py-2 text-[13px] text-tight">
@@ -224,10 +267,17 @@ export function ModelBrowser({
       ) : query.data && query.data.items.length === 0 ? (
         <Empty title="Nothing found">Try another search, or switch the source filter.</Empty>
       ) : (
-        <div className={cx("grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3", !query.isPlaceholderData && "stagger")}>
+        <div className={cx("grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3", !query.isPlaceholderData && limit === PAGE && "stagger")}>
           {query.data?.items.map((it) => (
             <ModelCard key={it.key} item={it} gpus={gpus} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
           ))}
+        </div>
+      )}
+      {query.data && query.data.has_more && query.data.items.length >= limit && (
+        <div className="mt-5 flex justify-center">
+          <Button busy={loadingMore} onClick={() => setLimit((l) => Math.min(l + PAGE, 300))} disabled={limit >= 300}>
+            {limit >= 300 ? "Search to narrow it down" : "Load more"}
+          </Button>
         </div>
       )}
     </div>

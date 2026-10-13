@@ -3,7 +3,7 @@
 One notebook cell turns a free Kaggle GPU into a model host. Run it, open the link on your own computer, and pick what to serve from a web control panel:
 
 - **Any model type:** Text (LLMs), Image, Video, Text-to-speech, Speech-to-text, World models.
-- **Live catalog** from Hugging Face and Ollama, plus models attached under `/kaggle/input`. Every model is sized against *this* machine's VRAM, RAM and disk and tagged **Best fit**, **Fits**, **Tight** or **Won't fit**, with the reason.
+- **Live catalog** from Hugging Face and Ollama, plus models attached under `/kaggle/input`. Every model is sized against *this* machine's VRAM, RAM and disk and tagged **Best fit**, **Fits**, **Tight** or **Won't fit**, with the reason. Toggle between **All models** and **Fits this GPU**, and use **Load more** to browse deeper.
 - **Interfaces:** the built-in Studio, Gradio, Open WebUI (text) or ComfyUI (image/video).
 - **Password lock** for the interfaces (generated, toggleable). The control panel always needs your admin token.
 - **APIs:** OpenAI-compatible, Anthropic-compatible and Ollama-compatible endpoints, each toggleable, with an API key.

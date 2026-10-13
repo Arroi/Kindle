@@ -84,7 +84,9 @@ async def search(client: httpx.AsyncClient, query: str = "", capability: str | N
         params["o"] = order
     if page > 1:
         params["page"] = str(page)
-    r = await client.get(f"{SITE}/search", params=params, headers=HEADERS, timeout=15, follow_redirects=True)
+    # Later pages are only served to htmx requests (the site's "load more").
+    headers = {**HEADERS, "HX-Request": "true"} if page > 1 else HEADERS
+    r = await client.get(f"{SITE}/search", params=params, headers=headers, timeout=15, follow_redirects=True)
     r.raise_for_status()
     return [i for i in parse_search(r.text) if is_local_model(i)]
 

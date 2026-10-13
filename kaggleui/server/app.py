@@ -181,11 +181,13 @@ def create_app(state: AppState) -> FastAPI:
 
     @app.get("/_kui/api/catalog/search")
     async def catalog_search(request: Request, modality: str = "text", q: str = "", source: str = "all",
-                             sort: str = "recommended", limit: int = 40, show_unsupported: bool = False):
+                             sort: str = "recommended", limit: int = 40, show_unsupported: bool = False,
+                             fit: str = "all"):
         require_admin(request)
         if modality not in MODALITIES:
             raise HTTPException(400, "unknown modality")
-        return await state.catalog.search(modality, q, source, sort, min(limit, 100), show_unsupported)
+        return await state.catalog.search(modality, q, source, sort, max(1, min(limit, 300)), show_unsupported,
+                                          "fits" if fit == "fits" else "all")
 
     @app.get("/_kui/api/catalog/detail")
     async def catalog_detail(request: Request, key: str):
