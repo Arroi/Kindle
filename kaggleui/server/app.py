@@ -48,6 +48,10 @@ def create_app(state: AppState) -> FastAPI:
             await OllamaServer.get().stop()  # only stops an Ollama we started ourselves
             await state.tunnels.close_all()
             await state.catalog.close()
+            try:
+                _write_state(state, "stopped")
+            except Exception:
+                pass
 
     app = FastAPI(title="KaggleUI", version=__version__, lifespan=lifespan, docs_url=None, redoc_url=None,
                   openapi_url=None)
@@ -398,6 +402,12 @@ def create_app(state: AppState) -> FastAPI:
             return
         query = ("?" + ws.url.query) if ws.url.query else ""
         await proxy_ws(ws, f"ws://127.0.0.1:{gradio_target(dep_id)}/{path}{query}")
+
+    @app.api_route("/_kui/{path:path}", methods=["POST", "PUT", "PATCH", "DELETE"])
+    async def unknown_panel_call(path: str):
+        # Without this, a page newer than the server gets a confusing "405 Method Not Allowed".
+        raise HTTPException(404, f"This KaggleUI server ({__version__}) doesn't have /_kui/{path}. It's probably "
+                                 "older than this page: in the notebook, re-run the KaggleUI cell (it restarts the server).")
 
     # =========================================================================================
     # Static SPA

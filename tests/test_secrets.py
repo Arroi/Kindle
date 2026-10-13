@@ -86,3 +86,23 @@ def test_panel_endpoints_never_echo_values(paths):
         assert r.json() == {"updated": ["HF_TOKEN"]} and secretstore._sources["HF_TOKEN"] == "kaggle"
         assert c.delete("/_kui/api/secrets/NGROK_AUTHTOKEN", headers=admin).status_code == 200
         assert "NGROK_AUTHTOKEN" not in os.environ
+
+
+def test_reload_endpoint_and_clear_error_for_unknown_calls(paths, monkeypatch):
+    store = {"hf_token": "hf_late"}
+    fake_kaggle(monkeypatch, store)
+    s = Settings()
+    s.exposure.provider = "none"
+    state = AppState(paths=paths, settings=s, port=8995, mock=True, fake_hw="t4x2")
+    with TestClient(create_app(state)) as c:
+        c.post("/_kui/api/login", json={"token": state.auth.admin_token})  # cookie auth, like the browser
+        r = c.post("/_kui/api/secrets/reload")
+        assert r.status_code == 200 and r.json()["added"] == ["HF_TOKEN"] and "hf_late" not in r.text
+        r = c.post("/_kui/api/a-newer-endpoint")
+        assert r.status_code == 404 and "older than this page" in r.json()["detail"]
+
+
+def test_package_exports_launch_and_stop():
+    import kaggleui
+
+    assert callable(kaggleui.launch) and callable(kaggleui.stop)

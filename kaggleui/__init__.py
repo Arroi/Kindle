@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 
 def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: int | None = None):
@@ -15,3 +15,10 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
     from .launcher import launch as _launch
 
     return _launch(preset=preset, block=block, tunnel=tunnel, port=port)
+
+
+def stop(home: str | None = None) -> bool:
+    """Stop a KaggleUI server started with :func:`launch` (and the models it runs)."""
+    from .launcher import stop as _stop
+
+    return _stop(home)

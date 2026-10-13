@@ -35,6 +35,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* not json */
     }
+    if (res.status === 405 || (res.status === 404 && path.startsWith("/_kui/api/") && msg === "Not Found")) {
+      // An endpoint this page knows about but the running server doesn't: the server is outdated.
+      msg = "The KaggleUI server is older than this page. In the notebook, re-run the KaggleUI cell (it restarts the server).";
+    }
     throw new ApiError(res.status, msg);
   }
   const type = res.headers.get("content-type") ?? "";

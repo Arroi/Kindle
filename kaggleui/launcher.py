@@ -41,9 +41,30 @@ def _alive(pid: int | None) -> bool:
         return False
     try:
         os.kill(pid, 0)
-        return True
     except OSError:
         return False
+    try:  # an exited server lingers as a zombie until the notebook process reaps it
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[-1].split()[0] != "Z"
+    except OSError:
+        return True
+
+
+def _running(state: dict | None) -> bool:
+    return bool(state) and state.get("status") != "stopped" and _alive(state.get("pid"))
+
+
+def installed_version() -> str:
+    """Version on disk. In a notebook, re-running ``import kaggleui`` after an upgrade keeps the old
+    module (and its ``__version__``) in memory, so that can't be trusted."""
+    import importlib
+    import importlib.metadata
+
+    importlib.invalidate_caches()
+    try:
+        return importlib.metadata.version("kaggleui")
+    except importlib.metadata.PackageNotFoundError:
+        return __version__
 
 
 def _show(state: dict) -> None:
@@ -57,7 +78,7 @@ def _show(state: dict) -> None:
 def stop(home: str | None = None) -> bool:
     paths = Paths(home)
     st = _read_state(paths)
-    if not st or not _alive(st.get("pid")):
+    if not _running(st):
         print("KaggleUI isn't running.")
         return False
     os.kill(st["pid"], signal.SIGTERM)
@@ -80,15 +101,19 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
     load_kaggle_secrets()  # Kaggle secrets are readable from the kernel process; pass them down via env.
     paths = Paths(home).ensure()
     existing = _read_state(paths)
-    if existing and _alive(existing.get("pid")) and existing.get("version") != __version__:
+    current = installed_version()
+    if current != __version__:
+        print(f"Note: this notebook has KaggleUI {__version__} imported but {current} is installed. The server will "
+              f"run {current}; restart the kernel to update kaggleui.* helpers too.", flush=True)
+    if _running(existing) and existing.get("version") != current:
         # pip upgraded the files under a running server: its Python code is old but it would serve the
         # new web UI. Restart so both match. (Servers before 0.1.4 didn't record a version.)
         old = existing.get("version") or "an older version"
-        print(f"KaggleUI was updated ({old} → {__version__}). Restarting the server; relaunch your models "
+        print(f"KaggleUI was updated ({old} → {current}). Restarting the server; relaunch your models "
               "afterwards.", flush=True)
         stop(home)
         existing = None
-    if existing and _alive(existing.get("pid")) and existing.get("url"):
+    if _running(existing) and existing.get("url"):
         print("KaggleUI is already running (kaggleui.stop() to stop it).", flush=True)
         _share_secrets(existing)
         _show(existing)
@@ -167,7 +192,7 @@ def _block(paths: Paths, state: dict) -> None:
         while True:
             time.sleep(5)
             st = _read_state(paths)
-            if not st or not _alive(st.get("pid")):
+            if not _running(st):
                 print("KaggleUI stopped.")
                 print(_tail(paths.logs / "server.log"))
                 return

@@ -30,8 +30,8 @@ function VersionBanner({ server }: { server: string }) {
   if (server === __APP_VERSION__) return null;
   return (
     <div className="mb-5 rounded-lg border border-tight/40 bg-tight-soft px-4 py-3 text-[13.5px] text-tight">
-      The page is KaggleUI {__APP_VERSION__} but the server is still {server}. In the notebook run{" "}
-      <code className="font-mono">kaggleui.stop()</code>, then run the launch cell again.
+      The page is KaggleUI {__APP_VERSION__} but the server is still {server}. In the notebook, re-run the KaggleUI cell. It
+      restarts the server.
     </div>
   );
 }
