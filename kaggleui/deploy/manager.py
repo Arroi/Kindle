@@ -116,6 +116,10 @@ class DeploymentManager:
         dep = Deployment(id=short_id(6), spec=spec, served_name=name)
         dep.vram_estimate = int(spec.options.get("vram_estimate") or 0)
         dep.gpus = self._choose_gpus(spec, dep.vram_estimate)
+        free = sum(g.vram_free for g in self.state.probe.snapshot().gpus if g.index in dep.gpus)
+        if dep.vram_estimate and dep.gpus and dep.vram_estimate > free:
+            dep.logs.append(f"WARNING: needs ≈{dep.vram_estimate / 1e9:.1f} GB VRAM but only {free / 1e9:.1f} GB is free "
+                            "on its GPUs. Stop another deployment if loading fails or runs slowly.")
         self._reserve(dep)
         self.deployments[dep.id] = dep
         dep.task = asyncio.create_task(self._run(dep))

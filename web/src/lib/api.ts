@@ -1,0 +1,107 @@
+import type {
+  CatalogItem,
+  CatalogMeta,
+  Deployment,
+  DeploymentSpec,
+  Modality,
+  Overview,
+  SearchResult,
+  Session,
+  Settings,
+  StudioModel,
+} from "./types";
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (init.body && !(init.body instanceof FormData) && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+  const res = await fetch(path, { credentials: "same-origin", ...init, headers });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const data = await res.json();
+      msg = data?.detail ?? data?.error?.message ?? data?.error ?? msg;
+      if (typeof msg !== "string") msg = JSON.stringify(msg);
+    } catch {
+      /* not json */
+    }
+    throw new ApiError(res.status, msg);
+  }
+  const type = res.headers.get("content-type") ?? "";
+  return (type.includes("application/json") ? res.json() : res.text()) as Promise<T>;
+}
+
+const json = (body: unknown) => JSON.stringify(body);
+
+export const api = {
+  session: () => request<Session>("/_kui/api/session"),
+  login: (token: string) => request("/_kui/api/login", { method: "POST", body: json({ token }) }),
+  accessLogin: (password: string) => request("/_kui/api/access-login", { method: "POST", body: json({ password }) }),
+  logout: () => request("/_kui/api/logout", { method: "POST" }),
+  overview: () => request<Overview>("/_kui/api/overview"),
+  updateSettings: (patch: Partial<{ [K in keyof Settings]: Partial<Settings[K]> }>) =>
+    request<Settings>("/_kui/api/settings", { method: "PUT", body: json(patch) }),
+  regenerate: (which: "password" | "api_key") =>
+    request<Overview["credentials"]>("/_kui/api/credentials/regenerate", { method: "POST", body: json({ which }) }),
+  meta: () => request<CatalogMeta>("/_kui/api/catalog/meta"),
+  search: (p: { modality: Modality; q?: string; source?: string; sort?: string; show_unsupported?: boolean }) => {
+    const qs = new URLSearchParams({
+      modality: p.modality,
+      q: p.q ?? "",
+      source: p.source ?? "all",
+      sort: p.sort ?? "recommended",
+      show_unsupported: String(Boolean(p.show_unsupported)),
+    });
+    return request<SearchResult>(`/_kui/api/catalog/search?${qs}`);
+  },
+  detail: (key: string) => request<CatalogItem>(`/_kui/api/catalog/detail?key=${encodeURIComponent(key)}`),
+  deploy: (spec: DeploymentSpec) => request<Deployment>("/_kui/api/deployments", { method: "POST", body: json(spec) }),
+  stop: (id: string) => request(`/_kui/api/deployments/${id}`, { method: "DELETE" }),
+  restart: (id: string) => request<Deployment>(`/_kui/api/deployments/${id}/restart`, { method: "POST" }),
+  logs: (id: string) => request<{ lines: string[] }>(`/_kui/api/deployments/${id}/logs`),
+  restartTunnel: () => request("/_kui/api/tunnels/main/restart", { method: "POST" }),
+  preset: () => request<{ preset: unknown; cell: string }>("/_kui/api/preset"),
+  studioModels: () => request<StudioModel[]>("/_kui/api/studio/models"),
+};
+
+/** Calls to the public gateway from the Studio (cookie auth + studio header). */
+export const gateway = {
+  async post(path: string, body: unknown): Promise<Response> {
+    const res = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json", "x-kui-studio": "1" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new ApiError(res.status, await errorText(res));
+    return res;
+  },
+  async form(path: string, form: FormData): Promise<Response> {
+    const res = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "x-kui-studio": "1" }, body: form });
+    if (!res.ok) throw new ApiError(res.status, await errorText(res));
+    return res;
+  },
+  async get(path: string): Promise<Response> {
+    const res = await fetch(path, { credentials: "same-origin", headers: { "x-kui-studio": "1" } });
+    if (!res.ok) throw new ApiError(res.status, await errorText(res));
+    return res;
+  },
+};
+
+async function errorText(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    return data?.error?.message ?? data?.detail ?? data?.error ?? res.statusText;
+  } catch {
+    return res.statusText;
+  }
+}

@@ -164,4 +164,12 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
     ctx.log(f"[mock] loading {spec.model.id} on GPUs {ctx.gpus}")
     await asyncio.sleep(0.8)
     caps = ["completion", "tools"] if spec.modality == "text" else []
-    return MockBackend(spec.modality, ctx.served_name), {"mock": True, "capabilities": caps}
+    info: dict = {"mock": True, "capabilities": caps}
+    if spec.modality == "world":
+        from .world_engine import recipe_for
+
+        try:
+            info["controls"] = recipe_for(spec).get("controls")
+        except Exception:
+            pass
+    return MockBackend(spec.modality, ctx.served_name), info
