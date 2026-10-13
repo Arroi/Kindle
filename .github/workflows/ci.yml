@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build web UI
+        working-directory: web
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: Python deps
+        run: uv venv --python 3.11 && uv pip install -e ".[dev]"
+      - name: Lint
+        run: .venv/bin/ruff check kaggleui
+      - name: Tests
+        run: .venv/bin/python -m pytest -q
+      - name: Mock selftest
+        run: .venv/bin/python -m kaggleui selftest --mock-engines --fake-hw t4x2 --port 8899 --out selftest.json
+      - name: Build wheel
+        run: uv build --wheel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
