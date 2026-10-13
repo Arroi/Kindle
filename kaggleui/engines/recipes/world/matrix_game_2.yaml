@@ -1,0 +1,41 @@
+name: matrix_game_2
+title: Matrix-Game 2.0
+repo: Skywork/Matrix-Game-2.0
+allow:
+  - "base_distilled_model/*"
+  - "Wan2.1_VAE.pth"
+  - "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth"
+  - "xlm-roberta-large/*"
+  - "model_index.json"
+git: https://github.com/SkyworkAI/Matrix-Game
+subdir: Matrix-Game-2
+env: venv
+system_site_packages: true
+# Upstream requirements minus TensorRT/onnx/web/telemetry extras that aren't needed for offline inference.
+requirements: ["opencv-python", "diffusers", "transformers>=4.49.0", "accelerate", "tqdm", "imageio", "easydict",
+               "ftfy", "imageio-ffmpeg", "omegaconf", "einops", "av", "safetensors", "open_clip_torch",
+               "sentencepiece", "scikit-image", "huggingface_hub", "git+https://github.com/openai/CLIP.git"]
+setup: ["{python} setup.py develop"]
+controls: none
+actions_format: none
+default_image: demo_images/universal/0000.png
+defaults: {frames: 150, steps: 0, fps: 16}
+max_frames: 600
+unverified: true
+command:
+  - "{python}"
+  - inference.py
+  - --config_path
+  - configs/inference_yaml/inference_universal.yaml
+  - --checkpoint_path
+  - "{weights}/base_distilled_model/base_distill.safetensors"
+  - --img_path
+  - "{image}"
+  - --output_folder
+  - "{outdir}"
+  - --num_output_frames
+  - "{frames}"
+  - --seed
+  - "{seed}"
+  - --pretrained_model_path
+  - "{weights}"

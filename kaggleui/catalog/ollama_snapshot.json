@@ -1,0 +1,1728 @@
+[
+ {
+  "name": "llama3.1",
+  "description": "Llama 3.1 is a new state-of-the-art model from Meta available in 8B, 70B and 405B parameter sizes.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "8b",
+   "70b",
+   "405b"
+  ],
+  "downloads": 120253985
+ },
+ {
+  "name": "deepseek-r1",
+  "description": "DeepSeek-R1 is a family of open reasoning models with performance approaching that of leading models, such as O3 and Gemini 2.5 Pro.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "1.5b",
+   "7b",
+   "8b",
+   "14b",
+   "32b",
+   "70b",
+   "671b"
+  ],
+  "downloads": 93636712
+ },
+ {
+  "name": "nomic-embed-text",
+  "description": "A high-performing open embedding model with a large token context window.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [],
+  "downloads": 89367811
+ },
+ {
+  "name": "llama3.2",
+  "description": "Meta's Llama 3.2 goes small with 1B and 3B models. ",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "1b",
+   "3b"
+  ],
+  "downloads": 85310426
+ },
+ {
+  "name": "qwen2.5",
+  "description": "Qwen2.5 models are pretrained on Alibaba's latest large-scale dataset, encompassing up to 18 trillion tokens. The model supports up to 128K tokens and has multilingual support. ",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "0.5b",
+   "1.5b",
+   "3b",
+   "7b",
+   "14b",
+   "32b",
+   "72b"
+  ],
+  "downloads": 42267877
+ },
+ {
+  "name": "gemma3",
+  "description": "The current, most capable model that runs on a single GPU.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "270m",
+   "1b",
+   "4b",
+   "12b",
+   "27b"
+  ],
+  "downloads": 41088298
+ },
+ {
+  "name": "qwen3",
+  "description": "Qwen3 is the latest generation of large language models in Qwen series, offering a comprehensive suite of dense and mixture-of-experts (MoE) models.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "0.6b",
+   "1.7b",
+   "4b",
+   "8b",
+   "14b",
+   "30b",
+   "32b",
+   "235b"
+  ],
+  "downloads": 39798535
+ },
+ {
+  "name": "gemma2",
+  "description": "Google Gemma 2 is a high-performing and efficient model available in three sizes: 2B, 9B, and 27B.",
+  "capabilities": [],
+  "sizes": [
+   "2b",
+   "9b",
+   "27b"
+  ],
+  "downloads": 34641406
+ },
+ {
+  "name": "mistral",
+  "description": "The 7B model released by Mistral AI, updated to version 0.3.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 33876511
+ },
+ {
+  "name": "gemma4",
+  "description": "Gemma 4 models are designed to deliver frontier-level performance at each size. They are well-suited for reasoning, agentic workflows, coding, and multimodal understanding.",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking",
+   "audio"
+  ],
+  "sizes": [
+   "e2b",
+   "e4b",
+   "12b",
+   "26b",
+   "31b"
+  ],
+  "downloads": 26835275
+ },
+ {
+  "name": "llama3",
+  "description": "Meta Llama 3: The most capable openly available LLM to date",
+  "capabilities": [],
+  "sizes": [
+   "8b",
+   "70b"
+  ],
+  "downloads": 25573273
+ },
+ {
+  "name": "qwen2.5-coder",
+  "description": "The latest series of Code-Specific Qwen models, with significant improvements in code generation, code reasoning, and code fixing.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "0.5b",
+   "1.5b",
+   "3b",
+   "7b",
+   "14b",
+   "32b"
+  ],
+  "downloads": 22359317
+ },
+ {
+  "name": "qwen3.5",
+  "description": "Qwen 3.5 is a family of open-source multimodal models that delivers exceptional utility and performance.",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "0.8b",
+   "2b",
+   "4b",
+   "9b",
+   "27b",
+   "35b",
+   "122b"
+  ],
+  "downloads": 22187187
+ },
+ {
+  "name": "phi3",
+  "description": "Phi-3 is a family of lightweight 3B (Mini) and 14B (Medium) state-of-the-art open models by Microsoft.",
+  "capabilities": [],
+  "sizes": [
+   "3.8b",
+   "14b"
+  ],
+  "downloads": 18244423
+ },
+ {
+  "name": "mxbai-embed-large",
+  "description": "State-of-the-art large embedding model from mixedbread.ai",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "335m"
+  ],
+  "downloads": 15693620
+ },
+ {
+  "name": "gpt-oss",
+  "description": "OpenAI\u2019s open-weight models designed for powerful reasoning, agentic tasks, and versatile developer use cases.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "20b",
+   "120b"
+  ],
+  "downloads": 13732848
+ },
+ {
+  "name": "qwen3-coder",
+  "description": "Alibaba's performant long context models for agentic and coding tasks.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "30b",
+   "480b"
+  ],
+  "downloads": 9952167
+ },
+ {
+  "name": "gemma",
+  "description": "Gemma is a family of lightweight, state-of-the-art open models built by Google DeepMind. Updated to version 1.1",
+  "capabilities": [],
+  "sizes": [
+   "2b",
+   "7b"
+  ],
+  "downloads": 8339674
+ },
+ {
+  "name": "qwen",
+  "description": "Qwen 1.5 is a series of large language models by Alibaba Cloud spanning from 0.5B to 110B parameters",
+  "capabilities": [],
+  "sizes": [
+   "0.5b",
+   "1.8b",
+   "4b",
+   "7b",
+   "14b",
+   "32b",
+   "72b",
+   "110b"
+  ],
+  "downloads": 8015391
+ },
+ {
+  "name": "phi4",
+  "description": "Phi-4 is a 14B parameter, state-of-the-art open model from Microsoft.",
+  "capabilities": [],
+  "sizes": [
+   "14b"
+  ],
+  "downloads": 7747402
+ },
+ {
+  "name": "bge-m3",
+  "description": "BGE-M3 is a new model from BAAI distinguished for its versatility in Multi-Functionality, Multi-Linguality, and Multi-Granularity.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "567m"
+  ],
+  "downloads": 7624162
+ },
+ {
+  "name": "llama2",
+  "description": "Llama 2 is a collection of foundation language models ranging from 7B to 70B parameters.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "13b",
+   "70b"
+  ],
+  "downloads": 7558533
+ },
+ {
+  "name": "qwen3.6",
+  "description": "Qwen3.6 delivers substantial upgrades in agentic coding and thinking preservation than previous Qwen models.",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "27b",
+   "35b"
+  ],
+  "downloads": 7077418
+ },
+ {
+  "name": "codellama",
+  "description": "A large language model that can use text prompts to generate and discuss code.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "13b",
+   "34b",
+   "70b"
+  ],
+  "downloads": 6955454
+ },
+ {
+  "name": "qwen3-vl",
+  "description": "The most powerful vision-language model in the Qwen model family to date. ",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "2b",
+   "4b",
+   "8b",
+   "30b",
+   "32b",
+   "235b"
+  ],
+  "downloads": 6619691
+ },
+ {
+  "name": "qwen2",
+  "description": "Qwen2 is a new series of large language models from Alibaba group",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "0.5b",
+   "1.5b",
+   "7b",
+   "72b"
+  ],
+  "downloads": 6263682
+ },
+ {
+  "name": "tinyllama",
+  "description": "The TinyLlama project is an open endeavor to train a compact 1.1B Llama model on 3 trillion tokens.",
+  "capabilities": [],
+  "sizes": [
+   "1.1b"
+  ],
+  "downloads": 6109214
+ },
+ {
+  "name": "mistral-nemo",
+  "description": "A state-of-the-art 12B model with 128k context length, built by Mistral AI in collaboration with NVIDIA.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "12b"
+  ],
+  "downloads": 5728734
+ },
+ {
+  "name": "llama3.2-vision",
+  "description": "Llama 3.2 Vision is a collection of instruction-tuned image reasoning generative models in 11B and 90B sizes.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "11b",
+   "90b"
+  ],
+  "downloads": 5450792
+ },
+ {
+  "name": "qwen2.5vl",
+  "description": "Flagship vision-language model of Qwen and also a significant leap from the previous Qwen2-VL.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "3b",
+   "7b",
+   "32b",
+   "72b"
+  ],
+  "downloads": 5349762
+ },
+ {
+  "name": "deepseek-coder",
+  "description": "DeepSeek Coder is a capable coding model trained on two trillion code and natural language tokens.",
+  "capabilities": [],
+  "sizes": [
+   "1.3b",
+   "6.7b",
+   "33b"
+  ],
+  "downloads": 4704971
+ },
+ {
+  "name": "qwen3-embedding",
+  "description": "Building upon the foundational models of the Qwen3 series, Qwen3 Embedding provides a comprehensive range of text embeddings models in various sizes",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "0.6b",
+   "4b",
+   "8b"
+  ],
+  "downloads": 4254817
+ },
+ {
+  "name": "llama3.3",
+  "description": "New state of the art 70B model. Llama 3.3 70B offers similar performance compared to the Llama 3.1 405B model.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "70b"
+  ],
+  "downloads": 4223028
+ },
+ {
+  "name": "dolphin3",
+  "description": "Dolphin 3.0 Llama 3.1 8B \ud83d\udc2c is the next generation of the Dolphin series of instruct-tuned models designed to be the ultimate general purpose local model, enabling coding, math, agentic, function calling, and general use cases.",
+  "capabilities": [],
+  "sizes": [
+   "8b"
+  ],
+  "downloads": 4164078
+ },
+ {
+  "name": "smollm2",
+  "description": "SmolLM2 is a family of compact language models available in three size: 135M, 360M, and 1.7B parameters.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "135m",
+   "360m",
+   "1.7b"
+  ],
+  "downloads": 4088841
+ },
+ {
+  "name": "deepseek-v3",
+  "description": "A strong Mixture-of-Experts (MoE) language model with 671B total parameters with 37B activated for each token.",
+  "capabilities": [],
+  "sizes": [
+   "671b"
+  ],
+  "downloads": 3842015
+ },
+ {
+  "name": "all-minilm",
+  "description": "Embedding models on very large sentence level datasets.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "22m",
+   "33m"
+  ],
+  "downloads": 3734019
+ },
+ {
+  "name": "qwen3.8",
+  "description": "Qwen3.8 delivers substantial gains across coding, professional work, research, and long-horizon agentic tasks.",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "27b"
+  ],
+  "downloads": 3671327
+ },
+ {
+  "name": "codegemma",
+  "description": "CodeGemma is a collection of powerful, lightweight models that can perform a variety of coding tasks like fill-in-the-middle code completion, code generation, natural language understanding, mathematical reasoning, and instruction following.",
+  "capabilities": [],
+  "sizes": [
+   "2b",
+   "7b"
+  ],
+  "downloads": 3249195
+ },
+ {
+  "name": "deepseek-coder-v2",
+  "description": "An open-source Mixture-of-Experts code language model that achieves performance comparable to GPT4-Turbo in code-specific tasks.",
+  "capabilities": [],
+  "sizes": [
+   "16b",
+   "236b"
+  ],
+  "downloads": 3216503
+ },
+ {
+  "name": "mistral-small",
+  "description": "Mistral Small 3 sets a new benchmark in the \u201csmall\u201d Large Language Models category below 70B.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "22b",
+   "24b"
+  ],
+  "downloads": 3153410
+ },
+ {
+  "name": "snowflake-arctic-embed",
+  "description": "A suite of text embedding models by Snowflake, optimized for performance.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "22m",
+   "33m",
+   "110m",
+   "137m",
+   "335m"
+  ],
+  "downloads": 3144582
+ },
+ {
+  "name": "orca-mini",
+  "description": "A general-purpose model ranging from 3 billion parameters to 70 billion, suitable for entry-level hardware.",
+  "capabilities": [],
+  "sizes": [
+   "3b",
+   "7b",
+   "13b",
+   "70b"
+  ],
+  "downloads": 3106028
+ },
+ {
+  "name": "granite3.1-moe",
+  "description": "The IBM Granite 1B and 3B models are long-context mixture of experts (MoE) Granite models from IBM designed for low latency usage.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "1b",
+   "3b"
+  ],
+  "downloads": 3045494
+ },
+ {
+  "name": "starcoder2",
+  "description": "StarCoder2 is the next generation of transparently trained open code LLMs that comes in three sizes: 3B, 7B and 15B parameters. ",
+  "capabilities": [],
+  "sizes": [
+   "3b",
+   "7b",
+   "15b"
+  ],
+  "downloads": 3030729
+ },
+ {
+  "name": "mixtral",
+  "description": "A set of Mixture of Experts (MoE) model with open weights by Mistral AI in 8x7b and 8x22b parameter sizes.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "8x7b",
+   "8x22b"
+  ],
+  "downloads": 2904960
+ },
+ {
+  "name": "llama2-uncensored",
+  "description": "Uncensored Llama 2 model by George Sung and Jarrad Hope.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "70b"
+  ],
+  "downloads": 2732423
+ },
+ {
+  "name": "translategemma",
+  "description": "A new collection of open translation models built on Gemma 3, helping people communicate across 55 languages.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "4b",
+   "12b",
+   "27b"
+  ],
+  "downloads": 2614650
+ },
+ {
+  "name": "mistral-small3.2",
+  "description": "An update to Mistral Small that improves on function calling, instruction following, and less repetition errors.",
+  "capabilities": [
+   "vision",
+   "tools"
+  ],
+  "sizes": [
+   "24b"
+  ],
+  "downloads": 2489413
+ },
+ {
+  "name": "embeddinggemma",
+  "description": "EmbeddingGemma is a 300M parameter embedding model from Google.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "300m"
+  ],
+  "downloads": 2444023
+ },
+ {
+  "name": "llava-llama3",
+  "description": "A LLaVA model fine-tuned from Llama 3 Instruct with better scores in several benchmarks.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "8b"
+  ],
+  "downloads": 2327564
+ },
+ {
+  "name": "qwq",
+  "description": "QwQ is the reasoning model of the Qwen series.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "32b"
+  ],
+  "downloads": 2306230
+ },
+ {
+  "name": "gemma3n",
+  "description": "Gemma 3n models are designed for efficient execution on everyday devices such as laptops, tablets or phones. ",
+  "capabilities": [],
+  "sizes": [
+   "e2b",
+   "e4b"
+  ],
+  "downloads": 2299201
+ },
+ {
+  "name": "smollm",
+  "description": "\ud83e\ude90 A family of small models with 135M, 360M, and 1.7B parameters, trained on a new high-quality dataset.",
+  "capabilities": [],
+  "sizes": [
+   "135m",
+   "360m",
+   "1.7b"
+  ],
+  "downloads": 2250905
+ },
+ {
+  "name": "dolphin-llama3",
+  "description": "Dolphin 2.9 is a new model with 8B and 70B sizes by Eric Hartford based on Llama 3 that has a variety of instruction, conversational, and coding skills.",
+  "capabilities": [],
+  "sizes": [
+   "8b",
+   "70b"
+  ],
+  "downloads": 2175864
+ },
+ {
+  "name": "sqlcoder",
+  "description": "SQLCoder is a code completion model fined-tuned on StarCoder for SQL generation tasks",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "15b"
+  ],
+  "downloads": 2070807
+ },
+ {
+  "name": "qwen3-coder-next",
+  "description": "Qwen3-Coder-Next is a coding-focused language model from Alibaba's Qwen team, optimized for agentic coding workflows and local development.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [],
+  "downloads": 2065688
+ },
+ {
+  "name": "glm-4.7-flash",
+  "description": "As the strongest model in the 30B class, GLM-4.7-Flash offers a new option for lightweight deployment that balances performance and efficiency.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [],
+  "downloads": 2044464
+ },
+ {
+  "name": "dolphin-mixtral",
+  "description": "Uncensored, 8x7b and 8x22b fine-tuned models based on the Mixtral mixture of experts models that excels at coding tasks. Created by Eric Hartford.",
+  "capabilities": [],
+  "sizes": [
+   "8x7b",
+   "8x22b"
+  ],
+  "downloads": 1938804
+ },
+ {
+  "name": "llama4",
+  "description": "Meta's latest collection of multimodal models.",
+  "capabilities": [
+   "vision",
+   "tools"
+  ],
+  "sizes": [
+   "16x17b",
+   "128x17b"
+  ],
+  "downloads": 1863919
+ },
+ {
+  "name": "dolphin-mistral",
+  "description": "The uncensored Dolphin model based on Mistral that excels at coding tasks. Updated to version 2.8.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 1803011
+ },
+ {
+  "name": "phi4-reasoning",
+  "description": "Phi 4 reasoning and reasoning plus are 14-billion parameter open-weight reasoning models that rival much larger models on complex reasoning tasks. ",
+  "capabilities": [],
+  "sizes": [
+   "14b"
+  ],
+  "downloads": 1707624
+ },
+ {
+  "name": "granite-code",
+  "description": "A family of open foundation models by IBM for Code Intelligence",
+  "capabilities": [],
+  "sizes": [
+   "3b",
+   "8b",
+   "20b",
+   "34b"
+  ],
+  "downloads": 1624889
+ },
+ {
+  "name": "dolphin-phi",
+  "description": "2.7B uncensored Dolphin model by Eric Hartford, based on the Phi language model by Microsoft Research.",
+  "capabilities": [],
+  "sizes": [
+   "2.7b"
+  ],
+  "downloads": 1617286
+ },
+ {
+  "name": "phi",
+  "description": "Phi-2: a 2.7B language model by Microsoft Research that demonstrates outstanding reasoning and language understanding capabilities.",
+  "capabilities": [],
+  "sizes": [
+   "2.7b"
+  ],
+  "downloads": 1557857
+ },
+ {
+  "name": "starcoder",
+  "description": "StarCoder is a code generation model trained on 80+ programming languages.",
+  "capabilities": [],
+  "sizes": [
+   "1b",
+   "3b",
+   "7b",
+   "15b"
+  ],
+  "downloads": 1554910
+ },
+ {
+  "name": "granite4",
+  "description": "Granite 4 features improved instruction following (IF) and tool-calling capabilities, making them more effective in enterprise applications.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "350m",
+   "1b",
+   "3b"
+  ],
+  "downloads": 1542524
+ },
+ {
+  "name": "phi4-mini",
+  "description": "Phi-4-mini brings significant enhancements in multilingual support, reasoning, and mathematics, and now, the long-awaited function calling feature is finally supported.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "3.8b"
+  ],
+  "downloads": 1524928
+ },
+ {
+  "name": "openhermes",
+  "description": "OpenHermes 2.5 is a 7B model fine-tuned by Teknium on Mistral with fully open datasets.",
+  "capabilities": [],
+  "sizes": [],
+  "downloads": 1394032
+ },
+ {
+  "name": "codestral",
+  "description": "Codestral is Mistral AI\u2019s first-ever code model designed for code generation tasks.",
+  "capabilities": [],
+  "sizes": [
+   "22b"
+  ],
+  "downloads": 1351367
+ },
+ {
+  "name": "mistral-large",
+  "description": "Mistral Large 2 is Mistral's new flagship model that is significantly more capable in code generation, mathematics, and reasoning with 128k context window and support for dozens of languages.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "123b"
+  ],
+  "downloads": 1328606
+ },
+ {
+  "name": "zephyr",
+  "description": "Zephyr is a series of fine-tuned versions of the Mistral and Mixtral models that are trained to act as helpful assistants.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "141b"
+  ],
+  "downloads": 1289716
+ },
+ {
+  "name": "deepscaler",
+  "description": "A fine-tuned version of Deepseek-R1-Distilled-Qwen-1.5B that surpasses the performance of OpenAI\u2019s o1-preview with just 1.5B parameters on popular math evaluations.",
+  "capabilities": [],
+  "sizes": [
+   "1.5b"
+  ],
+  "downloads": 1267190
+ },
+ {
+  "name": "glm4",
+  "description": "A strong multi-lingual general language model with competitive performance to Llama 3.",
+  "capabilities": [],
+  "sizes": [
+   "9b"
+  ],
+  "downloads": 1256087
+ },
+ {
+  "name": "deepseek-llm",
+  "description": "An advanced language model crafted with 2 trillion bilingual tokens.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "67b"
+  ],
+  "downloads": 1250868
+ },
+ {
+  "name": "deepseek-v2",
+  "description": "A strong, economical, and efficient Mixture-of-Experts language model.",
+  "capabilities": [],
+  "sizes": [
+   "16b",
+   "236b"
+  ],
+  "downloads": 1213031
+ },
+ {
+  "name": "neural-chat",
+  "description": "A fine-tuned model based on Mistral with good coverage of domain and language.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 1177880
+ },
+ {
+  "name": "openthinker",
+  "description": "A fully open-source family of reasoning models built using a dataset derived by distilling DeepSeek-R1.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "32b"
+  ],
+  "downloads": 1174604
+ },
+ {
+  "name": "qwen2-math",
+  "description": "Qwen2 Math is a series of specialized math language models built upon the Qwen2 LLMs, which significantly outperforms the mathematical capabilities of open-source models and even closed-source models (e.g., GPT4o).",
+  "capabilities": [],
+  "sizes": [
+   "1.5b",
+   "7b",
+   "72b"
+  ],
+  "downloads": 1146816
+ },
+ {
+  "name": "codeqwen",
+  "description": "CodeQwen1.5 is a large language model pretrained on a large amount of code data.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 1138002
+ },
+ {
+  "name": "llama2-chinese",
+  "description": "Llama 2 based model fine tuned to improve Chinese dialogue ability.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "13b"
+  ],
+  "downloads": 1135438
+ },
+ {
+  "name": "granite3.3",
+  "description": "IBM Granite 2B and 8B models are 128K context length language models that have been fine-tuned for improved reasoning and instruction-following capabilities.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "2b",
+   "8b"
+  ],
+  "downloads": 1124716
+ },
+ {
+  "name": "yi-coder",
+  "description": "Yi-Coder is a series of open-source code language models that delivers state-of-the-art coding performance with fewer than 10 billion parameters.",
+  "capabilities": [],
+  "sizes": [
+   "1.5b",
+   "9b"
+  ],
+  "downloads": 1112949
+ },
+ {
+  "name": "stable-code",
+  "description": "Stable Code 3B is a coding model with instruct and code completion variants on par with models such as Code Llama 7B that are 2.5x larger.",
+  "capabilities": [],
+  "sizes": [
+   "3b"
+  ],
+  "downloads": 1093034
+ },
+ {
+  "name": "llama-guard3",
+  "description": "Llama Guard 3 is a series of models fine-tuned for content safety classification of LLM inputs and responses.",
+  "capabilities": [],
+  "sizes": [
+   "1b",
+   "8b"
+  ],
+  "downloads": 1066879
+ },
+ {
+  "name": "granite3.1-dense",
+  "description": "The IBM Granite 2B and 8B models are text-only dense LLMs trained on over 12 trillion tokens of data, demonstrated significant improvements over their predecessors in performance and speed in IBM\u2019s initial testing.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "2b",
+   "8b"
+  ],
+  "downloads": 1061045
+ },
+ {
+  "name": "llama3-chatqa",
+  "description": "A model from NVIDIA based on Llama 3 that excels at conversational question answering (QA) and retrieval-augmented generation (RAG).",
+  "capabilities": [],
+  "sizes": [
+   "8b",
+   "70b"
+  ],
+  "downloads": 1060305
+ },
+ {
+  "name": "nomic-embed-text-v2-moe",
+  "description": "nomic-embed-text-v2-moe is a multilingual MoE text embedding model that excels at multilingual retrieval.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [],
+  "downloads": 1058451
+ },
+ {
+  "name": "phi3.5",
+  "description": "A lightweight AI model with 3.8 billion parameters with performance overtaking similarly and larger sized models.",
+  "capabilities": [],
+  "sizes": [
+   "3.8b"
+  ],
+  "downloads": 1050406
+ },
+ {
+  "name": "granite3-dense",
+  "description": "The IBM Granite 2B and 8B models are designed to support tool-based use cases and support for retrieval augmented generation (RAG), streamlining code generation, translation and bug fixing.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "2b",
+   "8b"
+  ],
+  "downloads": 1048868
+ },
+ {
+  "name": "samantha-mistral",
+  "description": "A companion assistant trained in philosophy, psychology, and personal relationships. Based on Mistral.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 1038005
+ },
+ {
+  "name": "dolphincoder",
+  "description": "A 7B and 15B uncensored variant of the Dolphin model family that excels at coding, based on StarCoder2.",
+  "capabilities": [],
+  "sizes": [
+   "7b",
+   "15b"
+  ],
+  "downloads": 1036932
+ },
+ {
+  "name": "llama3-gradient",
+  "description": "This model extends LLama-3 8B's context length from 8k to over 1m tokens.",
+  "capabilities": [],
+  "sizes": [
+   "8b",
+   "70b"
+  ],
+  "downloads": 1025144
+ },
+ {
+  "name": "llama3-groq-tool-use",
+  "description": "A series of models from Groq that represent a significant advancement in open-source AI capabilities for tool use/function calling.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "8b",
+   "70b"
+  ],
+  "downloads": 1024255
+ },
+ {
+  "name": "granite3.2-vision",
+  "description": "A compact and efficient vision-language model, specifically designed for visual document understanding, enabling automated content extraction from tables, charts, infographics, plots, diagrams, and more.",
+  "capabilities": [
+   "vision",
+   "tools"
+  ],
+  "sizes": [
+   "2b"
+  ],
+  "downloads": 1015643
+ },
+ {
+  "name": "starling-lm",
+  "description": "Starling is a large language model trained by reinforcement learning from AI feedback focused on improving chatbot helpfulness.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 1008783
+ },
+ {
+  "name": "phind-codellama",
+  "description": "Code generation model based on Code Llama.",
+  "capabilities": [],
+  "sizes": [
+   "34b"
+  ],
+  "downloads": 1005420
+ },
+ {
+  "name": "granite3-moe",
+  "description": "The IBM Granite 1B and 3B models are the first mixture of experts (MoE) Granite models from IBM designed for low latency usage.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "1b",
+   "3b"
+  ],
+  "downloads": 977889
+ },
+ {
+  "name": "shieldgemma",
+  "description": "ShieldGemma is set of instruction tuned models for evaluating the safety of text prompt input and text output responses against a set of defined safety policies.",
+  "capabilities": [],
+  "sizes": [
+   "2b",
+   "9b",
+   "27b"
+  ],
+  "downloads": 964568
+ },
+ {
+  "name": "deepcoder",
+  "description": "DeepCoder is a fully open-Source 14B coder model at O3-mini level, with a 1.5B version also available.",
+  "capabilities": [],
+  "sizes": [
+   "1.5b",
+   "14b"
+  ],
+  "downloads": 962436
+ },
+ {
+  "name": "mistral-openorca",
+  "description": "Mistral OpenOrca is a 7 billion parameter model, fine-tuned on top of the Mistral 7B model using the OpenOrca dataset.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 949860
+ },
+ {
+  "name": "paraphrase-multilingual",
+  "description": "Sentence-transformers model that can be used for tasks like clustering or semantic search.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "278m"
+  ],
+  "downloads": 947495
+ },
+ {
+  "name": "llama-pro",
+  "description": "An expansion of Llama 2 that specializes in integrating both general language understanding and domain-specific knowledge, particularly in programming and mathematics.",
+  "capabilities": [],
+  "sizes": [],
+  "downloads": 934174
+ },
+ {
+  "name": "yarn-mistral",
+  "description": "An extension of Mistral to support context windows of 64K or 128K.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 924254
+ },
+ {
+  "name": "bakllava",
+  "description": "BakLLaVA is a multimodal model consisting of the Mistral 7B base model augmented with the LLaVA  architecture.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 901646
+ },
+ {
+  "name": "mistral-small3.1",
+  "description": "Building upon Mistral Small 3, Mistral Small 3.1 (2503) adds state-of-the-art vision understanding and enhances long context capabilities up to 128k tokens without compromising text performance.",
+  "capabilities": [
+   "vision",
+   "tools"
+  ],
+  "sizes": [
+   "24b"
+  ],
+  "downloads": 798036
+ },
+ {
+  "name": "deepseek-v3.1",
+  "description": "DeepSeek-V3.1-Terminus is a hybrid model that supports both thinking mode and non-thinking mode.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "671b"
+  ],
+  "downloads": 734394
+ },
+ {
+  "name": "nemotron3",
+  "description": "NVIDIA Nemotron 3 Nano Omni is a multimodal large language model that unifies video, audio, image, and text understanding to support enterprise-grade Q&A, summarization, transcription, and document intelligence workflows. ",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "33b"
+  ],
+  "downloads": 678559
+ },
+ {
+  "name": "opencoder",
+  "description": "OpenCoder is an open and reproducible code LLM family which includes 1.5B and 8B models, supporting chat in English and Chinese languages.",
+  "capabilities": [],
+  "sizes": [
+   "1.5b",
+   "8b"
+  ],
+  "downloads": 665329
+ },
+ {
+  "name": "llava-phi3",
+  "description": "A new small LLaVA model fine-tuned from Phi 3 Mini.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "3.8b"
+  ],
+  "downloads": 620227
+ },
+ {
+  "name": "ornith",
+  "description": "A self-improving family of open-source models for agentic coding",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "9b",
+   "35b"
+  ],
+  "downloads": 609960
+ },
+ {
+  "name": "qwen3-next",
+  "description": "The first installment in the Qwen3-Next series with strong performance in terms of both parameter efficiency and inference speed.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "80b"
+  ],
+  "downloads": 599903
+ },
+ {
+  "name": "solar-pro",
+  "description": "Solar Pro Preview: an advanced large language model (LLM) with 22 billion parameters designed to fit into a single GPU",
+  "capabilities": [],
+  "sizes": [
+   "22b"
+  ],
+  "downloads": 571994
+ },
+ {
+  "name": "nuextract",
+  "description": "A 3.8B model fine-tuned on a private high-quality synthetic dataset for information extraction, based on Phi-3.",
+  "capabilities": [],
+  "sizes": [
+   "3.8b"
+  ],
+  "downloads": 566223
+ },
+ {
+  "name": "notux",
+  "description": "A top-performing mixture of experts model, fine-tuned with high-quality data.",
+  "capabilities": [],
+  "sizes": [
+   "8x7b"
+  ],
+  "downloads": 551359
+ },
+ {
+  "name": "deepseek-ocr",
+  "description": "DeepSeek-OCR is a vision-language model that can perform token-efficient OCR.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "3b"
+  ],
+  "downloads": 550513
+ },
+ {
+  "name": "mistrallite",
+  "description": "MistralLite is a fine-tuned model based on Mistral with enhanced capabilities of processing long contexts.",
+  "capabilities": [],
+  "sizes": [
+   "7b"
+  ],
+  "downloads": 536078
+ },
+ {
+  "name": "granite4.1",
+  "description": "IBM Granite Models are a family of enterprise-ready, open foundation models that support multilingual capabilities, coding, retrieval-augmented generation (RAG), tool use, and structured JSON output. Released under Apache 2.0 license.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "3b",
+   "8b",
+   "30b"
+  ],
+  "downloads": 532164
+ },
+ {
+  "name": "olmo-3",
+  "description": "Olmo is a series of Open language models designed to enable the science of language models. These models are pre-trained on the Dolma 3 dataset and post-trained on the Dolci datasets.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "7b",
+   "32b"
+  ],
+  "downloads": 468763
+ },
+ {
+  "name": "snowflake-arctic-embed2",
+  "description": "Snowflake's frontier embedding model. Arctic Embed 2.0 adds multilingual support without sacrificing English performance or scalability.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "568m"
+  ],
+  "downloads": 466065
+ },
+ {
+  "name": "granite3.2",
+  "description": "Granite-3.2 is a family of long-context AI models from IBM Granite fine-tuned for thinking capabilities.",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "2b",
+   "8b"
+  ],
+  "downloads": 465178
+ },
+ {
+  "name": "medgemma",
+  "description": "MedGemma is a collection of Gemma 3 variants that are trained for performance on medical text and image comprehension.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "4b",
+   "27b"
+  ],
+  "downloads": 449041
+ },
+ {
+  "name": "r1-1776",
+  "description": "A version of the DeepSeek-R1 model that has been post trained to provide unbiased, accurate, and factual information by Perplexity. ",
+  "capabilities": [],
+  "sizes": [
+   "70b",
+   "671b"
+  ],
+  "downloads": 429572
+ },
+ {
+  "name": "mistral-medium-3.5",
+  "description": "Mistral Medium 3.5 is the first flagship model of Mistral AI that merged instruction-following, reasoning, and coding in a single set of 128B weights.",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "128b"
+  ],
+  "downloads": 423663
+ },
+ {
+  "name": "granite-embedding",
+  "description": "The IBM Granite Embedding 30M and 278M models models are text-only dense biencoder embedding models, with 30M available in English only and 278M serving multilingual use cases.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "30m",
+   "278m"
+  ],
+  "downloads": 385053
+ },
+ {
+  "name": "ornith-1.5",
+  "description": "Chirp Chirp! \ud83d\udc26 We are introducing Ornith-1.5, a major step toward building foundation models through end-to-end self-improvement.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "9b",
+   "35b",
+   "397b"
+  ],
+  "downloads": 382588
+ },
+ {
+  "name": "granite3-guardian",
+  "description": "The IBM Granite Guardian 3.0 2B and 8B models are designed to detect risks in prompts and/or responses.",
+  "capabilities": [],
+  "sizes": [
+   "2b",
+   "8b"
+  ],
+  "downloads": 345483
+ },
+ {
+  "name": "phi4-mini-reasoning",
+  "description": "Phi 4 mini reasoning is a lightweight open model that balances efficiency with advanced reasoning ability.",
+  "capabilities": [],
+  "sizes": [
+   "3.8b"
+  ],
+  "downloads": 318832
+ },
+ {
+  "name": "olmo-3.1",
+  "description": "Olmo is a series of Open language models designed to enable the science of language models. These models are pre-trained on the Dolma 3 dataset and post-trained on the Dolci datasets.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "32b"
+  ],
+  "downloads": 297554
+ },
+ {
+  "name": "deepseek-v2.5",
+  "description": "An upgraded version of DeekSeek-V2  that integrates the general and coding abilities of both DeepSeek-V2-Chat and DeepSeek-Coder-V2-Instruct.",
+  "capabilities": [],
+  "sizes": [
+   "236b"
+  ],
+  "downloads": 295414
+ },
+ {
+  "name": "bge-large",
+  "description": "Embedding model from BAAI mapping texts to vectors.",
+  "capabilities": [
+   "embedding"
+  ],
+  "sizes": [
+   "335m"
+  ],
+  "downloads": 290489
+ },
+ {
+  "name": "muse-glimmer",
+  "description": "Meta's latest open model built for always-on local agents. 30B parameters, licensed under Apache 2.0 and runs on a single GPU \u2014 tuned for tool use, long tasks, and failure recovery.",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "30b"
+  ],
+  "downloads": 283582
+ },
+ {
+  "name": "smallthinker",
+  "description": "A new small reasoning model fine-tuned from the Qwen 2.5 3B Instruct model.",
+  "capabilities": [],
+  "sizes": [
+   "3b"
+  ],
+  "downloads": 265119
+ },
+ {
+  "name": "command-a",
+  "description": "111 billion parameter model optimized for demanding enterprises that require fast, secure, and high-quality AI",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "111b"
+  ],
+  "downloads": 233430
+ },
+ {
+  "name": "cogito-2.1",
+  "description": "The Cogito v2.1 LLMs are instruction tuned generative models. All models are released under MIT license for commercial use.",
+  "capabilities": [],
+  "sizes": [
+   "671b"
+  ],
+  "downloads": 226351
+ },
+ {
+  "name": "nemotron-3.5-lightning",
+  "description": "NVIDIA Nemotron 3.5 Lightning is an open 30B mixture-of-experts (MoE) model with 3B active parameters built for always-on agents.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "30b"
+  ],
+  "downloads": 226087
+ },
+ {
+  "name": "medgemma1.5",
+  "description": "MedGemma 1.5 4B is an updated version of the MedGemma 4B model.",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "4b"
+  ],
+  "downloads": 211416
+ },
+ {
+  "name": "functiongemma",
+  "description": "FunctionGemma is a specialized version of Google's Gemma 3 270M model fine-tuned explicitly for function calling. ",
+  "capabilities": [
+   "tools"
+  ],
+  "sizes": [
+   "270m"
+  ],
+  "downloads": 199588
+ },
+ {
+  "name": "lfm2.5",
+  "description": "LFM2.5-8B-A1B, an edge model built for fast, reliable tool calling on consumer hardware.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "8b"
+  ],
+  "downloads": 199330
+ },
+ {
+  "name": "qwen3.8-flash-next",
+  "description": "This experimental preview of the architecture that will underpin Qwen4.",
+  "capabilities": [
+   "vision",
+   "tools",
+   "thinking"
+  ],
+  "sizes": [],
+  "downloads": 184959
+ },
+ {
+  "name": "laguna-s-2.1",
+  "description": "Our most capable model to date, designed for long-horizon work. 70.2% on Terminal-Bench 2.1 at 118B-A8B.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [],
+  "downloads": 172870
+ },
+ {
+  "name": "gpt-oss-safeguard",
+  "description": "gpt-oss-safeguard-20b and gpt-oss-safeguard-120b are safety reasoning models built-upon gpt-oss",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "20b",
+   "120b"
+  ],
+  "downloads": 161953
+ },
+ {
+  "name": "granite4.2",
+  "description": "IBM Granite Models are a family of enterprise-ready, open foundation models that support multilingual capabilities, coding, retrieval-augmented generation (RAG), tool use, thinking and structured JSON output. Released under Apache 2.0 license. ",
+  "capabilities": [],
+  "sizes": [
+   "3b",
+   "8b",
+   "30b"
+  ],
+  "downloads": 132993
+ },
+ {
+  "name": "tev1",
+  "description": "A 4B decision model from Together AI for fast classification.",
+  "capabilities": [
+   "tools",
+   "decision",
+   "thinking"
+  ],
+  "sizes": [
+   "0.8b",
+   "4b"
+  ],
+  "downloads": 86873
+ },
+ {
+  "name": "minicpm-v4.6",
+  "description": "A Pocket-Sized MLLM for Ultra-Efficient Image and Video Understanding on Your Phone",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "1b"
+  ],
+  "downloads": 66690
+ },
+ {
+  "name": "minicpm-v4.5",
+  "description": "A GPT-4o Level MLLM for Single Image, Multi Image and High-FPS Video Understanding on Your Phone",
+  "capabilities": [
+   "vision"
+  ],
+  "sizes": [
+   "8b"
+  ],
+  "downloads": 53251
+ },
+ {
+  "name": "nimble",
+  "description": "A 9B decision model from Bespoke Labs for fast, typed classification.",
+  "capabilities": [
+   "tools",
+   "decision",
+   "thinking"
+  ],
+  "sizes": [
+   "9b"
+  ],
+  "downloads": 39602
+ },
+ {
+  "name": "laguna-xs.2",
+  "description": "Laguna XS.2 is a 33B total parameter Mixture-of-Experts model with 3B activated parameters per token designed for agentic coding and long-horizon work on a local machine.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [],
+  "downloads": 34861
+ },
+ {
+  "name": "embeddinggemma-2",
+  "description": "EmbeddingGemma 2 is a multimodal embedding model from Google built on the Gemma 4 architecture.",
+  "capabilities": [
+   "vision",
+   "embedding",
+   "audio"
+  ],
+  "sizes": [
+   "270m",
+   "440m",
+   "570m",
+   "740m"
+  ],
+  "downloads": 34054
+ },
+ {
+  "name": "granite4.1-guardian",
+  "description": "Granite Guardian 4.1 is a specialized safety and judging model from IBM Research that evaluates whether LLM prompts and responses meet specified harm criteria.",
+  "capabilities": [
+   "tools",
+   "thinking"
+  ],
+  "sizes": [
+   "8b"
+  ],
+  "downloads": 33857
+ },
+ {
+  "name": "clef-flash",
+  "description": "Clef-Flash is a 9B multimodal model that turns a state and a schema of typed questions into decisions.",
+  "capabilities": [
+   "vision",
+   "decision"
+  ],
+  "sizes": [
+   "9b"
+  ],
+  "downloads": 19164
+ },
+ {
+  "name": "clef",
+  "description": "Clef is a 27B multimodal model created by Cloudflare that turns a state and a schema of typed questions into decisions.",
+  "capabilities": [
+   "vision",
+   "decision"
+  ],
+  "sizes": [
+   "27b"
+  ],
+  "downloads": 12965
+ },
+ {
+  "name": "laya",
+  "description": "Laya is a 421M decision model from Convai Innovations, fine-tuned from ModernBERT-large.",
+  "capabilities": [
+   "decision"
+  ],
+  "sizes": [],
+  "downloads": 5689
+ }
+]

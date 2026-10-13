@@ -1,0 +1,31 @@
+name: oasis
+title: Oasis 500M
+repo: Etched/oasis-500m
+allow: ["oasis500m.safetensors", "vit-l-20.safetensors"]
+git: https://github.com/etched-ai/open-oasis
+env: main
+requirements: ["einops", "timm", "av", "diffusers"]
+controls: minecraft
+actions_format: oasis
+default_image: sample_data/sample_image_0.png
+defaults: {frames: 32, steps: 10, fps: 20}
+max_frames: 300
+command:
+  - "{python}"
+  - generate.py
+  - --oasis-ckpt
+  - "{weights}/oasis500m.safetensors"
+  - --vae-ckpt
+  - "{weights}/vit-l-20.safetensors"
+  - --prompt-path
+  - "{image}"
+  - --actions-path
+  - "{actions}"
+  - --num-frames
+  - "{frames}"
+  - --ddim-steps
+  - "{steps}"
+  - --fps
+  - "{fps}"
+  - --output-path
+  - "{output}"
