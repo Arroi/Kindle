@@ -28,6 +28,14 @@ def search_terms(brand: str) -> list[str]:
     return next((entry["search"] for entry in BRANDS if entry["id"] == brand), [])
 
 
+def hf_search_terms(brand: str) -> list[str]:
+    terms = search_terms(brand)
+    entry = next((entry for entry in BRANDS if entry["id"] == brand), None)
+    # Include a publisher namespace as well as family names: e.g. Facebook's MusicGen
+    # and MMS checkpoints belong to Meta even though their names do not contain Llama.
+    return list(dict.fromkeys([*terms, *(entry["owners"][-1:] if entry else [])]))
+
+
 def facets(items: list[dict]) -> list[dict]:
     choices = {entry["id"]: {key: entry[key] for key in ("id", "label", "logo")} | {"count": 0}
                for entry in BRANDS}

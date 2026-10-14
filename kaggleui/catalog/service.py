@@ -330,7 +330,7 @@ class CatalogService:
         else:
             queries = [{"pipeline_tag": p, "limit": n(40)} for p in MODALITY_PIPELINES[modality]]
 
-        terms = brands.search_terms(filters.brand) if filters and filters.brand and not q else []
+        terms = brands.hf_search_terms(filters.brand) if filters and filters.brand and not q else []
         searches = [(params, term) for params in queries for term in (terms or [q])]
 
         async def run(params: dict, term: str) -> list[dict]:
