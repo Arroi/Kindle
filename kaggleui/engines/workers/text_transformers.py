@@ -11,6 +11,7 @@ import uuid
 from fastapi import Body
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from ...capabilities import local_profile, reasoning_body
 from .common import WorkerState, create_app, parse_args, serve, start_loading, torch_dtype
 
 
@@ -28,20 +29,24 @@ class Chat:
     def __init__(self, path: str, options: dict):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        self.tok = AutoTokenizer.from_pretrained(path)
-        self.model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch_dtype(options), device_map="auto")
+        trust = options.get("trust_remote_code") is True
+        self.tok = AutoTokenizer.from_pretrained(path, trust_remote_code=trust)
+        self.model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=torch_dtype(options), device_map="auto",
+                                                       trust_remote_code=trust)
         self.model.eval()
+        self.profile = local_profile(path, text_only=True)
 
     def _inputs(self, messages: list[dict], body: dict | None = None):
         body = body or {}
         msgs = [{"role": m.get("role", "user"), "content": _content_text(m.get("content"))} for m in messages]
-        extra = dict(body.get("chat_template_kwargs") or {})
-        if body.get("reasoning_effort") == "none":
-            extra.setdefault("enable_thinking", False)
+        normalized = reasoning_body(body, self.profile)
+        extra = dict(normalized.get("chat_template_kwargs") or {})
         if self.tok.chat_template:
             try:
                 ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt", **extra)
-            except TypeError:  # older tokenizers reject unknown template kwargs
+            except TypeError as exc:  # do not silently discard an explicit reasoning choice
+                if extra:
+                    raise ValueError("This tokenizer could not apply the requested reasoning controls. Choose Auto.") from exc
                 ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt")
         else:
             # Base checkpoints often have no chat template. Give them a plain completion prompt.

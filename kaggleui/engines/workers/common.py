@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 
 def parse_args(extra: Callable[[argparse.ArgumentParser], None] | None = None) -> argparse.Namespace:
@@ -62,6 +62,15 @@ class WorkerState:
 def create_app(state: WorkerState) -> FastAPI:
     app = FastAPI()
 
+    @app.exception_handler(ValueError)
+    async def invalid_request(request, exc: ValueError):
+        return JSONResponse({"error": {"message": str(exc), "type": "invalid_request_error"}}, status_code=400)
+
+    @app.exception_handler(Exception)
+    async def inference_error(request, exc: Exception):
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
+        return JSONResponse({"error": {"message": f"{type(exc).__name__}: {exc}", "type": "worker_error"}}, status_code=500)
+
     @app.get("/health")
     def health() -> dict:
         return {"stage": state.stage, "message": state.message, "error": state.error, "info": state.info}
@@ -78,7 +87,12 @@ def start_loading(state: WorkerState, loader: Callable[[], Any]) -> None:
             print("KUI_READY", flush=True)
         except Exception as e:  # noqa: BLE001 — reported to the panel
             state.stage = "error"
-            state.error = f"{type(e).__name__}: {e}"
+            detail = str(e)
+            if "trust_remote_code" in detail:
+                detail = "This model requires custom Python code. In Customize → Settings, enable 'Allow model custom code' for a repository you trust, then deploy again. " + detail
+            elif "does not recognize this architecture" in detail:
+                detail = "This checkpoint needs an architecture-specific runtime. Update KaggleUI and deploy again; if it still fails, include the model ID when reporting it. " + detail
+            state.error = f"{type(e).__name__}: {detail}"
             state.message = "Load failed"
             traceback.print_exc()
 

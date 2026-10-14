@@ -7,6 +7,7 @@ import { bytes, cx, duration } from "../lib/format";
 import { useLive } from "../lib/live";
 import { useTheme } from "../lib/theme";
 import { UpdateNotice } from "./Updates";
+import { CommunityLinks } from "./CommunityLinks";
 import { Button, Input } from "./ui";
 
 const NAV = [
@@ -86,7 +87,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {overview?.mock && <span className="text-tight">Demo engines</span>}
     </div></div>
     <main id="main-content" tabIndex={-1} className="workspace-main"><UpdateNotice /><div key={location.pathname} className="page-enter">{children}</div></main>
-    <footer className="workspace-footer"><span>KaggleUI {__APP_VERSION__}</span><a href="https://github.com/UltraFEmotes/KaggleUI" target="_blank" rel="noreferrer">Source & help ↗</a><span className="ml-auto hidden sm:inline">Open models. Your session.</span></footer>
+    <footer className="workspace-footer"><span>KaggleUI {__APP_VERSION__}</span><a href="https://github.com/UltraFEmotes/KaggleUI" target="_blank" rel="noreferrer">Source & help ↗</a><CommunityLinks /></footer>
     <QuickJump open={jump} close={() => setJump(false)} />
   </div>;
 }

@@ -10,6 +10,7 @@ import tempfile
 
 import httpx
 
+from ..capabilities import profile
 from ..proc import ManagedProcess, run_cmd
 from ..schemas import DeploymentSpec
 from ..util import which
@@ -168,7 +169,9 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstre
             if rc != 0:
                 raise DeployError("ollama create failed for the attached GGUF")
         r = await c.post(f"{base}/api/show", json={"model": alias})
-        caps = r.json().get("capabilities", []) if r.status_code == 200 else []
+        metadata = r.json() if r.status_code == 200 else {}
+        caps = metadata.get("capabilities", [])
+        detected = profile(spec.model.id, tags=caps, thinking=metadata.get("thinking"), authoritative=True)
         ctx.progress("loading", None, "Loading into GPU memory")
         if "embedding" in caps and "completion" not in caps:
             r = await c.post(f"{base}/api/embed", json={"model": alias, "input": "warmup", "keep_alive": -1})
@@ -177,8 +180,8 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstre
         if r.status_code != 200:
             raise DeployError(f"Loading failed: {r.text[:300]}")
     info = {"capabilities": caps, "upstream": alias, "ref": ref or spec.model.id, "num_ctx": num_ctx,
-            "ollama_version": server.version}
-    return OpenAIUpstream(base, alias, native=frozenset({"anthropic", "ollama"})), info
+            "ollama_version": server.version, **detected}
+    return OpenAIUpstream(base, alias, native=frozenset({"anthropic", "ollama"}), profile=detected), info
 
 
 async def undeploy(dep_id: str) -> None:

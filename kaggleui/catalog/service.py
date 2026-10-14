@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import yaml
 
+from ..capabilities import profile
 from ..system.probe import HardwareProfile
 from ..util import parse_params
 from . import attached, hf, ollama, world
@@ -76,6 +77,9 @@ class CatalogService:
             elif (existing.get("curated") and not item.get("curated")) or modality == "world":
                 # Keep curated settings but take live popularity numbers.
                 for k in ("downloads", "likes", "updated", "capabilities", "params", "library", "pipeline_tag"):
+                    if k == "capabilities":
+                        existing[k] = sorted(set(existing.get(k, [])) | set(item.get(k, [])))
+                        continue
                     if item.get(k) and not existing.get(k):
                         existing[k] = item[k]
 
@@ -229,11 +233,13 @@ class CatalogService:
                 "modality": "text", "engine": "ollama", "params": params, "size": size, "variant": tag,
                 "variants": [{"id": tag, "ref": f"{name}:{tag}", "label": tag, "size": size, "params": params}],
                 "url": f"https://ollama.com/library/{name}",
+                **profile(e["id"], tags=e.get("tags", [])),
             }
         return {
             **base, "key": f"hf:{e['id']}", "source": "hf", "id": e["id"], "name": e.get("name", e["id"]),
             "modality": modality, "engine": e.get("engine"), "params": params, "size": size,
             "variant": e.get("variant"), "variants": [], "url": f"https://huggingface.co/{e['id']}",
+            **(profile(e["id"], tags=e.get("tags", [])) if modality == "text" else {}),
         }
 
     def _from_hf(self, raw: dict, modality: str, hw: HardwareProfile, order: int) -> dict:
@@ -257,6 +263,7 @@ class CatalogService:
             "curated": False, "options": {}, "url": f"https://huggingface.co/{rid}",
             "bf16_only": dtypes == {"BF16"} and modality in ("image", "video"),
             "context_length": gg.get("context_length"), "_order": order,
+            **(profile(rid, tags=raw.get("tags", []), config=raw.get("config"), pipeline=raw.get("pipeline_tag")) if modality == "text" else {}),
         }
 
     def _from_ollama(self, raw: dict, order: int = 0) -> dict:
@@ -276,6 +283,7 @@ class CatalogService:
             "downloads": raw.get("downloads", 0), "likes": 0, "updated": None, "gated": False,
             "capabilities": raw.get("capabilities", []), "experimental": False, "curated": False,
             "options": {}, "url": f"https://ollama.com/library/{name}", "_order": order,
+            **profile(name, tags=raw.get("capabilities", [])),
         }
 
     async def _hf_items(self, modality: str, q: str, sort: str, hw: HardwareProfile, want: int = 40,
@@ -354,6 +362,7 @@ class CatalogService:
                 "experimental": bool(f.get("experimental")), "curated": False, "options": f.get("options", {}),
                 "recipe": f.get("recipe"), "url": f.get("url"), "attached": True,
                 "min_sm": f.get("min_sm"), "min_vram": f.get("min_vram"),
+                **{key: f[key] for key in ("capabilities", "reasoning", "custom_code") if key in f},
             })
         return out
 
@@ -572,6 +581,13 @@ class CatalogService:
         else:
             it["size"] = hf.repo_size(sib) or it.get("size")
         it["files"] = len(sib)
+        if modality == "text" or it.get("engine") in ("transformers_tts", "transformers_asr"):
+            data = await self._cached(f"hf-capabilities:{repo}:{revision or 'main'}", 6 * 3600,
+                                      lambda: hf.capability_files(self.client, repo, revision))
+            it["custom_code"] = bool(data["config"].get("auto_map"))
+            if modality == "text":
+                it.update(profile(repo, tags=info.get("tags", []), config=data["config"], template=data["template"],
+                                  pipeline=info.get("pipeline_tag")))
         return self._finish_detail(it, hw)
 
     def _finish_detail(self, it: dict, hw: HardwareProfile) -> dict:
@@ -592,6 +608,7 @@ class CatalogService:
                 "experimental": bool(model.get("experimental")), "curated": False, "attached": True,
                 "options": model.get("options", {}), "recipe": model.get("recipe"), "url": model.get("url"),
                 "min_sm": model.get("min_sm"), "min_vram": model.get("min_vram")}
+        item.update({key: model[key] for key in ("capabilities", "reasoning", "custom_code") if key in model})
         return self._finish_detail(item, self.probe())
 
     def selftest_specs(self) -> list[dict]:

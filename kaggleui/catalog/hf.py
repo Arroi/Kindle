@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from datetime import datetime
@@ -66,6 +67,40 @@ async def model_info(client: httpx.AsyncClient, repo_id: str, revision: str | No
     if isinstance(gg, dict):
         gg.pop("chat_template", None)
     return info
+
+
+async def capability_files(client: httpx.AsyncClient, repo_id: str, revision: str | None = None) -> dict:
+    """Fetch only bounded metadata when opening details, never model weights or remote code."""
+    import asyncio
+
+    async def read(name: str):
+        try:
+            url = f"https://huggingface.co/{repo_id}/resolve/{quote(revision or 'main', safe='')}/{name}"
+            async with client.stream("GET", url, headers=_headers(), follow_redirects=True, timeout=8) as response:
+                if response.status_code != 200:
+                    return None
+                chunks, size = [], 0
+                async for block in response.aiter_bytes():
+                    size += len(block)
+                    if size > 2 * 1024**2:
+                        return None
+                    chunks.append(block)
+                text = b"".join(chunks).decode()
+                return text if name.endswith(".jinja") else json.loads(text)
+        except (httpx.HTTPError, UnicodeError, ValueError):
+            return None
+    config, tokenizer, template = await asyncio.gather(read("config.json"), read("tokenizer_config.json"),
+                                                       read("chat_template.jinja"))
+    config = config if isinstance(config, dict) else {}
+    tokenizer = tokenizer if isinstance(tokenizer, dict) else {}
+    if not template:
+        chat = tokenizer.get("chat_template")
+        if isinstance(chat, str):
+            template = chat
+        elif isinstance(chat, list):
+            template = next((item.get("template") for item in chat if isinstance(item, dict) and item.get("name") == "default"), "")
+    return {"config": {**config, **{key: tokenizer[key] for key in ("supported_reasoning_efforts", "reasoning_efforts") if key in tokenizer}},
+            "template": template if isinstance(template, str) else ""}
 
 
 def parse_time(value: str | None) -> float | None:

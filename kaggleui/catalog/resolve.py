@@ -97,6 +97,12 @@ def resolve_hf(modality: str, repo_id: str, library: str | None, tags: list[str]
         return Resolution(None, note="Only diffusers-format video models are supported")
 
     if modality == "tts":
+        if "midashenglm-gen" in rid:
+            return Resolution("transformers_tts", experimental=True,
+                              note="Dedicated audio scene runner; enable Allow model custom code. Generates speech, music and sound effects.")
+        if "vibevoice" in rid and not any(kind in rid for kind in ("asr", "streaming", "realtime")):
+            return Resolution("transformers_tts", experimental=True,
+                              note="Dedicated VibeVoice TTS runner with an isolated compatible environment.")
         if "kokoro" in rid:
             return Resolution("kokoro")
         if "chatterbox" in rid:

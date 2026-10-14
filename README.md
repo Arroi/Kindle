@@ -11,6 +11,10 @@ One notebook cell turns a free Kaggle GPU into a model host. Run it, open the li
 
 The model catalog offers a compact list with parameter count, download size and GPU fit in separate columns, plus an optional grid. Your sorting and layout choices are remembered between visits. Use **Reset filters** to start a fresh search.
 
+Models display **Reasoning**, **Vision**, **Tools** and **Embeddings** tags when detected. Details inspect model metadata and chat templates without executing model code. Family estimates are labeled; the loaded runner determines the reasoning controls available in Studio.
+
+Made by **WeirdMM (iloveoliver.tree)** · [Discord community](https://discord.gg/7Kb6ScwvYG)
+
 **World discovery** searches Hugging Face tags and families including Matrix-Game, LingBot, Yume, Cosmos and HunyuanWorld. World opens with the broader catalog; **Launchable only** shows configured runtimes, and **Fits this machine** applies the hardware filter. A bundled catalog keeps 20 published checkpoints visible when live search is unavailable.
 
 World runners cover 14 bundled checkpoints: Oasis, Matrix-Game 2.0 and 3.0, LingBot World Base Camera, Cosmos 1.0 Text2World/Video2World 7B, Cosmos Predict 2.5 2B/14B, Cosmos 3 Edge/Nano/Super, HunyuanWorld 1.0, HY-WorldPlay 5B, and HY-World 2.0. The new runners are **experimental and have not been verified with real GPU inference**. Cosmos uses the official Diffusers pipelines, with `diffusers/base/post-trained` for Predict 2.5. Cosmos, Matrix-Game 3.0 and LingBot require an Ampere or newer GPU; T4/P100 are shown as incompatible. Matrix-Game 3.0 uses its upstream native code with SDPA attention; upstream recommends 64 GB RAM. LingBot Base is a large download (about 160 GB). Native runners produce finite video clips; their upstream real-time controls are not exposed in Studio yet.
@@ -35,6 +39,16 @@ Open **Imports** (or **Models → Import from URL**) and paste one of:
 - An HTTPS Git repository URL. Choose **Git repository** if automatic detection doesn't recognize the provider. Git LFS repositories need `git-lfs` available; unresolved LFS pointers are reported as an error.
 
 Downloads show progress and can be cancelled. `.stop()` stops active download processes too. Completed downloads are remembered across KaggleUI restarts. They stay in **Imports** and are never added to the model catalog or notebook attachments. Click **Customize → Continue to deployment** on a detected checkpoint to choose its settings and launch it. GGUF, Transformers, Whisper, Kokoro, Chatterbox, Diffusers and the configured world checkpoints reuse their existing runners. Source code repositories or standalone weights without a recognizable model configuration are downloaded as files and aren't automatically executed. Restarting the Kaggle notebook itself may clear notebook storage.
+
+### Checkpoints with custom code or audio architectures
+
+**Customize → Settings → Allow model custom code** passes `trust_remote_code=True` to Transformers text/TTS/ASR loaders and enables vLLM's equivalent flag. It is off by default: enable it only for repositories whose code you trust, since that Python runs in the notebook. For Hugging Face models, **Model revision** can pin a commit SHA. After a failed load, **Deployments → Configure & retry** lets you change these settings and reuse the cached download.
+
+MiDashengLM-Gen uses a dedicated audio scene adapter following [the publisher's API](https://huggingface.co/mispeech/midashenglm-gen), including its nested Python modules, extra dependencies and required float32 precision. Enable custom code for this model. It accepts plain scene descriptions or structured `<|caption|>`, `<|asr|>`, `<|speech|>`, `<|music|>`, `<|sfx|>` and `<|env|>` prompts via Studio or `/v1/audio/speech`. The default voice is prompt-controlled; it has no named voice bank. Its Qwen backbone/tokenizer can require additional downloads beyond the checkpoint size.
+
+VibeVoice TTS detects the original Microsoft checkpoint format separately from the converted `vibevoice/*-hf` format. Original weights use [Microsoft's pinned TTS implementation](https://github.com/microsoft/VibeVoice/tree/6065c5224e1fee5b2eaeef15f79ee8ef7de947d0) and its compatible Transformers version; converted weights use [the native Transformers API](https://huggingface.co/docs/transformers/model_doc/vibevoice). Each runs in an isolated environment. Studio accepts optional reference audio for VibeVoice and Chatterbox. VibeVoice supports a default generated speaker or `Speaker 1:` scripts; there are no bundled named voice presets. The separate VibeVoice Realtime architecture is not covered by this TTS adapter.
+
+These new audio adapters are **experimental and have not been verified with real GPU inference**. Model architecture support, available memory and extra model downloads still determine whether a checkpoint can run. Unknown architectures report a runtime error with deployment guidance instead of assuming every failure needs a Transformers source install.
 
 > Unofficial project, not affiliated with Kaggle or Google. Follow Kaggle's terms of use.
 
@@ -116,15 +130,15 @@ print(client.messages.create(model="qwen3:8b", max_tokens=256, messages=[{"role"
 
 ### Thinking / reasoning effort
 
-Thinking models (Qwen3, gpt-oss, DeepSeek-R1…) can reason before answering. In the Studio, the **Thinking** switch in the chat header (and *Settings → Reasoning effort*) picks **Auto / Off / Low / Med / High**. Over the API, use whichever your client speaks:
+Thinking models (Qwen3, gpt-oss, DeepSeek-R1…) can reason before answering. Studio's **Reasoning** menu (also in *Settings → Reasoning effort*) adapts to the loaded model and runner. **xHigh** and **Max** appear only when declared by runtime metadata or the actual model template. Some models have only **Off / On**, while others have named levels or no adjustable control. **Auto** keeps the model's default. Missing control metadata leaves Auto available without inventing effort levels.
 
 | API | Parameter |
 |---|---|
-| OpenAI | `"reasoning_effort": "none" \| "low" \| "medium" \| "high"` (`none` turns thinking off) |
-| Anthropic | `"thinking": {"type": "disabled"}` or `{"type": "enabled", "budget_tokens": 4096}` |
-| Ollama | `"think": false \| true \| "low" \| "medium" \| "high"` |
+| OpenAI | `"reasoning_effort": "none" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh" \| "max"` — only choices supported by the deployed model |
+| Anthropic | `"thinking": {"type": "disabled"}` or `{"type": "enabled", "budget_tokens": 4096}`; `output_config.effort` passes through supported named levels |
+| Ollama | `"think": false \| true` or a named level declared by that runner's `/api/show` metadata |
 
-The reasoning streams separately from the answer (`reasoning` in OpenAI deltas, `thinking` blocks in Anthropic, `message.thinking` in Ollama). How much the levels change depends on the model; "off" is the most reliable switch.
+`/v1/models` and the Studio model endpoint expose `capabilities` and `reasoning` metadata. Unsupported explicit choices return a clear error; xhigh is never silently reduced to high or treated as max. Reasoning streams separately where the runner exposes it (`reasoning` in OpenAI deltas, `thinking` blocks in Anthropic, `message.thinking` in Ollama). The plain Transformers fallback may return thinking text within content. Some reasoning models cannot turn thinking off.
 
 | Surface | Endpoints |
 |---|---|

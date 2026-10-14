@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import Body
 from fastapi.responses import Response
 
+from ..model_support import audio_adapter, model_config
 from .audio import encode
 from .common import WorkerState, create_app, device, parse_args, serve, start_loading
 
@@ -80,16 +81,14 @@ class ChatterboxTTS:
 
 
 class TransformersTTS:
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, options: dict | None = None):
         import torch
         from transformers import pipeline
 
         dev = 0 if device() == "cuda" else -1
         dtype = torch.float16 if dev == 0 else torch.float32
-        try:
-            self.pipe = pipeline("text-to-speech", model=model_path, device=dev, torch_dtype=dtype)
-        except Exception:
-            self.pipe = pipeline("text-to-speech", model=model_path, device=dev)
+        self.pipe = pipeline("text-to-speech", model=model_path, device=dev, torch_dtype=dtype,
+                             trust_remote_code=(options or {}).get("trust_remote_code") is True)
         self.voices = ["default"]
 
     def synth(self, text: str, voice: str | None, speed: float, **_):
@@ -123,13 +122,24 @@ def main() -> None:
         with state.gpu_lock:
             audio, sr = tts.synth(text, req.get("voice"), speed, reference_b64=req.get("reference_audio_b64"),
                                   exaggeration=float(req.get("exaggeration", 0.5)),
-                                  cfg_weight=float(req.get("cfg_weight", 0.5)))
+                                  cfg_weight=float(req.get("cfg_weight", 0.5)),
+                                  **{key: req[key] for key in ("seed", "eval_cfg", "stop_threshold", "min_stop_step", "cfg_scale") if key in req})
         data, media = encode(audio, sr, req.get("response_format") or "mp3")
         return Response(data, media_type=media)
 
     def loader():
-        cls = ENGINES[args.engine]
-        tts = cls(args.model)
+        if args.engine == "transformers_tts":
+            from .tts_custom import MiDashengTTS, VibeVoiceTTS
+
+            adapter = audio_adapter(model_config(args.model))
+            if adapter == "midasheng":
+                tts = MiDashengTTS(args.model, args.options)
+            elif adapter in ("vibevoice", "vibevoice_hf"):
+                tts = VibeVoiceTTS(args.model, args.options, converted=adapter == "vibevoice_hf")
+            else:
+                tts = TransformersTTS(args.model, args.options)
+        else:
+            tts = ENGINES[args.engine](args.model)
         state.info = {"engine": args.engine, "voices": tts.voices[:50]}
         return tts
 

@@ -40,12 +40,14 @@ def _image_part(block: dict) -> dict | None:
     return None
 
 
-def effort_from_anthropic(thinking: dict | None) -> str | None:
+def effort_from_anthropic(thinking: dict | None, output_config: dict | None = None) -> str | None:
     """Anthropic ``thinking`` → OpenAI ``reasoning_effort``."""
+    if isinstance(thinking, dict) and thinking.get("type") == "disabled":
+        return "none"
+    if isinstance(output_config, dict) and output_config.get("effort") in ("minimal", "low", "medium", "high", "xhigh", "max"):
+        return output_config["effort"]
     if not isinstance(thinking, dict):
         return None
-    if thinking.get("type") == "disabled":
-        return "none"
     budget = int(thinking.get("budget_tokens") or 0)
     if not budget:
         return None
@@ -53,11 +55,11 @@ def effort_from_anthropic(thinking: dict | None) -> str | None:
 
 
 def effort_from_ollama(think) -> str | None:
-    """Ollama ``think`` (bool or "low"/"medium"/"high") → OpenAI ``reasoning_effort``."""
+    """Ollama ``think`` (bool or named effort) → OpenAI ``reasoning_effort``."""
     if think is False:
         return "none"
-    if isinstance(think, str) and think in ("low", "medium", "high"):
-        return think
+    if isinstance(think, str) and think.lower() in ("minimal", "low", "medium", "high", "xhigh", "max"):
+        return think.lower()
     return None
 
 
@@ -101,7 +103,7 @@ def anthropic_to_openai(body: dict) -> dict:
             msgs.append({"role": "user", "content": "\n".join(p["text"] for p in parts) if only_text else parts})
 
     out: dict = {"messages": msgs, "stream": bool(body.get("stream"))}
-    effort = effort_from_anthropic(body.get("thinking"))
+    effort = effort_from_anthropic(body.get("thinking"), body.get("output_config"))
     if effort:
         out["reasoning_effort"] = effort
     if body.get("max_tokens"):

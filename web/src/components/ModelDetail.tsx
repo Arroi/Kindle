@@ -9,7 +9,9 @@ import { useLive } from "../lib/live";
 import type { CatalogItem, DeploymentSpec, Variant } from "../lib/types";
 import { FitGauge } from "./meters";
 import { ModelLogo } from "./ModelLogo";
-import { Button, Field, Input, Select, VerdictTag } from "./ui";
+import { CapabilityTags } from "./CapabilityTags";
+import { effortLabel } from "../lib/capabilities";
+import { Button, Field, Input, Select, Toggle, VerdictTag } from "./ui";
 
 export interface ModelChoice {
   item: CatalogItem;
@@ -19,12 +21,12 @@ export interface ModelChoice {
 const CTX = [2048, 4096, 8192, 16384, 32768, 65536];
 
 /** Engine options shown per modality. Values are merged into spec.options. */
-export function OptionsForm({
+function EngineOptions({
   item,
   options,
   onChange,
 }: {
-  item: CatalogItem;
+  item: Pick<CatalogItem, "modality" | "engine" | "source" | "custom_code">;
   options: Record<string, any>;
   onChange: (o: Record<string, any>) => void;
 }) {
@@ -103,6 +105,23 @@ export function OptionsForm({
     );
   }
   return <p className="text-[13px] text-fg-3">No extra settings for this engine.</p>;
+}
+
+export function OptionsForm(props: Parameters<typeof EngineOptions>[0]) {
+  const { item, options, onChange } = props;
+  const customCode = ["vllm", "transformers", "transformers_tts", "transformers_asr"].includes(item.engine ?? "");
+  return <div className="space-y-4">
+    <EngineOptions {...props} />
+    {customCode && <div className="space-y-3 border-t border-line pt-4">
+      <Toggle checked={options.trust_remote_code === true}
+        onChange={v => onChange({ ...options, trust_remote_code: v })}
+        label="Allow model custom code"
+        hint={item.custom_code ? "This checkpoint declares custom code. Enable only if you trust its source; its Python code runs in your notebook." : "For checkpoints that need their own Python code. Enable only for a source you trust."} />
+      {item.source === "hf" && <Field label="Model revision" hint="Optional branch, tag or commit SHA. Use a commit SHA to pin the model and its code.">
+        <Input value={options.revision ?? ""} placeholder="main" onChange={e => onChange({ ...options, revision: e.target.value || undefined })} />
+      </Field>}
+    </div>}
+  </div>;
 }
 
 function VariantRow({ v, active, onPick }: { v: Variant; active: boolean; onPick: () => void }) {
@@ -212,6 +231,8 @@ export function ModelDetail({
             )}
           </div>
           {item.description && <p className="mt-3 text-[14px] text-fg-2">{item.description}</p>}
+          <div className="mt-4"><CapabilityTags capabilities={item.capabilities} /></div>
+          {item.reasoning?.supported && <p className="mt-2 text-[12px] text-fg-3">Reasoning: {item.reasoning.efforts.length ? ["Auto", ...item.reasoning.efforts.map(effortLabel)].join(" · ") : "Model default"}. {item.reasoning.source === "family" ? "Estimated from the model family; verified by the runner when loaded." : "Detected from model metadata or its chat template."}</p>}
           {!!item.runtime_repos?.length && <div className="mt-3 text-[12px] text-fg-3"><p>The download estimate includes these base checkpoints:</p><div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">{item.runtime_repos.map(repo => <a key={repo} href={`https://huggingface.co/${repo}`} target="_blank" rel="noreferrer" className="text-fg-2 hover:text-signal hover:underline">{repo}</a>)}</div></div>}
         </div>
 
@@ -277,7 +298,7 @@ export function ModelDetail({
         {item.engine && (
           <div>
             <div className="readout mb-2">Settings</div>
-            <OptionsForm item={item} options={options} onChange={setOptions} />
+            <OptionsForm item={{ ...item, engine: engine ?? item.engine }} options={options} onChange={setOptions} />
           </div>
         )}
 

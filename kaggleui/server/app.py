@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import ValidationError
 
 from .. import __version__, notify, secretstore
+from ..capabilities import profile
 from ..catalog.resolve import ENGINE_LABELS, MODALITY_ENGINES
 from ..engines.world_engine import list_recipes
 from ..gateway import anthropic as anthropic_gw
@@ -447,13 +448,18 @@ def create_app(state: AppState) -> FastAPI:
         require_access(request)
         out = []
         for d in state.manager.deployments.values():
+            detected = profile(d.spec.model.id, tags=d.info.get("capabilities", [])) if d.spec.modality == "text" else {}
+            if d.info.get("reasoning"):
+                detected = {"capabilities": d.info.get("capabilities", []), "reasoning": d.info["reasoning"]}
             out.append({"id": d.id, "name": d.served_name, "modality": d.spec.modality, "status": d.status,
                         "message": d.message, "progress": d.progress, "capabilities": d.info.get("capabilities", []),
+                        **detected,
                         "controls": d.info.get("controls"), "start_frame": d.info.get("start_frame"),
                         "prompt_conditioning": bool(d.info.get("prompt_conditioning")),
                         "text_input": bool(d.info.get("text_input")), "result_kind": d.info.get("result_kind", "video"),
                         "needs_vlm": bool(d.info.get("needs_vlm")),
                         "options": d.spec.options, "model_id": d.spec.model.id, "source": d.spec.model.source,
+                        "adapter": d.info.get("adapter"),
                         "interface": d.interface, "engine": d.spec.model.engine, "runtime": d.info.get("runtime")})
         return out
 

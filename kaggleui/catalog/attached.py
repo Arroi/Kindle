@@ -10,6 +10,9 @@ import os
 import re
 from pathlib import Path
 
+from ..capabilities import local_profile
+from ..engines.model_support import model_config
+
 SHARD_RE = re.compile(r"-\d{5}-of-\d{5}\.gguf$", re.I)
 
 
@@ -97,9 +100,9 @@ def scan(root: Path = Path("/kaggle/input"), max_depth: int = 7) -> list[dict]:
                 found.append({"path": str(d), "name": label, "modality": "tts", "engine": "kokoro",
                               "size": _dir_weight_size(d)})
                 dirnames[:] = []
-            elif model_type in {"vits", "bark", "speecht5", "fastspeech2_conformer", "csm", "dia"}:
+            elif model_type in {"vits", "bark", "speecht5", "fastspeech2_conformer", "csm", "dia", "midashenglm-gen", "vibevoice"}:
                 found.append({"path": str(d), "name": label, "modality": "tts", "engine": "transformers_tts",
-                              "size": _dir_weight_size(d), "experimental": True})
+                              "size": _dir_weight_size(d), "experimental": True, "custom_code": bool(cfg.get("auto_map"))})
                 dirnames[:] = []
             elif is_ct2 and "whisper" in (rel.lower() + model_type):
                 found.append({"path": str(d), "name": label, "modality": "stt", "engine": "faster_whisper",
@@ -113,4 +116,10 @@ def scan(root: Path = Path("/kaggle/input"), max_depth: int = 7) -> list[dict]:
                 found.append({"path": str(d), "name": label, "modality": "text", "engine": "transformers",
                               "size": _dir_weight_size(d), "params": None})
                 dirnames[:] = []
+    for item in found:
+        config = model_config(item["path"])
+        if config.get("auto_map"):
+            item["custom_code"] = True
+        if item["modality"] == "text":
+            item.update(local_profile(item["path"], item["name"]))
     return found

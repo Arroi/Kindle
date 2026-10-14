@@ -6,6 +6,7 @@ import asyncio
 
 import httpx
 
+from ..capabilities import local_profile
 from ..catalog import hf
 from ..proc import ManagedProcess
 from ..schemas import DeploymentSpec
@@ -14,6 +15,7 @@ from .base import OpenAIUpstream
 from .context import DeployError, EngineContext
 from .download import hf_download, repo_files
 from .install import ensure_venv
+from .model_support import model_config
 
 
 async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstream, dict]:
@@ -23,10 +25,12 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstre
     if spec.model.source == "attached":
         path = spec.model.id
     else:
-        sel = hf.transformers_files(await repo_files(spec.model.id))
-        path = await hf_download(ctx, spec.model.id, sel["files"], sel["size"])
+        revision = spec.options.get("revision")
+        sel = hf.transformers_files(await repo_files(spec.model.id, revision=revision))
+        path = await hf_download(ctx, spec.model.id, sel["files"], sel["size"], revision=revision)
     port = free_port()
     opts = spec.options
+    detected = local_profile(path, spec.model.id)
     tp = max(1, len(ctx.gpus))
     cmd = [py, "-m", "vllm.entrypoints.openai.api_server", "--model", path,
            "--served-model-name", ctx.served_name, "--host", "127.0.0.1", "--port", str(port),
@@ -38,8 +42,13 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstre
         cmd.append("--enforce-eager")
     if opts.get("quantization"):
         cmd += ["--quantization", str(opts["quantization"])]
-    if opts.get("trust_remote_code"):
+    if opts.get("trust_remote_code") is True:
         cmd.append("--trust-remote-code")
+    parser = opts.get("reasoning_parser")
+    if not parser and detected["reasoning"].get("supported") and str(model_config(path).get("model_type", "")).startswith("qwen3"):
+        parser = "qwen3"
+    if parser:
+        cmd += ["--reasoning-parser", str(parser)]
     proc = ManagedProcess(f"vllm-{ctx.dep_id}", cmd, env=ctx.env(), log_path=ctx.paths.logs / f"{ctx.dep_id}-vllm.log",
                           on_line=ctx.log)
     ctx.processes.append(proc)
@@ -59,4 +68,5 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstre
             await asyncio.sleep(1)
         else:
             raise DeployError("vLLM didn't become ready within 30 minutes")
-    return OpenAIUpstream(base, ctx.served_name, template_thinking=True), {"port": port, "tensor_parallel": tp, "path": path}
+    return OpenAIUpstream(base, ctx.served_name, template_thinking=True, profile=detected), {
+        "port": port, "tensor_parallel": tp, "path": path, **detected}

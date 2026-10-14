@@ -12,6 +12,8 @@ from typing import Any
 
 import httpx
 
+from ..capabilities import reasoning_body
+
 
 class Unsupported(Exception):
     """The model behind this backend can't do the requested operation."""
@@ -100,16 +102,22 @@ class OpenAIUpstream(Backend):
     """Text backend for anything serving /v1/chat/completions (Ollama, vLLM, our transformers worker)."""
 
     def __init__(self, base_url: str, upstream_model: str, native: frozenset[str] = frozenset(),
-                 template_thinking: bool = False):
+                 template_thinking: bool = False, profile: dict | None = None):
         self.modality = "text"
         self.template_thinking = template_thinking
         self.base_url = base_url.rstrip("/")
         self.upstream_model = upstream_model
         self.native = native
+        self.profile = profile
         self.client = httpx.AsyncClient(timeout=httpx.Timeout(connect=10, read=600, write=60, pool=10))
 
     def _body(self, body: dict) -> dict:
         out = {**body, "model": self.upstream_model}
+        if self.profile is not None:
+            try:
+                return reasoning_body(out, self.profile, ollama="ollama" in self.native)
+            except ValueError as exc:
+                raise UpstreamError(400, str(exc)) from exc
         # Ollama understands reasoning_effort directly. vLLM/transformers serve models like Qwen3 whose
         # chat template has an enable_thinking switch; turn "none" into that switch too.
         if self.template_thinking and out.get("reasoning_effort") == "none":

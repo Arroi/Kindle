@@ -1,4 +1,4 @@
-import { ExternalLink, FileCode2, Plus, RotateCcw, ScrollText, Sparkles, Square } from "lucide-react";
+import { ExternalLink, FileCode2, Plus, RotateCcw, ScrollText, SlidersHorizontal, Sparkles, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -8,6 +8,7 @@ import { api } from "../lib/api";
 import { bytes, cx, duration, MODALITY_LABEL } from "../lib/format";
 import { useLive, useLogs } from "../lib/live";
 import { ModelLogo } from "../components/ModelLogo";
+import { OptionsForm } from "../components/ModelDetail";
 import type { Deployment } from "../lib/types";
 
 const STAGES = ["installing", "downloading", "loading", "ready"] as const;
@@ -80,6 +81,8 @@ function Logs({ id }: { id: string }) {
 function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
   const [showLogs, setShowLogs] = useState(d.status === "error" || focus);
   const [busy, setBusy] = useState<string | null>(null);
+  const [configure, setConfigure] = useState(false);
+  const [options, setOptions] = useState<Record<string, unknown>>(d.spec.options ?? {});
   const toast = useToast();
   const ref = useRef<HTMLDivElement>(null);
   const [, tick] = useState(0);
@@ -106,6 +109,17 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function retry() {
+    setBusy("retry");
+    try {
+      await api.deploy({ ...d.spec, options });
+      setConfigure(false);
+      toast(`Launching ${d.name} with updated settings…`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Launch failed", "error");
+    } finally { setBusy(null); }
   }
 
   return (
@@ -135,6 +149,9 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
           <Button size="sm" variant="ghost" onClick={() => setShowLogs(!showLogs)}>
             <ScrollText className="size-3.5" /> Logs
           </Button>
+          {d.status === "error" && <Button size="sm" variant="ghost" onClick={() => { setOptions(d.spec.options ?? {}); setConfigure(true); }}>
+            <SlidersHorizontal className="size-3.5" /> Configure & retry
+          </Button>}
           <Button size="sm" variant="ghost" busy={busy === "restart"} onClick={() => act("restart")}>
             <RotateCcw className="size-3.5" /> Restart
           </Button>
@@ -162,6 +179,15 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
       {d.status === "error" && (
         <div className="mt-4 rounded-lg border border-worst/40 bg-worst-soft px-3.5 py-2.5 text-[13.5px] text-worst">{d.error}</div>
       )}
+      <Drawer open={configure} onClose={() => setConfigure(false)} title={`Retry ${d.name}`}>
+        <div className="space-y-5 p-5">
+          <p className="text-[13px] text-fg-2">Adjust this model’s settings and start a new deployment using its cached download.</p>
+          <OptionsForm item={{ modality: d.modality, source: d.spec.model.source === "curated" ? "hf" : d.spec.model.source,
+            engine: d.spec.model.engine, custom_code: /trust_remote_code|custom code|custom Python/i.test(d.error ?? "") }}
+            options={options} onChange={setOptions} />
+          <Button variant="primary" busy={busy === "retry"} onClick={retry}>Deploy with these settings</Button>
+        </div>
+      </Drawer>
 
       {ifaceName && (
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-bg-2 px-3.5 py-2.5">

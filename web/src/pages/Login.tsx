@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Brand } from "../components/Shell";
 import { Button, Input } from "../components/ui";
 import { api } from "../lib/api";
+import { CommunityLinks } from "../components/CommunityLinks";
 
 function Frame({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
   return (
@@ -13,7 +14,7 @@ function Frame({ children, footer }: { children: React.ReactNode; footer?: React
         <section className="login-intro"><span className="eyebrow">A notebook. A GPU. Your workspace.</span><h2 className="display mt-5 text-[38px] sm:text-[48px]">Open models,<br />within reach.</h2><p className="mt-5 max-w-sm text-[15px] leading-relaxed text-fg-2">Chat, images, video, speech, and 3D worlds. Run a model on your notebook and use it from any browser.</p><div className="mt-8 flex gap-3" aria-label="Supported model families">{["qwen-color", "deepseek-color", "mistral-color", "meta-color", "hunyuan-color"].map(brand => <span key={brand} className="model-logo size-11"><img src={`/brands/${brand}.svg`} width="28" height="28" alt={`${brand.replace("-color", "")} logo`} /></span>)}</div><p className="mt-5 text-[12px] text-fg-3">Open source · Powered by your notebook session</p></section>
         <section className="login-form"><div>{children}</div>{footer && <div className="mt-6 border-t border-line pt-5 text-[13px] text-fg-3">{footer}</div>}</section>
       </main>
-      <footer className="login-footer">KaggleUI is an independent project. <a href="https://github.com/UltraFEmotes/KaggleUI" target="_blank" rel="noreferrer" className="underline underline-offset-4">Source & help</a></footer>
+      <footer className="login-footer"><CommunityLinks /></footer>
     </div>
   );
 }

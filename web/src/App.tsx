@@ -7,6 +7,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { Brand, Shell } from "./components/Shell";
 import { Button, Empty } from "./components/ui";
+import { CommunityLinks } from "./components/CommunityLinks";
 import { api } from "./lib/api";
 import { LiveProvider, useLive } from "./lib/live";
 import { useTheme } from "./lib/theme";
@@ -85,6 +86,7 @@ function GuestStudio() {
           </Suspense>
         </ErrorBoundary>
       </main>
+      <footer className="workspace-footer"><CommunityLinks /></footer>
     </div>
   );
 }

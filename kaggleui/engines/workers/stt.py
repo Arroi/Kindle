@@ -40,7 +40,8 @@ class TransformersASR:
 
         dev = 0 if device() == "cuda" else -1
         self.pipe = pipeline("automatic-speech-recognition", model=model_path, device=dev,
-                             torch_dtype=torch.float16 if dev == 0 else torch.float32)
+                             torch_dtype=torch.float16 if dev == 0 else torch.float32,
+                             trust_remote_code=options.get("trust_remote_code") is True)
         self.is_whisper = "whisper" in type(self.pipe.model).__name__.lower()
 
     def transcribe(self, path: str, language: str | None, task: str, prompt: str | None, temperature: float,

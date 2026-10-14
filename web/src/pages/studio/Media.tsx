@@ -350,20 +350,23 @@ export function TtsStudio({ model }: { model: StudioModel }) {
   const [voice, setVoice] = useState("");
   const [speed, setSpeed] = useState(1);
   const [format, setFormat] = useState("mp3");
+  const [reference, setReference] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [clips, setClips] = useState<{ url: string; text: string; voice: string; format: string }[]>([]);
 
   useEffect(() => {
+    setReference(null);
     gateway.get(`/v1/audio/voices?model=${encodeURIComponent(model.name)}`).then((r) => r.json()).then((d) => {
       setVoices(d.voices ?? []);
-      setVoice((v) => v || d.voices?.[0] || "");
+      setVoice((v) => d.voices?.includes(v) ? v : d.voices?.[0] || "");
     }).catch(() => {});
   }, [model.name]);
 
   async function speak() {
     setBusy(true);
     try {
-      const res = await gateway.post("/v1/audio/speech", { model: model.name, input: text, voice: voice || undefined, speed, response_format: format });
+      const res = await gateway.post("/v1/audio/speech", { model: model.name, input: text, voice: voice || undefined, speed, response_format: format,
+        ...(reference ? { reference_audio_b64: await fileToB64(reference) } : {}) });
       const blob = await res.blob();
       setClips((c) => [{ url: URL.createObjectURL(blob), text, voice, format: blob.type.includes("wav") ? "wav" : format }, ...c]);
     } catch (e) {
@@ -377,8 +380,12 @@ export function TtsStudio({ model }: { model: StudioModel }) {
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="panel space-y-4 p-4">
         <Field label="Text">
-          <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type something to hear it." />
+          <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={model.adapter === "midasheng" ? "Describe an audio scene, music, effects or speech. Use <|caption|>, <|asr|>, <|speech|> for structured prompts." : "Type something to hear it."} />
         </Field>
+        {(model.engine === "chatterbox" || model.adapter?.startsWith("vibevoice")) && <Field label="Reference voice (optional)" hint="Upload an audio clip to guide the speaker’s voice.">
+          <div className="flex items-center gap-2"><Input type="file" accept="audio/*" onChange={e => setReference(e.target.files?.[0] ?? null)} />
+            {reference && <Button variant="ghost" size="sm" onClick={() => setReference(null)}>Clear</Button>}</div>
+        </Field>}
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Voice">
             <Select value={voice} onChange={(e) => setVoice(e.target.value)} disabled={!voices.length}>

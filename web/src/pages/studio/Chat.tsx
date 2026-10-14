@@ -1,10 +1,11 @@
 import { Brain, ChevronDown, ImagePlus, Send, SlidersHorizontal, Square, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Button, Field, Segmented, Select, Slider, Textarea } from "../../components/ui";
+import { Button, Field, Select, Slider, Textarea } from "../../components/ui";
 import { cx } from "../../lib/format";
 import { renderMarkdown } from "../../lib/markdown";
 import type { StudioModel } from "../../lib/types";
+import { effortLabel } from "../../lib/capabilities";
 
 interface Msg {
   role: "user" | "assistant";
@@ -18,14 +19,7 @@ interface Msg {
 
 type Handler = (msg: any) => void;
 
-type Effort = "default" | "none" | "low" | "medium" | "high";
-const EFFORTS: { value: Effort; label: string }[] = [
-  { value: "default", label: "Auto" },
-  { value: "none", label: "Off" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Med" },
-  { value: "high", label: "High" },
-];
+type Effort = string;
 
 /** One WebSocket per Studio, multiplexed by request id. */
 function useStudioSocket() {
@@ -146,7 +140,9 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
   const [effort, setEffort] = useState<Effort>("default");
   const scroller = useRef<HTMLDivElement>(null);
   const vision = model.capabilities.includes("vision");
-  const thinking = model.capabilities.includes("thinking");
+  const thinking = model.reasoning?.supported || model.capabilities.some(cap => ["reasoning", "thinking"].includes(cap));
+  const effortOptions = [{ value: "default", label: "Auto" }, ...(model.reasoning?.supported === false ? [] : model.reasoning?.efforts ?? []).map(value => ({ value, label: effortLabel(value) }))];
+  const activeEffort = effortOptions.some(option => option.value === effort) ? effort : "default";
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -173,7 +169,7 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
         op: "chat",
         model: model.name,
         messages: apiMessages,
-        params: { temperature, max_tokens: maxTokens, ...(effort !== "default" ? { reasoning_effort: effort } : {}) },
+        params: { temperature, max_tokens: maxTokens, ...(activeEffort !== "default" ? { reasoning_effort: activeEffort } : {}) },
       },
       (ev) => {
         setMessages((prev) => {
@@ -211,8 +207,8 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
         <div className="flex flex-wrap items-center justify-end gap-1">
           {thinking && (
             <div className="mr-1 flex items-center gap-2" title="How much the model reasons before answering">
-              <span className="readout hidden sm:inline">Thinking</span>
-              <Segmented<Effort> size="sm" value={effort} onChange={setEffort} options={EFFORTS} />
+              <span className="readout hidden sm:inline">Reasoning</span>
+              <Select aria-label="Reasoning effort" value={activeEffort} onChange={event => setEffort(event.target.value)} className="h-8 max-w-32 text-[12px]" disabled={effortOptions.length < 2}>{effortOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</Select>
             </div>
           )}
           <Button size="sm" variant="ghost" onClick={() => setShowParams(!showParams)}>
@@ -230,13 +226,9 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
           </Field>
           <Slider label="Temperature" value={temperature} min={0} max={2} step={0.05} onChange={setTemperature} format={(v) => v.toFixed(2)} />
           <Slider label="Max tokens" value={maxTokens} min={64} max={16384} step={64} onChange={setMaxTokens} />
-          <Field label="Reasoning effort" hint="For thinking models (Qwen3, gpt-oss, DeepSeek-R1…). Off = answer directly.">
-            <Select value={effort} onChange={(e) => setEffort(e.target.value as Effort)}>
-              <option value="default">Model default</option>
-              <option value="none">Off (no thinking)</option>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
+          <Field label="Reasoning effort" hint={thinking ? model.reasoning?.efforts.length ? "Available controls detected for this model and runner. Auto keeps the model default." : "This model provides no verified effort controls. Its default reasoning behavior is used." : "No reasoning controls detected for this model."}>
+            <Select value={activeEffort} onChange={(e) => setEffort(e.target.value)} disabled={effortOptions.length < 2}>
+              {effortOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </Select>
           </Field>
         </div>

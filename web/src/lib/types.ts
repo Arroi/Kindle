@@ -136,6 +136,8 @@ export interface Variant {
 }
 
 export interface CatalogItem {
+  custom_code?: boolean;
+  reasoning?: import("./capabilities").ReasoningSupport;
   runtime_repos?: string[];
   extra_size?: number;
   key: string;
@@ -207,6 +209,8 @@ export interface UpdateStatus {
 }
 
 export interface StudioModel {
+  adapter?: string;
+  reasoning?: import("./capabilities").ReasoningSupport;
   model_id?: string;
   source?: string;
   text_input?: boolean;

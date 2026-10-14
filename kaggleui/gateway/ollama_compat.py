@@ -146,8 +146,14 @@ async def show(request: Request):
         dep = find(request, body.get("model") or body.get("name"), "text")
         if "ollama" in dep.backend.native and dep.backend.base_url:
             return await _native(request, "/api/show", {"model": dep.backend.upstream_model}, dep)
-        return {"modelfile": "", "parameters": "", "template": "", "details": {"format": "safetensors"},
-                "capabilities": ["completion"], "model_info": {}}
+        caps = ["thinking" if cap == "reasoning" else cap for cap in dep.info.get("capabilities", [])]
+        reason = dep.info.get("reasoning") or {}
+        result = {"modelfile": "", "parameters": "", "template": "", "details": {"format": "safetensors"},
+                  "capabilities": list(dict.fromkeys(["completion", *caps])), "model_info": {}}
+        if reason.get("efforts"):
+            result["thinking"] = {"values": [False if value == "none" else True if value == "on" else value
+                                             for value in reason["efforts"]], "default": reason.get("default")}
+        return result
     except Exception as e:  # noqa: BLE001
         return ollama_error(wrap(e))
 

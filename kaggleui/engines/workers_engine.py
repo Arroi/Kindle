@@ -8,6 +8,7 @@ import sys
 
 import httpx
 
+from ..capabilities import local_profile
 from ..catalog import hf
 from ..proc import ManagedProcess
 from ..schemas import DeploymentSpec
@@ -16,6 +17,7 @@ from .base import Backend, OpenAIUpstream, WorkerBackend
 from .context import DeployError, EngineContext
 from .download import hf_download, repo_files
 from .install import apt_install, ensure_venv, nvidia_lib_path, pip_install, worker_pythonpath
+from .model_support import audio_adapter, audio_environment, model_config
 
 WORKER_BASE_REQS = ["fastapi", "uvicorn", "python-multipart", "pydantic", "pyyaml", "httpx"]
 
@@ -126,10 +128,16 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
     if engine == "diffusers_world" and (ctx.hw.min_sm or 0) < 80:
         raise DeployError("This Cosmos runtime requires an Ampere or newer GPU with bf16 support. "
                           "Kaggle T4 and P100 GPUs aren't supported by this checkpoint.")
+    model_path, variant = await download_model(spec, ctx, cfg["download"], cfg.get("allow"))
+    adapter = audio_adapter(model_config(model_path)) if engine == "transformers_tts" else None
+    if adapter == "midasheng" and spec.options.get("trust_remote_code") is not True:
+        raise DeployError("MiDashengLM-Gen requires its repository's Python code. In Customize → Settings, "
+                          "enable 'Allow model custom code' for this checkpoint and deploy again.")
     extra_env: dict[str, str] = {}
     python = sys.executable
-    if cfg.get("venv"):
-        python = await ensure_venv(ctx, cfg["venv"], cfg["reqs"] + WORKER_BASE_REQS, label=cfg["label"])
+    if adapter or cfg.get("venv"):
+        env_name, reqs = audio_environment(adapter) if adapter else (cfg["venv"], cfg["reqs"])
+        python = await ensure_venv(ctx, env_name, reqs + WORKER_BASE_REQS, label=adapter or cfg["label"])
         extra_env["PYTHONPATH"] = worker_pythonpath(ctx)
     else:
         await pip_install(ctx, cfg["reqs"], label=cfg["label"])
@@ -140,12 +148,13 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
         if lib:
             extra_env["LD_LIBRARY_PATH"] = lib
 
-    model_path, variant = await download_model(spec, ctx, cfg["download"], cfg.get("allow"))
     proc, base = await start_worker(ctx, python=python, module=cfg["module"], model=model_path, engine=engine,
                                     options=spec.options, variant=variant, extra_env=extra_env,
                                     label=cfg["label"])
     if cfg["modality"] == "text":
-        backend: Backend = OpenAIUpstream(base, ctx.served_name, template_thinking=True)
+        detected = local_profile(model_path, spec.model.id, text_only=True)
+        backend: Backend = OpenAIUpstream(base, ctx.served_name, template_thinking=True, profile=detected)
     else:
+        detected = {}
         backend = WorkerBackend(cfg["modality"], base)
-    return backend, {"worker": cfg["module"], "path": model_path, "variant": variant}
+    return backend, {"worker": cfg["module"], "path": model_path, "variant": variant, "adapter": adapter, **detected}

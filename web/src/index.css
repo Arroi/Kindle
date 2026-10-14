@@ -338,3 +338,11 @@ button:not(:disabled), select { cursor: pointer; }
 .login-footer { max-width: 1280px; width: 100%; margin: auto; padding: 24px 32px; color: var(--fg-3); font-size: 11px; }
 .studio-chat .prose-chat { max-width: 75ch; }
 @media (max-width: 800px) { .login-layout { grid-template-columns: minmax(0,1fr); gap: 35px; max-width: 480px; padding: 32px 20px 55px; } .login-intro { display: none; } .login-header { padding: 24px; } .login-form { padding: 28px; } }
+
+.capability-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; color: var(--fg-2); background: var(--panel-2); font-size: 10.5px; font-weight: 500; line-height: 1.5; white-space: nowrap; }
+.community-links { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-left: auto; color: var(--fg-3); font-size: 11px; }
+.discord-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 34px; padding: 6px 11px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--fg-2); font-size: 12px; font-weight: 500; transition: color 180ms, background 180ms, transform 180ms; }
+.discord-button:hover { color: var(--fg); background: var(--panel-2); transform: translateY(-1px); }
+.discord-button:active { transform: translateY(0); }
+.workspace-footer { flex-wrap: wrap; }
+@media (max-width: 640px) { .community-links { margin-left: 0; width: 100%; justify-content: space-between; } }

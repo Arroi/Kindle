@@ -147,7 +147,8 @@ async def _json(request: Request) -> dict:
 
 def _model_entry(d) -> dict:
     return {"id": d.served_name, "object": "model", "created": int(d.ready_at or d.created_at),
-            "owned_by": "kaggleui", "modality": d.spec.modality}
+            "owned_by": "kaggleui", "modality": d.spec.modality,
+            "capabilities": d.info.get("capabilities", []), "reasoning": d.info.get("reasoning")}
 
 
 @router.get("/v1/models")

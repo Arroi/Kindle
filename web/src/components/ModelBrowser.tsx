@@ -8,6 +8,7 @@ import { useLive } from "../lib/live";
 import type { CatalogItem, Gpu, Modality } from "../lib/types";
 import { FitGauge } from "./meters";
 import { ModelLogo } from "./ModelLogo";
+import { CapabilityTags } from "./CapabilityTags";
 import { Button, Chip, Empty, Input, Segmented, Select, Toggle, VerdictTag } from "./ui";
 
 export const MODALITY_ORDER: Modality[] = ["text", "image", "video", "tts", "stt", "world"];
@@ -85,11 +86,7 @@ export function ModelCard({
             {bytes(item.size)}
           </Chip>
         ) : null}
-        {item.capabilities.slice(0, 3).map((c) => (
-          <Chip key={c} tone="info">
-            {c}
-          </Chip>
-        ))}
+        <CapabilityTags capabilities={item.capabilities} />
         {item.experimental && <Chip tone="warn">experimental</Chip>}
       </div>
       <div className="mt-auto">
@@ -136,7 +133,7 @@ function ModelRow({ item, selected, onOpen }: { item: CatalogItem; selected: boo
         <p className="line-clamp-1 text-[13px] text-fg-2">{item.description || item.id}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-fg-3">
           {item.variant && <span>{item.variant}</span>}
-          {item.capabilities.slice(0, 2).map((cap) => <span key={cap}>{cap}</span>)}
+          <CapabilityTags capabilities={item.capabilities} />
           {item.experimental && <span className="text-tight">Experimental</span>}
         </div>
         </div>
