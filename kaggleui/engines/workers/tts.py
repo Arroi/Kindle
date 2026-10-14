@@ -140,6 +140,8 @@ class TransformersTTS:
             kwargs["forward_params"] = {"speaker_id": 0}
         out = self.pipe(text, **kwargs)
         audio = np.asarray(out["audio"], dtype=np.float32).squeeze()
+        if audio.ndim == 2:
+            audio = audio.mean(axis=0 if audio.shape[0] <= 8 else 1)  # downmix music checkpoints to the mono encoder
         return audio, int(out["sampling_rate"])
 
 
