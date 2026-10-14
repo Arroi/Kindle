@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-Modality = Literal["text", "image", "video", "tts", "stt", "world"]
-MODALITIES: tuple[str, ...] = ("text", "image", "video", "tts", "stt", "world")
+from .catalog.categories import audio_family
+
+Modality = Literal["text", "image", "video", "tts", "audio", "stt", "world", "mesh"]
+MODALITIES: tuple[str, ...] = ("text", "image", "video", "tts", "audio", "stt", "world", "mesh")
 
 InterfaceKind = Literal["studio", "gradio", "openwebui", "comfyui", "none"]
 TunnelProvider = Literal["cloudflare", "cloudflare_named", "ngrok", "none"]
@@ -34,6 +36,14 @@ class DeploymentSpec(BaseModel):
     """Engine options, e.g. ``{"ctx": 8192}``, ``{"offload": "model"}``, ``{"dtype": "float16"}``."""
     gpus: list[int] | None = None
     """Pin to specific GPU indices; normally chosen automatically from free VRAM."""
+
+    @model_validator(mode="after")
+    def classify_audio(self):
+        if self.modality == "tts" and audio_family(self.model.id):
+            self.modality = "audio"
+            if self.model.engine == "transformers_tts":
+                self.model.engine = "transformers_audio"
+        return self
 
 
 class AccessSettings(BaseModel):

@@ -74,7 +74,11 @@ def scan(root: Path = Path("/kaggle/input"), max_depth: int = 7) -> list[dict]:
             engine = None
             try:
                 cls = json.loads((d / "model_index.json").read_text()).get("_class_name", "")
-                if cls.startswith("Cosmos"):
+                if any(kind in cls for kind in ("Audio", "Music")):
+                    modality = "audio"
+                elif any(kind in cls for kind in ("ShapE", "Hunyuan3D", "Trellis")):
+                    modality = "mesh"
+                elif cls.startswith("Cosmos"):
                     modality, engine = "world", "diffusers_world"
                 elif any(k in cls for k in ("MatrixGame", "LingBot", "HunyuanWorld")):
                     modality = "world"
@@ -96,7 +100,11 @@ def scan(root: Path = Path("/kaggle/input"), max_depth: int = 7) -> list[dict]:
             archs = " ".join(cfg.get("architectures") or [])
             model_type = str(cfg.get("model_type", ""))
             is_ct2 = "model.bin" in files and ("vocabulary.json" in files or "vocabulary.txt" in files)
-            if cfg.get("plbert") and cfg.get("vocab") and any(f.endswith(".pth") for f in files):
+            if model_type in {"midashenglm-gen", "musicgen", "musicgen_melody"}:
+                found.append({"path": str(d), "name": label, "modality": "audio", "engine": "transformers_audio",
+                              "size": _dir_weight_size(d), "experimental": True, "custom_code": bool(cfg.get("auto_map"))})
+                dirnames[:] = []
+            elif cfg.get("plbert") and cfg.get("vocab") and any(f.endswith(".pth") for f in files):
                 found.append({"path": str(d), "name": label, "modality": "tts", "engine": "kokoro",
                               "size": _dir_weight_size(d)})
                 dirnames[:] = []

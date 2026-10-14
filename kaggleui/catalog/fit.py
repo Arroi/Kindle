@@ -118,7 +118,7 @@ def runtime_vram(c: Candidate) -> int | None:
         return int(w * 1.15 + 1.2 * GB)
     if m == "video":
         return int(w * 1.3 + 2.5 * GB)
-    if m in ("tts", "stt"):
+    if m in ("tts", "audio", "stt"):
         return int(w * 1.2 + 0.6 * GB)
     if m == "world":
         return int(w * 1.3 + 3 * GB)

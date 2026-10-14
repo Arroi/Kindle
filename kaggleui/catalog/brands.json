@@ -1,0 +1,299 @@
+[
+  {
+    "id": "deepseek",
+    "label": "DeepSeek",
+    "logo": "deepseek-color",
+    "owners": [
+      "deepseek-ai"
+    ],
+    "pattern": "deepseek",
+    "search": [
+      "deepseek"
+    ]
+  },
+  {
+    "id": "alibaba",
+    "label": "Alibaba / Qwen",
+    "logo": "qwen-color",
+    "owners": [
+      "qwen",
+      "qwenlm",
+      "qwen3",
+      "wan-ai",
+      "alibaba",
+      "funasr"
+    ],
+    "pattern": "qwen|qwq|qvq|wan[0-9_. -]|wan-ai|cosyvoice|alibaba",
+    "search": [
+      "qwen",
+      "wan",
+      "cosyvoice"
+    ]
+  },
+  {
+    "id": "mistral",
+    "label": "Mistral AI",
+    "logo": "mistral-color",
+    "owners": [
+      "mistralai"
+    ],
+    "pattern": "mistral|mixtral|codestral|ministral|devstral|voxtral",
+    "search": [
+      "mistral",
+      "codestral"
+    ]
+  },
+  {
+    "id": "google",
+    "label": "Google / Gemma",
+    "logo": "google-color",
+    "owners": [
+      "google"
+    ],
+    "pattern": "gemma|google",
+    "search": [
+      "gemma"
+    ]
+  },
+  {
+    "id": "meta",
+    "label": "Meta / Llama",
+    "logo": "meta-color",
+    "owners": [
+      "meta-llama",
+      "facebook"
+    ],
+    "pattern": "llama|meta-llama",
+    "search": [
+      "llama"
+    ]
+  },
+  {
+    "id": "tencent",
+    "label": "Tencent / Hunyuan",
+    "logo": "hunyuan-color",
+    "owners": [
+      "tencent",
+      "tencent-hunyuan",
+      "tencentarc"
+    ],
+    "pattern": "hunyuan|hy-world|hy_world|worldplay|tencent",
+    "search": [
+      "hunyuan",
+      "hy-world"
+    ]
+  },
+  {
+    "id": "black-forest-labs",
+    "label": "Black Forest Labs / FLUX",
+    "logo": "flux",
+    "owners": [
+      "black-forest-labs"
+    ],
+    "pattern": "flux|black.forest",
+    "search": [
+      "flux"
+    ]
+  },
+  {
+    "id": "stability",
+    "label": "Stability AI",
+    "logo": "stability-color",
+    "owners": [
+      "stabilityai"
+    ],
+    "pattern": "stable.diffusion|stability|sdxl|stablelm",
+    "search": [
+      "stable-diffusion",
+      "sdxl"
+    ]
+  },
+  {
+    "id": "nvidia",
+    "label": "NVIDIA",
+    "logo": "nvidia-color",
+    "owners": [
+      "nvidia"
+    ],
+    "pattern": "nvidia|nemotron|cosmos",
+    "search": [
+      "nemotron",
+      "cosmos"
+    ]
+  },
+  {
+    "id": "microsoft",
+    "label": "Microsoft",
+    "logo": "microsoft-color",
+    "owners": [
+      "microsoft"
+    ],
+    "pattern": "microsoft|phi[0-9_.-]|vibevoice",
+    "search": [
+      "phi",
+      "vibevoice"
+    ]
+  },
+  {
+    "id": "minimax",
+    "label": "MiniMax",
+    "logo": "minimax-color",
+    "owners": [
+      "minimaxai"
+    ],
+    "pattern": "minimax",
+    "search": [
+      "minimax"
+    ]
+  },
+  {
+    "id": "moonshot",
+    "label": "Moonshot AI / Kimi",
+    "logo": "moonshot",
+    "owners": [
+      "moonshotai"
+    ],
+    "pattern": "moonshot|kimi",
+    "search": [
+      "kimi"
+    ]
+  },
+  {
+    "id": "openai",
+    "label": "OpenAI",
+    "logo": "openai",
+    "owners": [
+      "openai"
+    ],
+    "pattern": "openai|gpt-oss|whisper",
+    "search": [
+      "gpt-oss",
+      "whisper"
+    ]
+  },
+  {
+    "id": "bytedance",
+    "label": "ByteDance",
+    "logo": "bytedance-color",
+    "owners": [
+      "bytedance",
+      "byte-dance"
+    ],
+    "pattern": "bytedance|seedance|seedream|bagel",
+    "search": [
+      "seed",
+      "bagel"
+    ]
+  },
+  {
+    "id": "zai",
+    "label": "Z.ai / GLM",
+    "logo": "zhipu-color",
+    "owners": [
+      "zai-org",
+      "thudm"
+    ],
+    "pattern": "zhipu|zai-org|glm[0-9_. -]|cogvideo",
+    "search": [
+      "glm",
+      "cogvideo"
+    ]
+  },
+  {
+    "id": "suno",
+    "label": "Suno",
+    "logo": "suno",
+    "owners": [
+      "suno"
+    ],
+    "pattern": "bark|suno",
+    "search": [
+      "bark"
+    ]
+  },
+  {
+    "id": "xiaomi",
+    "label": "Xiaomi / MiDasheng",
+    "logo": null,
+    "owners": [
+      "mispeech",
+      "xiaomi"
+    ],
+    "pattern": "midasheng|xiaomi",
+    "search": [
+      "midasheng"
+    ]
+  },
+  {
+    "id": "hexgrad",
+    "label": "Hexgrad / Kokoro",
+    "logo": null,
+    "owners": [
+      "hexgrad"
+    ],
+    "pattern": "kokoro|hexgrad",
+    "search": [
+      "kokoro"
+    ]
+  },
+  {
+    "id": "resemble",
+    "label": "Resemble AI / Chatterbox",
+    "logo": null,
+    "owners": [
+      "resembleai"
+    ],
+    "pattern": "chatterbox|resembleai",
+    "search": [
+      "chatterbox"
+    ]
+  },
+  {
+    "id": "lightricks",
+    "label": "Lightricks / LTX",
+    "logo": null,
+    "owners": [
+      "lightricks"
+    ],
+    "pattern": "lightricks|ltx[_. -]",
+    "search": [
+      "ltx"
+    ]
+  },
+  {
+    "id": "nomic",
+    "label": "Nomic",
+    "logo": null,
+    "owners": [
+      "nomic-ai"
+    ],
+    "pattern": "nomic",
+    "search": [
+      "nomic"
+    ]
+  },
+  {
+    "id": "skywork",
+    "label": "Skywork / Matrix-Game",
+    "logo": null,
+    "owners": [
+      "skywork"
+    ],
+    "pattern": "skywork|matrix-game|matrix_game",
+    "search": [
+      "matrix-game"
+    ]
+  },
+  {
+    "id": "etched",
+    "label": "Etched / Oasis",
+    "logo": null,
+    "owners": [
+      "etched"
+    ],
+    "pattern": "etched|oasis",
+    "search": [
+      "oasis"
+    ]
+  }
+]

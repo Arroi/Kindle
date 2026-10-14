@@ -22,6 +22,8 @@ OPENAI_TO_KOKORO = {"alloy": "af_alloy", "echo": "am_echo", "fable": "bm_fable",
 
 class KokoroTTS:
     sample_rate = 24000
+    voice_mode = "presets"
+    voice_note = "Choose one of the checkpoint's named voices."
 
     def __init__(self, model_path: str):
         from kokoro import KModel
@@ -57,6 +59,9 @@ class KokoroTTS:
 
 
 class ChatterboxTTS:
+    voice_mode = "reference"
+    voice_note = "No bundled named voice bank. Upload reference audio to guide the speaker, or use the default voice."
+    supports_reference = True
     def __init__(self, model_path: str):
         from chatterbox.tts import ChatterboxTTS as _C
 
@@ -89,12 +94,49 @@ class TransformersTTS:
         dtype = torch.float16 if dev == 0 else torch.float32
         self.pipe = pipeline("text-to-speech", model=model_path, device=dev, torch_dtype=dtype,
                              trust_remote_code=(options or {}).get("trust_remote_code") is True)
+        self.kind = self.pipe.model.config.model_type
         self.voices = ["default"]
+        self.voice_mode = "unlisted"
+        self.voice_note = "This runtime has no supported named-voice selector for this checkpoint."
+        if self.kind == "bark":
+            from transformers import BarkProcessor
+
+            processor = getattr(self.pipe, "processor", None) or self.pipe.tokenizer
+            if not hasattr(processor, "available_voice_presets"):
+                processor = BarkProcessor.from_pretrained(model_path)
+                self.pipe.tokenizer = processor
+                if hasattr(self.pipe, "processor"):
+                    self.pipe.processor = processor
+            presets = sorted(processor.available_voice_presets)
+            self.voices += presets
+            self.voice_mode = "presets" if presets else "generated"
+            self.voice_note = "Bark voice presets condition the generated speaker. Default uses an unconditioned voice."
+        elif self.kind == "vits":
+            count = int(getattr(self.pipe.model.config, "num_speakers", 1) or 1)
+            if count > 1:
+                self.voices = [str(index) for index in range(count)]
+                self.voice_mode = "speakers"
+                self.voice_note = "This checkpoint uses numbered speaker IDs."
+            else:
+                self.voice_mode = "single"
+                self.voice_note = "This checkpoint contains one fixed speaker, so it has no alternate voice list."
+        elif self.kind in ("musicgen", "musicgen_melody"):
+            self.voices = []
+            self.voice_mode = "prompt"
+            self.voice_note = "Music is controlled by the prompt; this is an audio generator, not a named-voice model."
 
     def synth(self, text: str, voice: str | None, speed: float, **_):
         import numpy as np
 
-        out = self.pipe(text)
+        kwargs = {}
+        if voice not in (None, "", "default"):
+            if voice not in self.voices:
+                raise ValueError(f"Unknown voice '{voice}'. List actual voices at /v1/voices.")
+            if self.kind == "bark":
+                kwargs["preprocess_params"] = {"voice_preset": voice}
+            elif self.kind == "vits":
+                kwargs["forward_params"] = {"speaker_id": int(voice)}
+        out = self.pipe(text, **kwargs)
         audio = np.asarray(out["audio"], dtype=np.float32).squeeze()
         return audio, int(out["sampling_rate"])
 
@@ -110,7 +152,8 @@ def main() -> None:
     @app.get("/voices")
     def voices() -> dict:
         tts = state.require_ready()
-        return {"voices": tts.voices}
+        return {"voices": tts.voices, "mode": getattr(tts, "voice_mode", "unlisted"),
+                "note": getattr(tts, "voice_note", ""), "supports_reference": bool(getattr(tts, "supports_reference", False))}
 
     @app.post("/speech")
     def speech(req: dict = Body(...)) -> Response:
@@ -128,7 +171,7 @@ def main() -> None:
         return Response(data, media_type=media)
 
     def loader():
-        if args.engine == "transformers_tts":
+        if args.engine in ("transformers_tts", "transformers_audio"):
             from .tts_custom import MiDashengTTS, VibeVoiceTTS
 
             adapter = audio_adapter(model_config(args.model))

@@ -1,4 +1,4 @@
-export type Modality = "text" | "image" | "video" | "tts" | "stt" | "world";
+export type Modality = "text" | "image" | "video" | "tts" | "audio" | "stt" | "world" | "mesh";
 export type Verdict = "best" | "good" | "tight" | "worst";
 
 export interface Gpu {
@@ -135,7 +135,15 @@ export interface Variant {
   fit?: { verdict: Verdict; reasons: string[]; warnings?: string[] };
 }
 
+export interface CatalogBrand {
+  id: string;
+  label: string;
+  logo: string | null;
+  count?: number;
+}
+
 export interface CatalogItem {
+  brand?: CatalogBrand;
   custom_code?: boolean;
   reasoning?: import("./capabilities").ReasoningSupport;
   runtime_repos?: string[];
@@ -169,6 +177,8 @@ export interface CatalogItem {
 }
 
 export interface SearchResult {
+  filters_active?: boolean;
+  facets?: { brands: CatalogBrand[]; engines: { id: string; label: string; count: number }[]; capabilities: Record<string, number> };
   modality: Modality;
   items: CatalogItem[];
   sources: Record<string, string>;

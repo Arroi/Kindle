@@ -11,8 +11,10 @@ MODALITY_PIPELINES: dict[str, list[str]] = {
     "image": ["text-to-image"],
     "video": ["text-to-video", "image-to-video"],
     "tts": ["text-to-speech", "text-to-audio"],
+    "audio": ["text-to-audio"],
     "stt": ["automatic-speech-recognition"],
     "world": [],
+    "mesh": ["image-to-3d", "text-to-3d"],
 }
 
 PIPELINE_TO_MODALITY = {p: m for m, ps in MODALITY_PIPELINES.items() for p in ps}
@@ -28,6 +30,7 @@ ENGINE_LABELS = {
     "kokoro": "Kokoro",
     "chatterbox": "Chatterbox",
     "transformers_tts": "Transformers TTS",
+    "transformers_audio": "Transformers audio",
     "faster_whisper": "faster-whisper",
     "transformers_asr": "Transformers ASR",
     "world_recipe": "World recipe",
@@ -40,13 +43,15 @@ MODALITY_ENGINES = {
     "image": ["diffusers"],
     "video": ["diffusers_video"],
     "tts": ["kokoro", "chatterbox", "transformers_tts"],
+    "audio": ["transformers_audio"],
     "stt": ["faster_whisper", "transformers_asr"],
     "world": ["world_recipe", "diffusers_world"],
+    "mesh": [],
 }
 
 
 # model_type tags the generic transformers pipelines are known to handle.
-TTS_TYPES = {"vits", "bark", "speecht5", "musicgen", "musicgen_melody", "seamless_m4t", "seamless_m4t_v2",
+TTS_TYPES = {"vits", "bark", "speecht5", "seamless_m4t", "seamless_m4t_v2",
              "fastspeech2_conformer", "csm", "dia"}
 ASR_TYPES = {"whisper", "wav2vec2", "wav2vec2-bert", "wav2vec2-conformer", "hubert", "wavlm", "moonshine",
              "parakeet_ctc", "speech_to_text", "seamless_m4t", "seamless_m4t_v2", "data2vec-audio",
@@ -65,6 +70,16 @@ def resolve_hf(modality: str, repo_id: str, library: str | None, tags: list[str]
     rid = repo_id.lower()
     tagset = {t.lower() for t in (tags or [])}
     lib = (library or "").lower()
+
+    if modality == "mesh":
+        return Resolution(None, note="3D checkpoint: browse and download; this architecture has no configured KaggleUI runner.")
+    if modality == "audio":
+        if "midashenglm-gen" in rid:
+            return Resolution("transformers_audio", experimental=True,
+                              note="Audio scenes, music, effects and speech. Requires Allow model custom code.")
+        if "musicgen" in rid and lib in ("transformers", ""):
+            return Resolution("transformers_audio", experimental=True, note="Text-conditioned music generation.")
+        return Resolution(None, note="Audio generation checkpoint; this architecture needs a dedicated runner.")
 
     if modality == "world":
         entry = world.profile(repo_id)
@@ -97,9 +112,6 @@ def resolve_hf(modality: str, repo_id: str, library: str | None, tags: list[str]
         return Resolution(None, note="Only diffusers-format video models are supported")
 
     if modality == "tts":
-        if "midashenglm-gen" in rid:
-            return Resolution("transformers_tts", experimental=True,
-                              note="Dedicated audio scene runner; enable Allow model custom code. Generates speech, music and sound effects.")
         if "vibevoice" in rid and not any(kind in rid for kind in ("asr", "streaming", "realtime")):
             return Resolution("transformers_tts", experimental=True,
                               note="Dedicated VibeVoice TTS runner with an isolated compatible environment.")

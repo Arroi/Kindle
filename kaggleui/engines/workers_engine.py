@@ -40,6 +40,9 @@ WORKERS: dict[str, dict] = {
     "transformers_tts": {"module": "tts", "modality": "tts", "download": "transformers",
                          "reqs": ["transformers>=4.51", "accelerate>=1.2", "soundfile", "sentencepiece"],
                          "label": "Transformers TTS"},
+    "transformers_audio": {"module": "tts", "modality": "audio", "download": "transformers",
+                           "reqs": ["transformers>=4.51", "accelerate>=1.2", "soundfile", "sentencepiece"],
+                           "label": "Transformers audio"},
     "faster_whisper": {"module": "stt", "modality": "stt", "download": "repo",
                        "reqs": ["faster-whisper>=1.1"], "label": "faster-whisper", "nvidia_libs": True},
     "transformers_asr": {"module": "stt", "modality": "stt", "download": "transformers",
@@ -129,7 +132,7 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
         raise DeployError("This Cosmos runtime requires an Ampere or newer GPU with bf16 support. "
                           "Kaggle T4 and P100 GPUs aren't supported by this checkpoint.")
     model_path, variant = await download_model(spec, ctx, cfg["download"], cfg.get("allow"))
-    adapter = audio_adapter(model_config(model_path)) if engine == "transformers_tts" else None
+    adapter = audio_adapter(model_config(model_path)) if engine in ("transformers_tts", "transformers_audio") else None
     if adapter == "midasheng" and spec.options.get("trust_remote_code") is not True:
         raise DeployError("MiDashengLM-Gen requires its repository's Python code. In Customize → Settings, "
                           "enable 'Allow model custom code' for this checkpoint and deploy again.")

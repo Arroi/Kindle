@@ -23,7 +23,9 @@ def _waveform(value):
 
 
 class MiDashengTTS:
-    voices = ["default"]
+    voices = []
+    voice_mode = "prompt"
+    voice_note = "Describe speech, music, sound effects or ambience in the prompt. No named voice presets."
 
     def __init__(self, model_path: str, options: dict):
         import torch
@@ -56,6 +58,9 @@ class MiDashengTTS:
 
 class VibeVoiceTTS:
     voices = ["default"]
+    voice_mode = "reference"
+    voice_note = "No bundled named voice presets. Use a generated speaker or upload reference audio."
+    supports_reference = True
     sample_rate = 24000
 
     def __init__(self, model_path: str, options: dict, *, converted: bool = False):

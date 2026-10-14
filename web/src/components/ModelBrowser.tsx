@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Download, HardDrive, Heart, LayoutGrid, List, Search, Star, X } from "lucide-react";
+import { AlertTriangle, Download, HardDrive, Heart, LayoutGrid, List, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../lib/api";
@@ -9,9 +9,11 @@ import type { CatalogItem, Gpu, Modality } from "../lib/types";
 import { FitGauge } from "./meters";
 import { ModelLogo } from "./ModelLogo";
 import { CapabilityTags } from "./CapabilityTags";
+import { ActiveCatalogFilters, activeFilters, CatalogFilterPanel } from "./CatalogFilters";
+import { emptyFilters, filterRequest, parameterError, saveFilters, storedFilters } from "../lib/catalogFilters";
 import { Button, Chip, Empty, Input, Segmented, Select, Toggle, VerdictTag } from "./ui";
 
-export const MODALITY_ORDER: Modality[] = ["text", "image", "video", "tts", "stt", "world"];
+export const MODALITY_ORDER: Modality[] = ["text", "image", "video", "tts", "audio", "stt", "world", "mesh"];
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -208,24 +210,33 @@ export function ModelBrowser({
   const gpus = overview?.system.gpus ?? [];
   const [q, setQ] = useState("");
   const [source, setSource] = useState(initialSource);
+  const broaderCatalog = ["world", "mesh", "audio"].includes(modality);
   const [generalFit, setGeneralFit] = useState<FitFilter>(() => initialSource === "attached" ? "all" : storedFit());
-  const [worldFit, setWorldFit] = useState<FitFilter>("all");
-  const fitFilter = modality === "world" ? worldFit : generalFit;
+  const [discoveryFits, setDiscoveryFits] = useState<Partial<Record<Modality, FitFilter>>>({});
+  const fitFilter = broaderCatalog ? discoveryFits[modality] ?? "all" : generalFit;
   // "All models" reads best by popularity (big models mixed in); "Fits" by how well they fit.
   const [sortChoice, setSortChoice] = useState<string | null>(storedSort);
   const [view, setView] = useState(storedView);
   const sort = sortChoice ?? (modality === "world" || fitFilter === "fits" ? "recommended" : "trending");
   const [unsupported, setUnsupported] = useState(false);
-  const [launchableOnly, setLaunchableOnly] = useState(false);
-  const showUnsupported = modality === "world" ? !launchableOnly : unsupported;
-  const [limit, setLimit] = useState(PAGE);
+  const [launchableFilters, setLaunchableFilters] = useState<Partial<Record<Modality, boolean>>>({});
+  const launchableOnly = launchableFilters[modality] ?? false;
+  const setLaunchableOnly = (value: boolean) => setLaunchableFilters(previous => ({ ...previous, [modality]: value }));
+  const showUnsupported = broaderCatalog ? !launchableOnly : unsupported;
+  const [filters, setFilters] = useState(storedFilters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const delayedFilters = useDebounced(filters, 300);
+  const requestedFilters = useMemo(() => filterRequest(delayedFilters, modality), [delayedFilters, modality]);
+  const filterError = parameterError(filters);
   const dq = useDebounced(q, 350);
-
-  useEffect(() => setLimit(PAGE), [modality, dq, source, sort, showUnsupported, fitFilter]);
+  const criteriaKey = JSON.stringify({ modality, dq, source, sort, showUnsupported, fitFilter, ...requestedFilters });
+  const [page, setPage] = useState({ key: "", limit: PAGE });
+  const limit = page.key === criteriaKey ? page.limit : PAGE;
+  useEffect(() => saveFilters(filters), [filters]);
 
   function changeFit(v: FitFilter) {
-    if (modality === "world") {
-      setWorldFit(v);
+    if (broaderCatalog) {
+      setDiscoveryFits(previous => ({ ...previous, [modality]: v }));
       return;
     }
     setGeneralFit(v);
@@ -257,22 +268,26 @@ export function ModelBrowser({
     setLaunchableOnly(false);
     changeFit("all");
     changeSort(null);
+    setFilters(emptyFilters());
   }
 
   const preview = useQuery({
-    queryKey: ["search-preview", modality, dq, source, sort, showUnsupported, fitFilter, limit],
-    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit, live: false }),
+    queryKey: ["search-preview", criteriaKey, limit],
+    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit, live: false, ...requestedFilters }),
+    enabled: !filterError,
     staleTime: 5 * 60_000,
   });
   const liveQuery = useQuery({
-    queryKey: ["search", modality, dq, source, sort, showUnsupported, fitFilter, limit],
-    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit }),
+    queryKey: ["search", criteriaKey, limit],
+    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit, ...requestedFilters }),
+    enabled: !filterError,
     staleTime: 5 * 60_000,
-    placeholderData: (prev) => (prev?.modality === modality ? prev : undefined),
+    placeholderData: (prev, previousQuery) => previousQuery?.queryKey[1] === criteriaKey ? prev : undefined,
   });
   const query = { ...liveQuery, data: liveQuery.data ?? preview.data,
     isLoading: liveQuery.isLoading && preview.isLoading, error: liveQuery.data || preview.data ? null : liveQuery.error };
   const loadingMore = query.isFetching && query.isPlaceholderData && (query.data?.items.length ?? 0) < limit;
+  const chips = activeFilters({ value: filters, onChange: setFilters, modality, facets: query.data?.facets });
 
   const sources = useMemo(() => {
     const base = [
@@ -294,7 +309,7 @@ export function ModelBrowser({
           {MODALITY_ORDER.map((m) => (
             <button key={m} type="button" aria-pressed={modality === m} onClick={() => {
               onModality(m);
-              if (m === "world") setSource("all");
+              if (["world", "mesh", "audio"].includes(m)) setSource("all");
               if (m !== "text" && source === "ollama") setSource("all");
             }}>{MODALITY_LABEL[m]}</button>
           ))}
@@ -305,6 +320,8 @@ export function ModelBrowser({
           Browse published world models from Hugging Face. Models marked “Runner unavailable” can be downloaded; launch requires a runner for their architecture. GPU fit is checked separately.
         </p>
       )}
+      {modality === "audio" && <p className="mb-5 max-w-[80ch] text-[13px] text-fg-2">Music, sound effects and mixed audio scenes. Voice-based speech synthesis is in Text to speech.</p>}
+      {modality === "mesh" && <p className="mb-5 max-w-[80ch] text-[13px] text-fg-2">Browse text-to-3D and image-to-3D checkpoints, including TRELLIS, Hunyuan3D and TripoSR. Download from model details; deployment requires a configured runner.</p>}
       <div className="mb-4 flex flex-col gap-3 @4xl:flex-row @4xl:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
@@ -316,7 +333,10 @@ export function ModelBrowser({
             className="pl-9"
           />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button variant={filtersOpen || chips.length ? "outline" : "ghost"} onClick={() => setFiltersOpen(open => !open)}
+            aria-expanded={filtersOpen} aria-controls="catalog-filter-panel"><SlidersHorizontal className="size-4" /> Filters
+            {chips.length > 0 && <span className="catalog-filter-count">{chips.length}</span>}</Button>
           <Select aria-label="Sort models" value={sort} onChange={(e) => changeSort(e.target.value)} className="catalog-sort">
             {SORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
@@ -328,6 +348,7 @@ export function ModelBrowser({
           </div>
         </div>
       </div>
+      {filtersOpen && <CatalogFilterPanel value={filters} onChange={setFilters} modality={modality} facets={query.data?.facets} />}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Segmented size="sm" value={source} onChange={setSource} options={sources} />
         <div className="flex flex-wrap items-center gap-4">
@@ -340,14 +361,15 @@ export function ModelBrowser({
               { value: "fits", label: "Fits this machine" },
             ]}
           />
-          <Toggle checked={modality === "world" ? launchableOnly : unsupported} onChange={modality === "world" ? setLaunchableOnly : setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">{modality === "world" ? "Launchable only" : "Show unsupported"}</span>} />
+          <Toggle checked={broaderCatalog ? launchableOnly : unsupported} onChange={broaderCatalog ? setLaunchableOnly : setUnsupported} label={<span className="text-[13px] font-normal text-fg-2">{broaderCatalog ? "Launchable only" : "Show unsupported"}</span>} />
         </div>
       </div>
+      <ActiveCatalogFilters chips={chips} />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-fg-3" role="status" aria-live="polite">
         <span>
-          {query.isFetching && !loadingMore ? (query.data ? "Showing available models · refreshing live catalogs…" : "Loading models…") : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models${modality === "world" ? ` · ${query.data.counts.launchable ?? 0} with launch support` : ""} · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
+          {filterError ? "Check the parameter range." : query.isFetching && !loadingMore ? (query.data ? "Showing available models · refreshing live catalogs…" : "Loading models…") : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""}${chips.length ? " matching" : ""} models${broaderCatalog ? ` · ${query.data.counts.launchable ?? 0} with launch support` : ""} · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
         </span>
-        {(q || source !== "all" || (modality === "world" ? launchableOnly : unsupported) || fitFilter !== "all" || sortChoice) && (
+        {(q || chips.length > 0 || source !== "all" || (broaderCatalog ? launchableOnly : unsupported) || fitFilter !== "all" || sortChoice) && (
           <button type="button" onClick={resetFilters} className="flex items-center gap-1 text-fg-2 hover:text-fg"><X className="size-3" /> Reset filters</button>
         )}
       </div>
@@ -364,7 +386,7 @@ export function ModelBrowser({
           ))}
         </div>
       )}
-      {query.isLoading ? (
+      {filterError ? <Empty title="Check parameter range">{filterError}</Empty> : query.isLoading ? (
         <div className={view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden"} aria-label="Loading models" aria-busy="true">
           {Array.from({ length: 6 }, (_, i) => (
             <div key={i} className={cx("animate-pulse bg-panel-2", view === "grid" ? "panel h-[248px]" : "m-4 h-16 rounded-md")} />
@@ -373,7 +395,9 @@ export function ModelBrowser({
       ) : query.error ? (
         <Empty title="Couldn't load models">{String((query.error as Error).message)}</Empty>
       ) : query.data && query.data.items.length === 0 ? (
-        <Empty title="Nothing found">Try another search, or switch the source filter.</Empty>
+        <Empty title={query.isFetching ? "Searching live catalogs…" : chips.length ? "No models match these filters" : "Nothing found"}>
+          {chips.length ? "Remove a filter or adjust the range. When available, Load more expands discovery. Capability filters use detected tags; unknown counts are excluded from ranges unless included." : "Try another search, or switch the source filter."}
+        </Empty>
       ) : (
         <div className={cx(view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden", query.isPlaceholderData && "opacity-60")} aria-busy={query.isFetching}>
           {view === "list" && (
@@ -388,9 +412,9 @@ export function ModelBrowser({
           ))}
         </div>
       )}
-      {query.data?.has_more && (query.data.items.length >= limit || modality === "world") && (
+      {!filterError && query.data?.has_more && (
         <div className="mt-5 flex justify-center">
-          <Button busy={loadingMore} onClick={() => setLimit((l) => Math.min(l + PAGE, 300))} disabled={limit >= 300}>
+          <Button busy={query.isFetching} onClick={() => setPage({ key: criteriaKey, limit: Math.min(limit + PAGE, 300) })} disabled={limit >= 300}>
             {limit >= 300 ? "Search to narrow it down" : "Load more"}
           </Button>
         </div>

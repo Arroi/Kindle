@@ -77,6 +77,15 @@ export const api = {
     fit?: "all" | "fits";
     limit?: number;
     live?: boolean;
+    min_params?: number;
+    max_params?: number;
+    capabilities?: string[];
+    capability_match?: "all" | "any";
+    brand?: string;
+    engine?: string;
+    include_unknown?: boolean;
+    hide_gated?: boolean;
+    hide_experimental?: boolean;
   }) => {
     const qs = new URLSearchParams({
       modality: p.modality,
@@ -88,6 +97,12 @@ export const api = {
       limit: String(p.limit ?? 40),
       live: String(p.live ?? true),
     });
+    for (const key of ["min_params", "max_params"] as const) if (p[key] !== undefined) qs.set(key, String(p[key]));
+    if (p.capabilities?.length) qs.set("capabilities", p.capabilities.join(","));
+    if (p.capability_match) qs.set("capability_match", p.capability_match);
+    if (p.brand) qs.set("brand", p.brand);
+    if (p.engine) qs.set("engine", p.engine);
+    for (const key of ["include_unknown", "hide_gated", "hide_experimental"] as const) if (p[key]) qs.set(key, "true");
     return request<SearchResult>(`/_kui/api/catalog/search?${qs}`);
   },
   detail: (key: string) => request<CatalogItem>(`/_kui/api/catalog/detail?key=${encodeURIComponent(key)}`),

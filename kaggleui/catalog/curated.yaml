@@ -39,6 +39,11 @@ tts:
   - {source: hf, id: "suno/bark-small", name: "Bark Small", size_gb: 1.7, engine: transformers_tts, blurb: "Expressive, multilingual, can laugh/sigh."}
   - {source: hf, id: "facebook/mms-tts-eng", name: "MMS TTS (English)", size_gb: 0.15, engine: transformers_tts, blurb: "Very small VITS voice, good for testing.", selftest: true}
 
+audio:
+  - {source: hf, id: "mispeech/midashenglm-gen", name: "MiDashengLM-Gen", engine: transformers_audio, experimental: true, blurb: "Generate mixed audio scenes: speech, music, sound effects and ambience. Enable custom model code."}
+  - {source: hf, id: "facebook/musicgen-small", name: "MusicGen Small", engine: transformers_audio, experimental: true, blurb: "Text-conditioned music generation."}
+  - {source: hf, id: "facebook/musicgen-medium", name: "MusicGen Medium", engine: transformers_audio, experimental: true, blurb: "Larger text-conditioned music generator."}
+
 stt:
   - {source: hf, id: "deepdml/faster-whisper-large-v3-turbo-ct2", name: "Whisper large-v3 turbo (faster-whisper)", size_gb: 1.6, engine: faster_whisper, blurb: "Near large-v3 accuracy, much faster."}
   - {source: hf, id: "Systran/faster-whisper-large-v3", name: "Whisper large-v3 (faster-whisper)", size_gb: 3.1, engine: faster_whisper, blurb: "Most accurate Whisper."}

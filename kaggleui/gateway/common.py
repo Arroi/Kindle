@@ -16,7 +16,8 @@ if TYPE_CHECKING:
     from ..server.state import AppState
 
 MODALITY_LABEL = {"text": "text model", "image": "image model", "video": "video model",
-                  "tts": "text-to-speech model", "stt": "speech-to-text model", "world": "world model"}
+                  "tts": "text-to-speech model", "audio": "audio generation model", "mesh": "3D model",
+                  "stt": "speech-to-text model", "world": "world model"}
 
 
 class GatewayError(Exception):

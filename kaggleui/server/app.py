@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from .. import __version__, notify, secretstore
 from ..capabilities import profile
+from ..catalog.filters import CatalogFilters
 from ..catalog.resolve import ENGINE_LABELS, MODALITY_ENGINES
 from ..engines.world_engine import list_recipes
 from ..gateway import anthropic as anthropic_gw
@@ -299,12 +300,22 @@ def create_app(state: AppState) -> FastAPI:
     @app.get("/_kui/api/catalog/search")
     async def catalog_search(request: Request, modality: str = "text", q: str = "", source: str = "all",
                              sort: str = "recommended", limit: int = 40, show_unsupported: bool | None = None,
-                             fit: str = "all", live: bool = True):
+                             fit: str = "all", live: bool = True, min_params: float | None = None,
+                             max_params: float | None = None, capabilities: str = "", capability_match: str = "all",
+                             brand: str = "", engine: str = "", include_unknown: bool = False,
+                             hide_gated: bool = False, hide_experimental: bool = False):
         require_admin(request)
         if modality not in MODALITIES:
             raise HTTPException(400, "unknown modality")
+        try:
+            filters = CatalogFilters(min_params=min_params, max_params=max_params,
+                                     capabilities=tuple(sorted({cap.strip().lower() for cap in capabilities.split(",") if cap.strip()})),
+                                     capability_match=capability_match, brand=brand.strip().lower(), engine=engine.strip(),
+                                     include_unknown=include_unknown, hide_gated=hide_gated, hide_experimental=hide_experimental)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         return await state.catalog.search(modality, q, source, sort, max(1, min(limit, 300)), show_unsupported,
-                                          "fits" if fit == "fits" else "all", live=live)
+                                          "fits" if fit == "fits" else "all", live=live, filters=filters)
 
     @app.get("/_kui/api/catalog/detail")
     async def catalog_detail(request: Request, key: str):

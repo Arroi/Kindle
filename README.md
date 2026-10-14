@@ -2,7 +2,7 @@
 
 One notebook cell turns a free Kaggle GPU into a model host. Run it, open the link on your own computer, and pick what to serve from a web control panel:
 
-- **Any model type:** Text (LLMs), Image, Video, Text-to-speech, Speech-to-text, World models.
+- **Model categories:** Text (LLMs), Image, Video, Text-to-speech, Audio generation, Speech-to-text, World models and 3D models. Runner availability is shown separately from catalog discovery.
 - **Live catalog** from Hugging Face and Ollama, plus models attached under `/kaggle/input`. Every model is sized against *this* machine's VRAM, RAM and disk and tagged **Best fit**, **Fits**, **Tight** or **Won't fit**, with the reason. Toggle between **All models** and **Fits this GPU**, sort by **Lowest parameters** or **Highest parameters**, and use **Load more** to browse deeper. Parameter sorting uses the shown variant; unknown counts appear last.
 - **Interfaces:** the built-in Studio, Gradio, Open WebUI (text) or ComfyUI (image/video).
 - **Password lock** for the interfaces (generated, toggleable). The control panel always needs your admin token.
@@ -14,6 +14,23 @@ The model catalog offers a compact list with parameter count, download size and 
 Models display **Reasoning**, **Vision**, **Tools** and **Embeddings** tags when detected. Details inspect model metadata and chat templates without executing model code. Family estimates are labeled; the loaded runner determines the reasoning controls available in Studio.
 
 Made by **WeirdMM (iloveoliver.tree)** · [Discord community](https://discord.gg/7Kb6ScwvYG)
+
+### Model filters
+
+Open **Models → Filters** to combine:
+
+- **Parameter range:** optional minimum/maximum in billions (B), including decimals such as `0.5` for 500M. Quick presets cover common sizes. Limits are inclusive and use the parameter count of the shown variant. Unknown counts are excluded while a range is active unless **Include unknown parameter counts** is checked.
+- **Capabilities:** Vision, Tools, Reasoning and Embeddings in the Text catalog. **Match all** requires every selected tag; **Match any** requires at least one. Models without detected capability metadata do not match that capability filter.
+- **Brand / model family:** companies and known families such as Alibaba/Qwen, Google/Gemma, Meta/Llama and Tencent/Hunyuan. Community variants are grouped by recognized family; unrecognized HF repositories use their publisher.
+- **Runner**, **No gated weights** and **Hide experimental runners**, alongside the existing source, hardware fit and sorting controls.
+
+Filters apply on the server before pagination. **Load more** expands discovery even when a filter leaves the current results empty. The live catalogs are browsed in bounded batches; counts describe the discovered results, not the entire Hub. Active filters can be removed individually or with **Reset filters**. Preferences are remembered, with runner choices kept per category. Changing filters resets pagination.
+
+### Audio generation and 3D models
+
+**Audio generation** separates music, effects and mixed sound scenes from speech synthesis. MusicGen and MiDashengLM-Gen have configured runners; other architectures are marked when they still need one. Studio provides an audio prompt and downloads instead of a voice selector. `POST /v1/audio/generations` accepts `model`, `prompt` (or `input`) and `response_format`, returning encoded audio. Explicitly named audio models remain callable through `/v1/audio/speech` for compatibility with older clients. Known audio checkpoints in old TTS launch presets are reclassified on load.
+
+**3D models** browses image-to-3D and text-to-3D checkpoints, with bundled entries for TRELLIS, Hunyuan3D, TripoSR, Stable Fast 3D and others. This release adds discovery and downloads; these standalone 3D architectures do **not** yet have configured KaggleUI generation runners. Model details show **Runner unavailable** instead of offering a launch that would fail. Existing world scene generators are listed separately in **World**.
 
 **World discovery** searches Hugging Face tags and families including Matrix-Game, LingBot, Yume, Cosmos and HunyuanWorld. World opens with the broader catalog; **Launchable only** shows configured runtimes, and **Fits this machine** applies the hardware filter. A bundled catalog keeps 20 published checkpoints visible when live search is unavailable.
 
@@ -142,7 +159,7 @@ Thinking models (Qwen3, gpt-oss, DeepSeek-R1…) can reason before answering. St
 
 | Surface | Endpoints |
 |---|---|
-| OpenAI | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/audio/transcriptions`, `/v1/voices`, `/v1/videos`, `/v1/worlds`, `/v1/models` |
+| OpenAI | `/v1/chat/completions`, `/v1/embeddings`, `/v1/images/generations`, `/v1/audio/speech`, `/v1/audio/generations`, `/v1/audio/transcriptions`, `/v1/voices`, `/v1/videos`, `/v1/worlds`, `/v1/models` |
 | World models | `/v1/videos` with `actions` plus either `input_reference` (an image) or a `prompt`. A prompt is painted into the first frame by a running image model (pick one with `start_frame_model`). `/v1/start-frames` previews that frame |
 | Anthropic | `/v1/messages` (tools, images, streaming) |
 | Ollama | `/api/chat`, `/api/generate`, `/api/embed`, `/api/tags` |
@@ -150,6 +167,10 @@ Thinking models (Qwen3, gpt-oss, DeepSeek-R1…) can reason before answering. St
 **Streaming note:** the default Cloudflare *quick* tunnel buffers streamed HTTP responses, so `stream: true` replies arrive all at once at the end. Studio uses WebSockets for live replies. If its WebSocket is unavailable, Chat uses a normal HTTP request and displays the reply when generation completes. For live API streaming, use ngrok or a named tunnel.
 
 ### TTS voices
+
+Voice availability depends on the checkpoint. Kokoro lists its named files; Bark lists actual processor presets and downloads their embeddings; multi-speaker VITS models expose numeric speaker IDs. The selected preset/speaker is forwarded to generation. A single-speaker VITS checkpoint has one fixed speaker. Chatterbox and VibeVoice use a generated/default speaker or optional reference audio. Generic architectures without a supported selector are labeled as having no available voice list, rather than implying they have a voice bank.
+
+`GET /v1/audio/voices?model=...` and each `models` entry from `/v1/voices` now also include `mode`, `note` and `supports_reference` when available. Studio explains the voice mode and shows errors when voice discovery fails. Audio generators are excluded from TTS voice listings.
 
 `GET /v1/voices` lists voices from **all ready TTS deployments**. `?model=your-model-name` restricts the result. Voice IDs are passed unchanged to `/v1/audio/speech` together with their model name. The existing `GET /v1/audio/voices?model=...` endpoint remains available.
 

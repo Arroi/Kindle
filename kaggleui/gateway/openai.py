@@ -250,12 +250,33 @@ async def speech(request: Request):
     try:
         check_access(request, "openai")
         body = await _json(request)
-        dep = find(request, body.get("model"), "tts")
+        try:
+            dep = find(request, body.get("model"), "tts")
+        except GatewayError:
+            if not body.get("model"):
+                raise
+            dep = find(request, body["model"], "audio")  # compatibility for audio models previously mislabeled TTS
         assert dep.backend
         data, media = await dep.backend.speech(body)
         return Response(data, media_type=media)
     except Exception as e:  # noqa: BLE001
         return openai_error(wrap(e))
+
+
+@router.post("/v1/audio/generations")
+async def audio_generation(request: Request):
+    try:
+        check_access(request, "openai")
+        body = await _json(request)
+        dep = find(request, body.get("model"), "audio")
+        assert dep.backend
+        prompt = str(body.get("prompt") or body.get("input") or "").strip()
+        if not prompt:
+            raise GatewayError(400, "A non-empty audio prompt is required.")
+        data, media = await dep.backend.speech({**body, "input": prompt})
+        return Response(data, media_type=media)
+    except Exception as exc:
+        return openai_error(wrap(exc))
 
 
 @router.get("/v1/audio/voices")
@@ -264,7 +285,7 @@ async def voices(request: Request, model: str | None = None):
         check_access(request, "openai")
         dep = find(request, model, "tts")
         assert dep.backend
-        return {"voices": await dep.backend.voices()}
+        return await dep.backend.voice_info()
     except Exception as e:  # noqa: BLE001
         return openai_error(wrap(e))
 
@@ -279,8 +300,8 @@ async def all_voices(request: Request, model: str | None = None):
             deps = [find(request, model, "tts")]
 
         async def entry(dep):
-            voices = await asyncio.wait_for(dep.backend.voices(), timeout=15)
-            return {"model": dep.served_name, "voices": voices}
+            info = await asyncio.wait_for(dep.backend.voice_info(), timeout=15)
+            return {"model": dep.served_name, **info}
 
         results = await asyncio.gather(*(entry(dep) for dep in deps), return_exceptions=True)
         models, data, errors = [], [], []

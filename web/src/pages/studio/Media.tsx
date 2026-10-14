@@ -344,10 +344,13 @@ export function ClipList({ videos, placeholder }: { videos: { url: string; promp
 /* ======================================================================================== */
 
 export function TtsStudio({ model }: { model: StudioModel }) {
+  const isAudio = model.modality === "audio";
   const toast = useToast();
   const [text, setText] = useState("");
   const [voices, setVoices] = useState<string[]>([]);
   const [voice, setVoice] = useState("");
+  const [voiceInfo, setVoiceInfo] = useState<{ mode?: string; note?: string; supports_reference?: boolean }>({});
+  const [voiceError, setVoiceError] = useState("");
   const [speed, setSpeed] = useState(1);
   const [format, setFormat] = useState("mp3");
   const [reference, setReference] = useState<File | null>(null);
@@ -356,21 +359,27 @@ export function TtsStudio({ model }: { model: StudioModel }) {
 
   useEffect(() => {
     setReference(null);
+    if (isAudio) return;
+    let cancelled = false;
+    setVoiceError("");
     gateway.get(`/v1/audio/voices?model=${encodeURIComponent(model.name)}`).then((r) => r.json()).then((d) => {
+      if (cancelled) return;
       setVoices(d.voices ?? []);
+      setVoiceInfo(d);
       setVoice((v) => d.voices?.includes(v) ? v : d.voices?.[0] || "");
-    }).catch(() => {});
-  }, [model.name]);
+    }).catch(error => { if (!cancelled) setVoiceError(error instanceof Error ? error.message : "Could not load voice choices."); });
+    return () => { cancelled = true; };
+  }, [model.name, isAudio]);
 
   async function speak() {
     setBusy(true);
     try {
-      const res = await gateway.post("/v1/audio/speech", { model: model.name, input: text, voice: voice || undefined, speed, response_format: format,
+      const res = await gateway.post(isAudio ? "/v1/audio/generations" : "/v1/audio/speech", { model: model.name, input: text, ...(isAudio ? { prompt: text } : { voice: voice || undefined, speed }), response_format: format,
         ...(reference ? { reference_audio_b64: await fileToB64(reference) } : {}) });
       const blob = await res.blob();
       setClips((c) => [{ url: URL.createObjectURL(blob), text, voice, format: blob.type.includes("wav") ? "wav" : format }, ...c]);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Speech failed", "error");
+      toast(e instanceof Error ? e.message : "Audio generation failed", "error");
     } finally {
       setBusy(false);
     }
@@ -379,20 +388,22 @@ export function TtsStudio({ model }: { model: StudioModel }) {
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <div className="panel space-y-4 p-4">
-        <Field label="Text">
-          <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={model.adapter === "midasheng" ? "Describe an audio scene, music, effects or speech. Use <|caption|>, <|asr|>, <|speech|> for structured prompts." : "Type something to hear it."} />
+        <Field label={isAudio ? "Audio prompt" : "Text"}>
+          <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={model.adapter === "midasheng" ? "Describe an audio scene, music, effects or speech. Use <|caption|>, <|asr|>, <|speech|> for structured prompts." : isAudio ? "Describe the music, sounds or ambience to generate." : "Type something to hear it."} />
         </Field>
-        {(model.engine === "chatterbox" || model.adapter?.startsWith("vibevoice")) && <Field label="Reference voice (optional)" hint="Upload an audio clip to guide the speaker’s voice.">
+        {!isAudio && voiceInfo.note && <p className="text-[12px] leading-relaxed text-fg-2">{voiceInfo.note}</p>}
+        {!isAudio && voiceError && <p role="alert" className="text-[12px] text-tight">{voiceError}</p>}
+        {!isAudio && (voiceInfo.supports_reference || model.engine === "chatterbox" || model.adapter?.startsWith("vibevoice")) && <Field label="Reference voice (optional)" hint="Upload an audio clip to guide the speaker’s voice.">
           <div className="flex items-center gap-2"><Input type="file" accept="audio/*" onChange={e => setReference(e.target.files?.[0] ?? null)} />
             {reference && <Button variant="ghost" size="sm" onClick={() => setReference(null)}>Clear</Button>}</div>
         </Field>}
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Voice">
-            <Select value={voice} onChange={(e) => setVoice(e.target.value)} disabled={!voices.length}>
-              {voices.length ? voices.map((v) => <option key={v}>{v}</option>) : <option>default</option>}
+        <div className={isAudio ? "max-w-xs" : "grid gap-3 sm:grid-cols-3"}>
+          {!isAudio && <Field label="Voice">
+            <Select value={voice} onChange={(e) => setVoice(e.target.value)} disabled={voices.length <= 1}>
+              {voices.length ? voices.map((v) => <option key={v} value={v}>{voiceInfo.mode === "speakers" ? `Speaker ${v}` : v === "default" ? voiceInfo.mode === "single" ? "Fixed speaker" : voiceInfo.mode === "reference" ? "Default / reference voice" : "Model default" : v}</option>) : <option value="">{voiceInfo.mode === "prompt" ? "Prompt controlled" : "No voice list available"}</option>}
             </Select>
-          </Field>
-          <Slider label="Speed" value={speed} min={0.5} max={2} step={0.05} onChange={setSpeed} format={(v) => `${v.toFixed(2)}×`} />
+          </Field>}
+          {!isAudio && <Slider label="Speed" value={speed} min={0.5} max={2} step={0.05} onChange={setSpeed} format={(v) => `${v.toFixed(2)}×`} />}
           <Field label="Format">
             <Select value={format} onChange={(e) => setFormat(e.target.value)}>
               {["mp3", "wav", "flac", "opus"].map((f) => <option key={f}>{f}</option>)}
@@ -400,7 +411,7 @@ export function TtsStudio({ model }: { model: StudioModel }) {
           </Field>
         </div>
         <Button variant="primary" size="lg" busy={busy} onClick={speak} disabled={!text.trim()}>
-          <Wand2 className="size-4" /> Speak
+          <Wand2 className="size-4" /> {isAudio ? "Generate audio" : "Speak"}
         </Button>
       </div>
       <div className="space-y-2">

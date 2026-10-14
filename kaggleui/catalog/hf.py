@@ -191,7 +191,7 @@ def transformers_files(siblings: list[dict]) -> dict:
             continue
         if n.endswith(".safetensors") or (not has_st and n.endswith(".bin")):
             chosen.append(s)
-        elif n.endswith(AUX_EXTS) or n.startswith("tokenizer"):
+        elif n.endswith(AUX_EXTS) or n.startswith("tokenizer") or (n.startswith("speaker_embeddings/") and n.endswith(".npy")):
             chosen.append(s)
     weights = sum(int(s.get("size") or 0) for s in chosen if s["rfilename"].endswith((".safetensors", ".bin")))
     return {"files": [s["rfilename"] for s in chosen], "size": sum(int(s.get("size") or 0) for s in chosen),

@@ -47,6 +47,9 @@ class Backend:
     async def voices(self) -> list[str]:
         return []
 
+    async def voice_info(self) -> dict:
+        return {"voices": await self.voices()}
+
     async def transcribe(self, data: bytes, filename: str, params: dict) -> dict:
         raise Unsupported("transcription")
 
@@ -175,9 +178,12 @@ class WorkerBackend(Backend):
         return r.content, r.headers.get("content-type", "audio/wav")
 
     async def voices(self) -> list[str]:
+        return (await self.voice_info()).get("voices", [])
+
+    async def voice_info(self) -> dict:
         r = await self.client.get(f"{self.base_url}/voices")
         await _raise_for(r)
-        return r.json().get("voices", [])
+        return r.json()
 
     async def transcribe(self, data: bytes, filename: str, params: dict) -> dict:
         files = {"file": (filename or "audio", data)}

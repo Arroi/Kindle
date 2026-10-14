@@ -171,6 +171,25 @@ button:not(:disabled), select { cursor: pointer; }
 .catalog-tabs button[aria-pressed="true"] { color: var(--fg); }
 .catalog-tabs button[aria-pressed="true"]::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--signal); }
 .catalog-sort { width: 12.5rem; flex-shrink: 0; }
+.catalog-filter-panel { margin-bottom: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); animation: rise .16s ease both; }
+.catalog-filter-fields { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+.catalog-filter-preset, .catalog-capability-filter, .catalog-filter-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--fg-2); background: var(--panel); transition: border-color .15s, background .15s, color .15s; }
+.catalog-filter-preset { padding: 5px 8px; font-size: 11px; }
+.catalog-capability-filter { padding: 8px 10px; font-size: 12px; }
+.catalog-filter-chip { padding: 5px 8px; font-size: 12px; }
+.catalog-filter-preset:hover, .catalog-capability-filter:hover, .catalog-filter-chip:hover { border-color: var(--line-2); color: var(--fg); }
+.catalog-filter-preset[aria-pressed="true"], .catalog-capability-filter[aria-pressed="true"] { background: var(--signal-soft); border-color: var(--signal); color: var(--signal); }
+.catalog-filter-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 4px; background: var(--signal-soft); color: var(--signal); font-size: 10px; font-variant-numeric: tabular-nums; }
+@container (min-width: 36rem) {
+  .catalog-filter-fields { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .catalog-filter-fields > :last-child { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .catalog-filter-fields > :last-child > * + * { margin-top: 0; }
+}
+@container (min-width: 54rem) {
+  .catalog-filter-fields { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .catalog-filter-fields > :last-child { grid-column: auto; display: block; }
+  .catalog-filter-fields > :last-child > * + * { margin-top: 12px; }
+}
 
 .model-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .model-header { display: none; }

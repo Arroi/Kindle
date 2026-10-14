@@ -45,6 +45,8 @@ export const MODALITY_LABEL: Record<string, string> = {
   image: "Image",
   video: "Video",
   tts: "Text to speech",
+  audio: "Audio generation",
+  mesh: "3D models",
   stt: "Speech to text",
   world: "World",
 };

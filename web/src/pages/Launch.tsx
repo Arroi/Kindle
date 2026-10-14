@@ -12,6 +12,8 @@ import {
   ArrowRight,
   Check,
   Workflow,
+  Box,
+  Music2,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router";
@@ -31,6 +33,8 @@ export const MODALITY_ICON: Record<Modality, typeof MessageSquare> = {
   image: ImageIcon,
   video: Film,
   tts: AudioLines,
+  audio: Music2,
+  mesh: Box,
   stt: Mic,
   world: Globe,
 };
@@ -40,6 +44,8 @@ const TYPES: { m: Modality; blurb: string; engines: string; experimental?: boole
   { m: "image", blurb: "Text-to-image diffusion models.", engines: "Diffusers · ComfyUI" },
   { m: "video", blurb: "Text or image to short clips.", engines: "Diffusers", experimental: true },
   { m: "tts", blurb: "Natural voices, some with cloning.", engines: "Kokoro · Chatterbox · Transformers" },
+  { m: "audio", blurb: "Generate music, sound effects and audio scenes.", engines: "MusicGen · MiDashengLM-Gen", experimental: true },
+  { m: "mesh", blurb: "Discover image and text to 3D checkpoints.", engines: "TRELLIS · Hunyuan3D · TripoSR" },
   { m: "stt", blurb: "Transcribe and translate audio.", engines: "faster-whisper · Transformers" },
   { m: "world", blurb: "Action-conditioned generated worlds.", engines: "Recipes (Oasis, Matrix-Game)", experimental: true },
 ];

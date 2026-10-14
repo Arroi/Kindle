@@ -17,7 +17,9 @@ import yaml
 from ..capabilities import profile
 from ..system.probe import HardwareProfile
 from ..util import parse_params
-from . import attached, hf, ollama, world
+from . import attached, brands, hf, ollama, world
+from .categories import MESH_ENTRIES, audio_category
+from .filters import CatalogFilters
 from .fit import Candidate, Fit, assess, gguf_size, pick_quant, rank, weights_from_safetensors
 from .resolve import ENGINE_LABELS, MODALITY_PIPELINES, resolve_hf
 
@@ -60,12 +62,14 @@ class CatalogService:
     # Search
     # =========================================================================================
     async def search(self, modality: str, q: str = "", source: str = "all", sort: str = "recommended",
-                     limit: int = 40, show_unsupported: bool | None = None, fit: str = "all", live: bool = True) -> dict:
+                     limit: int = 40, show_unsupported: bool | None = None, fit: str = "all", live: bool = True,
+                     filters: CatalogFilters | None = None) -> dict:
         """``fit="all"`` returns every model (tagged); ``fit="fits"`` drops the ones that won't run here."""
         hw = self.probe()
+        filters = filters or CatalogFilters()
         q = q.strip()
         if show_unsupported is None:
-            show_unsupported = modality == "world"
+            show_unsupported = modality in ("world", "mesh", "audio")
         more = {"v": False}  # set by sources whose last fetched page was full
         statuses: dict[str, str] = {}
         items: dict[str, dict] = {}
@@ -91,6 +95,13 @@ class CatalogService:
             statuses["curated"] = "ok"
 
         jobs = []
+        if modality == "mesh" and source in ("all", "hf"):
+            for entry in MESH_ENTRIES:
+                if q and q.lower() not in (entry["id"] + " " + entry["name"]).lower():
+                    continue
+                item = self._from_curated({"source": "hf", "engine": None, **entry}, "mesh")
+                item["curated"] = False
+                add(item)
         if source in ("all", "hf"):
             if modality == "world":
                 # Seed published families first so a temporary Hub outage never
@@ -102,10 +113,11 @@ class CatalogService:
                 if live:
                     jobs.append(("hf", self._world_items(q, sort, hw, limit, more)))
             elif MODALITY_PIPELINES.get(modality) and live:
-                jobs.append(("hf", self._hf_items(modality, q, sort, hw, limit, more)))
+                jobs.append(("hf", self._hf_items(modality, q, sort, hw, limit, more, filters)))
         if source in ("all", "ollama") and modality == "text":
             if live:
-                jobs.append(("ollama", self._ollama_items(q, sort, limit, more)))
+                terms = brands.search_terms(filters.brand) if filters.brand and not q else []
+                jobs.append(("ollama", self._ollama_items(q, sort, limit, more, terms)))
             else:
                 for raw in ollama.snapshot(q):
                     add(self._from_ollama(raw))
@@ -124,6 +136,8 @@ class CatalogService:
             statuses[name] = "ok"
             if name == "hf" and more.get("world_errors"):
                 statuses[name] = f"partial: {more['world_errors']} World searches failed; showing available results"
+            elif name == "hf" and more.get("hf_errors"):
+                statuses[name] = f"partial: {more['hf_errors']} searches failed; showing available results"
             for it in res:
                 if name == "attached" and q and q.lower() not in (it["id"] + " " + it["name"]).lower():
                     continue
@@ -136,9 +150,18 @@ class CatalogService:
         rank(fits)
         for it, f in zip(all_items, fits):
             it["fit"] = f.to_dict()
+            it["brand"] = brands.describe(it["id"], it["name"], it["source"])
 
         if not show_unsupported:
             all_items = [it for it in all_items if it.get("engine")]
+        filter_facets = {"brands": brands.facets(all_items),
+                         "engines": [{"id": engine, "label": ENGINE_LABELS.get(engine, engine),
+                                      "count": sum(it.get("engine") == engine for it in all_items)}
+                                     for engine in sorted({it["engine"] for it in all_items if it.get("engine")})],
+                         "capabilities": {cap: sum(cap in it.get("capabilities", []) for it in all_items)
+                                          for cap in ("vision", "tools", "reasoning", "embedding")}}
+        discovered = len(all_items)
+        all_items = [it for it in all_items if filters.matches(it)]
         fitting = sum(1 for it in all_items if it["fit"]["verdict"] != "worst")
         launchable = sum(1 for it in all_items if it.get("engine"))
         total = len(all_items)
@@ -150,7 +173,8 @@ class CatalogService:
             discover_more = False  # all configured World runtimes are already seeded
         has_more = len(all_items) > limit or discover_more
         return {"modality": modality, "items": all_items[:limit], "sources": statuses, "hardware": _hw_summary(hw),
-                "counts": {"total": total, "fits": fitting, "launchable": launchable, "shown": min(len(all_items), limit)},
+                "counts": {"total": total, "fits": fitting, "launchable": launchable, "shown": min(len(all_items), limit),
+                           "discovered": discovered}, "facets": filter_facets, "filters_active": filters.active,
                 "has_more": has_more}
 
     @staticmethod
@@ -287,7 +311,7 @@ class CatalogService:
         }
 
     async def _hf_items(self, modality: str, q: str, sort: str, hw: HardwareProfile, want: int = 40,
-                        more: dict | None = None) -> list[dict]:
+                        more: dict | None = None, filters: CatalogFilters | None = None) -> list[dict]:
         scale = max(1, -(-want // 40))  # fetch deeper as the user asks for more
 
         def n(base: int) -> int:
@@ -297,23 +321,40 @@ class CatalogService:
         if modality == "text":
             queries = [{"pipeline_tag": "text-generation", "library": "gguf", "limit": n(30)},
                        {"pipeline_tag": "text-generation", "limit": n(20)},
-                       {"pipeline_tag": "image-text-to-text", "library": "gguf", "limit": n(10)}]
+                       {"pipeline_tag": "image-text-to-text", "library": "gguf", "limit": n(10)},
+                       {"pipeline_tag": "image-text-to-text", "limit": n(10)}]
+            if filters and "vision" in filters.capabilities and (filters.capability_match == "all" or len(filters.capabilities) == 1):
+                queries = [entry for entry in queries if entry["pipeline_tag"] == "image-text-to-text"]
         elif modality in ("image", "video"):
             queries = [{"pipeline_tag": p, "library": "diffusers", "limit": n(30)} for p in MODALITY_PIPELINES[modality]]
         else:
             queries = [{"pipeline_tag": p, "limit": n(40)} for p in MODALITY_PIPELINES[modality]]
 
-        async def run(params: dict) -> list[dict]:
-            key = f"hf-search:{params}:{q}:{sort}"
-            return await self._cached(key, 900, lambda: hf.search(self.client, query=q, sort=sort, **params))
+        terms = brands.search_terms(filters.brand) if filters and filters.brand and not q else []
+        searches = [(params, term) for params in queries for term in (terms or [q])]
 
-        batches = await asyncio.gather(*(run(p) for p in queries))
-        if more is not None and any(len(b) >= p["limit"] for b, p in zip(batches, queries)):
+        async def run(params: dict, term: str) -> list[dict]:
+            key = f"hf-search:{params}:{term}:{sort}"
+            async def fetch():
+                async with self._sem:
+                    return await hf.search(self.client, query=term, sort=sort, **params)
+            return await self._cached(key, 900, fetch)
+
+        results = await asyncio.gather(*(run(p, term) for p, term in searches), return_exceptions=True)
+        errors = [result for result in results if isinstance(result, BaseException)]
+        if len(errors) == len(results):
+            raise errors[0]
+        if more is not None and errors:
+            more["hf_errors"] = len(errors)
+        batches = [result if isinstance(result, list) else [] for result in results]
+        if more is not None and any(len(b) >= p["limit"] for b, (p, _) in zip(batches, searches)):
             more["v"] = True
         out, seen = [], set()
         order = 0
         for batch in batches:
             for raw in batch:
+                if modality in ("tts", "audio") and audio_category(raw) != modality:
+                    continue
                 if raw["id"] in seen:
                     continue
                 seen.add(raw["id"])
@@ -322,16 +363,17 @@ class CatalogService:
         return out
 
     async def _ollama_items(self, q: str, sort: str = "recommended", want: int = 40,
-                            more: dict | None = None) -> list[dict]:
+                            more: dict | None = None, terms: list[str] | None = None) -> list[dict]:
         pages = min(max(1, -(-want // 20)), 8)
         order = "newest" if sort == "newest" else "popular"
 
         async def fetch() -> dict:
-            calls = [ollama.search(self.client, q, "local", order, page) for page in range(1, pages + 1)]
-            if not q:
+            calls = [ollama.search(self.client, term, "local", order, page)
+                     for term in (terms or [q]) for page in range(1, pages + 1)]
+            if not q and not terms:
                 calls.append(ollama.search(self.client, "", "embedding"))
             res = await asyncio.gather(*calls)
-            last_full = len(res[pages - 1]) >= 20
+            last_full = any(len(res[index]) >= 20 for index in range(pages - 1, pages * len(terms or [q]), pages))
             merged, seen = [], set()
             for batch in res:
                 for r in batch:
@@ -342,7 +384,7 @@ class CatalogService:
                 raise RuntimeError("no results parsed")
             return {"items": merged, "last_full": last_full}
 
-        res = await self._cached(f"ollama-search:{q}:{order}:{pages}", 1800, fetch)
+        res = await self._cached(f"ollama-search:{q}:{terms}:{order}:{pages}", 1800, fetch)
         if more is not None and res["last_full"]:
             more["v"] = True
         return [self._from_ollama(r, i) for i, r in enumerate(res["items"])]
@@ -418,7 +460,7 @@ class CatalogService:
                 it["description"] = "Not a full diffusers pipeline (single-file checkpoint, LoRA or adapter)"
                 return
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
-        elif it["engine"] in ("transformers_asr", "transformers_tts", "transformers"):
+        elif it["engine"] in ("transformers_asr", "transformers_tts", "transformers_audio", "transformers"):
             it["size"] = hf.transformers_files(sib)["weights"] or None
         elif it["engine"] == "world_recipe" and it.get("recipe"):
             from ..engines.world_engine import list_recipes
@@ -552,9 +594,13 @@ class CatalogService:
                 modality = m
         if not modality and (entry or world.matches(info)):
             modality = "world"
+        if not modality and any(model["id"].lower() == repo.lower() for model in MESH_ENTRIES):
+            modality = "mesh"
         if not modality:
             from .resolve import PIPELINE_TO_MODALITY
             modality = PIPELINE_TO_MODALITY.get(info.get("pipeline_tag") or "", "text")
+            if info.get("pipeline_tag") in ("text-to-audio", "text-to-speech"):
+                modality = audio_category(info)
         curated = next((self._from_curated(e, modality) for e in self.curated.get(modality, [])
                         if e["source"] == "hf" and e["id"] == repo), None)
         it = curated or (self._world_item(entry, hw, info) if entry else self._from_hf(info, modality, hw, 0))
@@ -576,12 +622,12 @@ class CatalogService:
         elif it.get("engine") in ("diffusers", "diffusers_video", "diffusers_world"):
             sel = hf.diffusers_files(sib)
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
-        elif it.get("engine") in ("vllm", "transformers", "transformers_asr", "transformers_tts"):
+        elif it.get("engine") in ("vllm", "transformers", "transformers_asr", "transformers_tts", "transformers_audio"):
             it["size"] = hf.transformers_files(sib)["weights"] or it.get("size")
         else:
             it["size"] = hf.repo_size(sib) or it.get("size")
         it["files"] = len(sib)
-        if modality == "text" or it.get("engine") in ("transformers_tts", "transformers_asr"):
+        if modality == "text" or it.get("engine") in ("transformers_tts", "transformers_audio", "transformers_asr"):
             data = await self._cached(f"hf-capabilities:{repo}:{revision or 'main'}", 6 * 3600,
                                       lambda: hf.capability_files(self.client, repo, revision))
             it["custom_code"] = bool(data["config"].get("auto_map"))
@@ -591,6 +637,7 @@ class CatalogService:
         return self._finish_detail(it, hw)
 
     def _finish_detail(self, it: dict, hw: HardwareProfile) -> dict:
+        it["brand"] = brands.describe(it["id"], it["name"], it["source"])
         f = assess(self._candidate(it), hw)
         it["fit"] = f.to_dict()
         it["spec"] = self._spec(it, f)

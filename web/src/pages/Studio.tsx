@@ -45,7 +45,10 @@ function Body({ model, imageModels, admin }: { model: StudioModel; imageModels: 
       if (model.engine === "diffusers_world") return <VideoStudio key={model.id} model={model} />;
       return <WorldStudio key={model.id} model={model} imageModels={imageModels} admin={admin} />;
     case "tts":
+    case "audio":
       return <TtsStudio key={model.id} model={model} />;
+    case "mesh":
+      return <Empty title="3D checkpoint">Use model details to check this checkpoint’s available runner and downloads.</Empty>;
     case "stt":
       return <SttStudio key={model.id} model={model} />;
   }

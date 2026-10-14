@@ -78,6 +78,22 @@ def main() -> None:
                 gallery = gr.Gallery(label="Result", columns=2)
             go.click(generate, [prompt, negative, steps, guidance, width, height, seed, n], gallery)
 
+    elif a.modality == "audio":
+        def generate_audio(prompt):
+            r = client.post("/v1/audio/generations", json={"model": a.model, "prompt": prompt, "response_format": "wav"})
+            r.raise_for_status()
+            path = f"/tmp/kui-audio-{int(time.time() * 1000)}.wav"
+            with open(path, "wb") as f:
+                f.write(r.content)
+            return path
+
+        with gr.Blocks(title=title) as demo:
+            gr.Markdown(f"## {a.model}")
+            prompt = gr.Textbox(label="Describe the audio", lines=5)
+            go = gr.Button("Generate audio", variant="primary")
+            audio = gr.Audio(label="Generated audio", type="filepath")
+            go.click(generate_audio, [prompt], audio)
+
     elif a.modality == "tts":
         try:
             voices = client.get("/v1/audio/voices", params={"model": a.model}).json().get("voices") or ["default"]

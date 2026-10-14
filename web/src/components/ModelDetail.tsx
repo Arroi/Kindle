@@ -109,7 +109,7 @@ function EngineOptions({
 
 export function OptionsForm(props: Parameters<typeof EngineOptions>[0]) {
   const { item, options, onChange } = props;
-  const customCode = ["vllm", "transformers", "transformers_tts", "transformers_asr"].includes(item.engine ?? "");
+  const customCode = ["vllm", "transformers", "transformers_tts", "transformers_audio", "transformers_asr"].includes(item.engine ?? "");
   return <div className="space-y-4">
     <EngineOptions {...props} />
     {customCode && <div className="space-y-3 border-t border-line pt-4">
@@ -222,6 +222,7 @@ export function ModelDetail({
           <div className="flex items-start gap-4"><ModelLogo id={item.id} name={item.name} source={item.source} className="size-12" /><h2 className="display min-w-0 break-words text-[32px] leading-tight">{item.name}</h2></div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11.5px] text-fg-2">
             <span>{item.id}</span>
+            {item.brand && <span>{item.brand.label}</span>}
             {item.params ? <span>{params(item.params)} params</span> : null}
             {item.engine_label && <span>{item.engine_label}</span>}
             {item.url && (
