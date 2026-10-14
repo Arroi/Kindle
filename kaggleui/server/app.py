@@ -593,6 +593,24 @@ async def _open_main_tunnel(state: AppState) -> bool:
 
 async def _startup(state: AppState) -> None:
     _write_state(state, "starting")
+    # Lifespan tasks can run before Uvicorn binds its listening socket. In particular,
+    # a local-only tunnel is instant: publishing its URL early raced notebook clients.
+    import httpx
+
+    async with httpx.AsyncClient(timeout=1, trust_env=False) as client:
+        for _ in range(300):
+            try:
+                response = await client.get(f"{state.local_url()}/_kui/api/session",
+                                            headers={"Authorization": f"Bearer {state.auth.admin_token}"})
+                if response.is_success and response.json().get("admin"):
+                    break
+            except httpx.HTTPError:
+                pass
+            await asyncio.sleep(.1)
+        else:
+            _write_state(state, "tunnel_error")
+            print("[kaggleui] The local HTTP server did not become ready; no public link was announced.", flush=True)
+            return
     ready = await _open_main_tunnel(state)
 
     last_url = state.main_url()

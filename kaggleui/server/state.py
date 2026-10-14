@@ -23,6 +23,7 @@ class AppState:
     paths: Paths
     settings: Settings
     port: int
+    listen_host: str = "127.0.0.1"
     mock: bool = False
     fake_hw: str | None = None
     preset: Preset | None = None
@@ -55,3 +56,9 @@ class AppState:
     def main_url(self) -> str:
         t = self.tunnels.get("main")
         return t.url.rstrip("/") if t and t.url else f"http://127.0.0.1:{self.port}"
+
+    def local_url(self) -> str:
+        host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(self.listen_host, self.listen_host)
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        return f"http://{host}:{self.port}"

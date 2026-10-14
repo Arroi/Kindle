@@ -138,6 +138,7 @@ class Updates:
         preset = Preset(settings=self.state.settings, deployments=[d.spec for d in self.state.manager.deployments.values()
                                                                   if d.status not in ("stopped", "stopping", "error")])
         config = {**self.latest, "home": str(self.state.paths.home), "port": self.state.port,
+                  "host": self.state.listen_host, "local_url": self.state.local_url(),
                   "preset": preset.model_dump(), "mock": self.state.mock, "fake_hw": self.state.fake_hw}
         path = self.folder / "request.json"
         path.write_text(json.dumps(config))
@@ -191,7 +192,7 @@ def _install(path: Path) -> None:
 
         stop(config["home"], _preserve_pid=os.getpid())
         cmd = [sys.executable, "-m", "kaggleui", "serve", "--home", config["home"], "--port", str(config["port"]),
-               "--preset", str(preset)]
+               "--host", config["host"], "--preset", str(preset)]
         if config["mock"]:
             cmd.append("--mock-engines")
         if config.get("fake_hw"):
@@ -203,7 +204,7 @@ def _install(path: Path) -> None:
                 raise RuntimeError("The updated server exited. See server.log.")
             try:
                 with httpx.Client(timeout=2) as client:
-                    response = client.get(f"http://127.0.0.1:{config['port']}/_kui/api/session")
+                    response = client.get(config["local_url"] + "/_kui/api/session")
                     if response.is_success and response.json().get("version") == config["version"]:
                         progress("complete", "Updated to " + config["version"])
                         return

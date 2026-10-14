@@ -30,6 +30,7 @@ def build_state(*, port: int, tunnel: str | None = None, preset: Preset | None =
 
 
 def make_server(state: AppState, host: str = "127.0.0.1") -> uvicorn.Server:
+    state.listen_host = host
     app = create_app(state)
     config = uvicorn.Config(app, host=host, port=state.port, log_level="warning", proxy_headers=True,
                             forwarded_allow_ips="127.0.0.1", ws_max_size=64 * 1024 * 1024,
