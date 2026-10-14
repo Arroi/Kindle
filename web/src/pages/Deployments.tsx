@@ -6,9 +6,9 @@ import { ProgressBar } from "../components/meters";
 import { Button, CopyButton, Drawer, Empty, SectionTitle, useToast } from "../components/ui";
 import { api } from "../lib/api";
 import { bytes, cx, duration, MODALITY_LABEL } from "../lib/format";
-import { useLive } from "../lib/live";
+import { useLive, useLogs } from "../lib/live";
+import { ModelLogo } from "../components/ModelLogo";
 import type { Deployment } from "../lib/types";
-import { MODALITY_ICON } from "./Launch";
 
 const STAGES = ["installing", "downloading", "loading", "ready"] as const;
 const STAGE_LABEL: Record<string, string> = { installing: "Install", downloading: "Download", loading: "Load", ready: "Ready" };
@@ -43,7 +43,8 @@ function Pipeline({ d }: { d: Deployment }) {
 }
 
 function Logs({ id }: { id: string }) {
-  const { logs, dispatch } = useLive();
+  const { dispatch } = useLive();
+  const logs = useLogs();
   const box = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   useEffect(() => {
@@ -80,7 +81,6 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
   const [showLogs, setShowLogs] = useState(d.status === "error" || focus);
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
-  const Icon = MODALITY_ICON[d.modality];
   const ref = useRef<HTMLDivElement>(null);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -111,9 +111,7 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
   return (
     <div ref={ref} className={cx("panel scroll-mt-24 p-5", focus && "border-signal/60")}>
       <div className="flex flex-wrap items-start gap-4">
-        <div className={cx("grid size-11 shrink-0 place-items-center rounded-lg border", d.status === "ready" ? "border-signal/50 text-signal" : "border-line text-fg-2")}>
-          <Icon className="size-5" strokeWidth={1.7} />
-        </div>
+        <ModelLogo id={d.spec.model.id} name={d.name} source={d.spec.model.source} className="size-11" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="display text-[28px] leading-none">{d.name}</h3>
@@ -218,7 +216,7 @@ export default function Deployments() {
           <Button onClick={() => api.preset().then((p) => setPreset(p.cell))} disabled={!deps.length}>
             <FileCode2 className="size-4" /> Export launch cell
           </Button>
-          <Link to="/">
+          <Link to="/deploy/new">
             <Button variant="primary">
               <Plus className="size-4" /> New
             </Button>
@@ -229,7 +227,7 @@ export default function Deployments() {
         <Empty icon={<Sparkles className="size-8" />} title="Nothing running yet">
           Launch a model and it shows up here with live install, download and load progress.
           <div className="mt-5">
-            <Link to="/">
+            <Link to="/deploy/new">
               <Button variant="primary">Launch a model</Button>
             </Link>
           </div>

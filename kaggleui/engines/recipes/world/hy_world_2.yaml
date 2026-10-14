@@ -1,0 +1,24 @@
+name: hy_world_2
+title: HY-World 2.0
+repo: tencent/HY-World-2.0
+git: https://github.com/Tencent-Hunyuan/HY-World-2.0
+recursive: true
+env: venv
+python: "3.11"
+min_sm: 80
+adapter: hy_world_2
+result_kind: scene
+text_input: true
+prompt_conditioning: true
+controls: scene
+needs_vlm: true
+allow: ["HY-Pano-2.0/pytorch_lora_weights.safetensors", "HY-WorldMirror-2.0/*"]
+requirements_file: requirements.txt
+requirements: ["ninja", "cmake", "pybind11", "sentencepiece", "torchaudio==2.7.1"]
+extra_models:
+  - {repo: Qwen/Qwen-Image, mode: diffusers}
+  - {repo: Qwen/Qwen-Image-Edit-2509, mode: diffusers}
+  - {repo: hanshanxue/WorldStereo, allow: ["worldstereo-memory-dmd/*"]}
+  - {repo: facebook/sam3, mode: transformers}
+defaults: {steps: 40, training_steps: 8000}
+unverified: true

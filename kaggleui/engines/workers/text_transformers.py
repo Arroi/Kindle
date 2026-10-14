@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import queue
 import threading
 import time
 import uuid
@@ -17,6 +18,8 @@ def _content_text(content) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
+        if any(isinstance(p, dict) and p.get("type") in ("image", "image_url") for p in content):
+            raise ValueError("This Transformers fallback accepts text only. Deploy a compatible vision model with Ollama or vLLM for image input.")
         return "".join(p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text")
     return str(content or "")
 
@@ -35,16 +38,22 @@ class Chat:
         extra = dict(body.get("chat_template_kwargs") or {})
         if body.get("reasoning_effort") == "none":
             extra.setdefault("enable_thinking", False)
-        try:
-            ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt", **extra)
-        except TypeError:  # older tokenizers reject unknown template kwargs
-            ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt")
-        return ids.to(self.model.device)
+        if self.tok.chat_template:
+            try:
+                ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt", **extra)
+            except TypeError:  # older tokenizers reject unknown template kwargs
+                ids = self.tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt")
+        else:
+            # Base checkpoints often have no chat template. Give them a plain completion prompt.
+            prompt = "\n".join(f"{m['role']}: {m['content']}" for m in msgs) + "\nassistant:"
+            ids = self.tok(prompt, return_tensors="pt")
+        inputs = dict(ids) if hasattr(ids, "keys") else {"input_ids": ids}
+        return {key: value.to(self.model.device) for key, value in inputs.items()}
 
     def _gen_kwargs(self, body: dict) -> dict:
         temp = float(body.get("temperature", 0.7) or 0)
         kw = {"max_new_tokens": int(body.get("max_tokens") or body.get("max_completion_tokens") or 1024),
-              "do_sample": temp > 0, "pad_token_id": self.tok.eos_token_id}
+              "do_sample": temp > 0, "pad_token_id": self.tok.eos_token_id, "max_time": 600}
         if temp > 0:
             kw["temperature"] = temp
             kw["top_p"] = float(body.get("top_p", 0.95) or 0.95)
@@ -53,22 +62,54 @@ class Chat:
     def complete(self, body: dict) -> tuple[str, int, int]:
         import torch
 
-        ids = self._inputs(body.get("messages") or [], body)
+        inputs = self._inputs(body.get("messages") or [], body)
         with torch.no_grad():
-            out = self.model.generate(ids, **self._gen_kwargs(body))
-        new = out[0][ids.shape[-1]:]
-        return self.tok.decode(new, skip_special_tokens=True), ids.shape[-1], len(new)
+            out = self.model.generate(**inputs, **self._gen_kwargs(body))
+        length = inputs["input_ids"].shape[-1]
+        new = out[0][length:]
+        return self.tok.decode(new, skip_special_tokens=True), length, len(new)
 
     def stream(self, body: dict):
-        from transformers import TextIteratorStreamer
+        import torch
+        from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
 
-        ids = self._inputs(body.get("messages") or [], body)
-        streamer = TextIteratorStreamer(self.tok, skip_prompt=True, skip_special_tokens=True)
-        t = threading.Thread(target=self.model.generate, kwargs={"input_ids": ids, "streamer": streamer,
-                                                                    **self._gen_kwargs(body)})
+        inputs = self._inputs(body.get("messages") or [], body)
+        streamer = TextIteratorStreamer(self.tok, skip_prompt=True, skip_special_tokens=True, timeout=1)
+        cancelled = threading.Event()
+        errors: list[BaseException] = []
+
+        class Stop(StoppingCriteria):
+            def __call__(self, input_ids, scores, **kwargs):
+                return cancelled.is_set()
+
+        def generate():
+            try:
+                with torch.inference_mode():
+                    self.model.generate(**inputs, streamer=streamer, stopping_criteria=StoppingCriteriaList([Stop()]),
+                                        **self._gen_kwargs(body))
+            except BaseException as exc:
+                errors.append(exc)
+                streamer.end()  # unblock the consumer even when generate fails before its first token
+
+        t = threading.Thread(target=generate, daemon=True)
         t.start()
-        yield from streamer
-        t.join()
+        deadline = time.monotonic() + 600
+        try:
+            while True:
+                try:
+                    yield next(streamer)
+                except StopIteration:
+                    break
+                except queue.Empty:
+                    if errors or not t.is_alive():
+                        break
+                    if time.monotonic() > deadline:
+                        raise TimeoutError("Generation took longer than 10 minutes. Reduce the context or output length.") from None
+            if errors:
+                raise RuntimeError(f"Generation failed: {errors[0]}") from errors[0]
+        finally:
+            cancelled.set()
+            t.join()  # retain the GPU lock until the generation thread has stopped
 
 
 def main() -> None:
@@ -101,10 +142,15 @@ def main() -> None:
                                                                                "finish_reason": finish}]}) + "\n\n"
 
             yield chunk({"role": "assistant", "content": ""})
-            with state.gpu_lock:
-                for piece in model.stream(body):
-                    if piece:
-                        yield chunk({"content": piece})
+            try:
+                with state.gpu_lock:
+                    for piece in model.stream(body):
+                        if piece:
+                            yield chunk({"content": piece})
+            except Exception as exc:
+                yield "data: " + json.dumps({"error": {"message": str(exc), "type": "generation_error"}}) + "\n\n"
+                yield "data: [DONE]\n\n"
+                return
             yield chunk({}, "stop")
             yield "data: [DONE]\n\n"
 

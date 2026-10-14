@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import time
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
@@ -12,6 +14,125 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response, Streami
 from .common import SSE_HEADERS, GatewayError, check_access, find, openai_error, sse_openai, state_of, wrap
 
 router = APIRouter()
+
+
+def _world_object(job: dict, status: dict | None = None) -> dict:
+    status = {**job, **(status or {})}
+    return {"id": job["id"], "object": "world", "model": job["model"], "created_at": int(job["created"]),
+            "prompt": job.get("prompt"), "status": status.get("status", job.get("status", "queued")),
+            "progress": round(float(status.get("progress", 0)) * 100),
+            "message": status.get("message"), "error": status.get("error"), "result_kind": "scene"}
+
+
+def _world_job(request: Request, ident: str):
+    st = state_of(request)
+    job = st.world_jobs.get(ident)
+    if not job:
+        raise GatewayError(404, "World job not found", "not_found_error")
+    dep = st.manager.get(job["dep"])
+    if not dep or not dep.backend:
+        raise GatewayError(410, "The deployment that generated this world is no longer running", "not_found_error")
+    return job, dep
+
+
+async def world_file_response(request: Request, ident: str, path: str | None = None):
+    """Authenticated callers stream large exports without loading the scene ZIP into server RAM."""
+    import httpx
+
+    job, dep = _world_job(request, ident)
+    if not dep.backend.base_url:
+        raise GatewayError(400, "This backend has no world asset server")
+    suffix = "result" if path is None else "assets/" + quote(path, safe="/")
+    client = httpx.AsyncClient(timeout=httpx.Timeout(600, connect=10))
+    try:
+        response = await client.send(client.build_request(
+            "GET", f"{dep.backend.base_url}/jobs/{job['worker_id']}/{suffix}"), stream=True)
+        if response.status_code >= 400:
+            raise GatewayError(response.status_code, "World asset is unavailable")
+    except BaseException:
+        await client.aclose()
+        raise
+
+    async def chunks():
+        try:
+            async for block in response.aiter_bytes():
+                yield block
+        finally:
+            await response.aclose()
+            await client.aclose()
+
+    headers = {key: response.headers[key] for key in ("content-disposition", "content-length") if key in response.headers}
+    return StreamingResponse(chunks(), media_type=response.headers.get("content-type", "application/octet-stream"), headers=headers)
+
+
+@router.post("/v1/worlds")
+async def create_world(request: Request):
+    try:
+        check_access(request, "openai")
+        st = state_of(request)
+        body = await _json(request)
+        dep = find(request, body.get("model"), "world")
+        if dep.info.get("result_kind") != "scene":
+            raise GatewayError(400, "This runner generates video. Use /v1/videos.")
+        image = base64.b64decode(body["input_reference_b64"]) if body.get("input_reference_b64") else None
+        worker = await dep.backend.job_submit(body, image)
+        ident = "world_" + uuid.uuid4().hex[:20]
+        job = {"id": ident, "worker_id": worker, "dep": dep.id, "model": dep.served_name,
+               "prompt": body.get("prompt"), "created": time.time(), "status": "queued"}
+        st.world_jobs[ident] = job
+        return _world_object(job)
+    except Exception as exc:
+        return openai_error(wrap(exc))
+
+
+@router.get("/v1/worlds")
+async def list_worlds(request: Request):
+    try:
+        check_access(request, "openai")
+        return {"object": "list", "data": [_world_object(job) for job in
+                sorted(state_of(request).world_jobs.values(), key=lambda job: -job["created"])]}
+    except Exception as exc:
+        return openai_error(wrap(exc))
+
+
+@router.get("/v1/worlds/{ident}")
+async def world_status(request: Request, ident: str):
+    try:
+        check_access(request, "openai")
+        job, dep = _world_job(request, ident)
+        status = await dep.backend.job_status(job["worker_id"])
+        job.update({key: status[key] for key in ("status", "progress", "message", "error") if key in status})
+        return _world_object(job, status)
+    except Exception as exc:
+        return openai_error(wrap(exc))
+
+
+@router.get("/v1/worlds/{ident}/assets")
+async def world_assets(request: Request, ident: str):
+    try:
+        check_access(request, "openai")
+        job, dep = _world_job(request, ident)
+        return {"assets": await dep.backend.job_assets(job["worker_id"])}
+    except Exception as exc:
+        return openai_error(wrap(exc))
+
+
+@router.get("/v1/worlds/{ident}/content")
+async def download_world(request: Request, ident: str):
+    try:
+        check_access(request, "openai")
+        return await world_file_response(request, ident)
+    except Exception as exc:
+        return openai_error(wrap(exc))
+
+
+@router.get("/v1/worlds/{ident}/assets/{path:path}")
+async def download_world_asset(request: Request, ident: str, path: str):
+    try:
+        check_access(request, "openai")
+        return await world_file_response(request, ident, path)
+    except Exception as exc:
+        return openai_error(wrap(exc))
 
 
 async def _json(request: Request) -> dict:
@@ -145,6 +266,32 @@ async def voices(request: Request, model: str | None = None):
         return {"voices": await dep.backend.voices()}
     except Exception as e:  # noqa: BLE001
         return openai_error(wrap(e))
+
+
+@router.get("/v1/voices")
+async def all_voices(request: Request, model: str | None = None):
+    """List actual voice IDs for every ready TTS deployment, grouped by model."""
+    try:
+        check_access(request, "openai")
+        deps = [d for d in state_of(request).manager.ready() if d.spec.modality == "tts" and d.backend]
+        if model:
+            deps = [find(request, model, "tts")]
+
+        async def entry(dep):
+            voices = await asyncio.wait_for(dep.backend.voices(), timeout=15)
+            return {"model": dep.served_name, "voices": voices}
+
+        results = await asyncio.gather(*(entry(dep) for dep in deps), return_exceptions=True)
+        models, data, errors = [], [], []
+        for dep, result in zip(deps, results):
+            if isinstance(result, BaseException):
+                errors.append({"model": dep.served_name, "message": "Voice list unavailable; retry shortly."})
+                continue
+            models.append(result)
+            data.extend({"id": voice, "object": "voice", "model": dep.served_name} for voice in result["voices"])
+        return {"object": "list", "data": data, "models": models, "errors": errors}
+    except Exception as exc:
+        return openai_error(wrap(exc))
 
 
 def _fmt_ts(t: float | None, sep: str) -> str:
@@ -292,6 +439,8 @@ async def create_video(request: Request):
                     body[k] = float(body[k]) if "." in body[k] else int(body[k])
                 except ValueError:
                     pass
+        if dep.info.get("result_kind") == "scene":
+            raise GatewayError(400, "This model generates 3D scenes. Use /v1/worlds instead of /v1/videos.")
         worker_id = await dep.backend.job_submit(body, image)
         vid = "video_" + uuid.uuid4().hex[:20]
         job = {"id": vid, "dep": dep.id, "worker_id": worker_id, "model": dep.served_name, "created": time.time(),

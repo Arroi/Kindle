@@ -57,6 +57,9 @@ class Backend:
     async def job_result(self, job_id: str) -> tuple[bytes, str]:
         raise Unsupported("video generation")
 
+    async def job_assets(self, job_id: str) -> list[dict]:
+        raise Unsupported("world assets")
+
     async def close(self) -> None:
         pass
 
@@ -126,6 +129,9 @@ class OpenAIUpstream(Backend):
         async with self.client.stream("POST", f"{self.base_url}/v1/chat/completions", json=payload) as r:
             await _raise_for(r)
             async for chunk in iter_sse(r):
+                if chunk.get("error"):
+                    error = chunk["error"]
+                    raise UpstreamError(500, error.get("message", str(error)) if isinstance(error, dict) else str(error))
                 yield chunk
 
     async def completions(self, body: dict) -> dict:
@@ -161,11 +167,9 @@ class WorkerBackend(Backend):
         return r.content, r.headers.get("content-type", "audio/wav")
 
     async def voices(self) -> list[str]:
-        try:
-            r = await self.client.get(f"{self.base_url}/voices")
-            return r.json().get("voices", []) if r.status_code == 200 else []
-        except httpx.HTTPError:
-            return []
+        r = await self.client.get(f"{self.base_url}/voices")
+        await _raise_for(r)
+        return r.json().get("voices", [])
 
     async def transcribe(self, data: bytes, filename: str, params: dict) -> dict:
         files = {"file": (filename or "audio", data)}
@@ -193,6 +197,11 @@ class WorkerBackend(Backend):
         r = await self.client.get(f"{self.base_url}/jobs/{job_id}/result")
         await _raise_for(r)
         return r.content, r.headers.get("content-type", "video/mp4")
+
+    async def job_assets(self, job_id: str) -> list[dict]:
+        r = await self.client.get(f"{self.base_url}/jobs/{job_id}/assets")
+        await _raise_for(r)
+        return r.json()
 
     async def close(self) -> None:
         await self.client.aclose()

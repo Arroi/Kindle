@@ -1,16 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Sparkles } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { ProgressBar } from "../components/meters";
 import { Button, Empty } from "../components/ui";
 import { api } from "../lib/api";
+import { ModelLogo } from "../components/ModelLogo";
 import { cx, MODALITY_LABEL } from "../lib/format";
 import type { StudioModel } from "../lib/types";
-import { MODALITY_ICON } from "./Launch";
 import ChatStudio from "./studio/Chat";
-import { ImageStudio, SttStudio, TtsStudio, VideoStudio } from "./studio/Media";
-import WorldStudio from "./studio/World";
+const ImageStudio = lazy(() => import("./studio/Media").then(m => ({ default: m.ImageStudio })));
+const SttStudio = lazy(() => import("./studio/Media").then(m => ({ default: m.SttStudio })));
+const TtsStudio = lazy(() => import("./studio/Media").then(m => ({ default: m.TtsStudio })));
+const VideoStudio = lazy(() => import("./studio/Media").then(m => ({ default: m.VideoStudio })));
+const WorldStudio = lazy(() => import("./studio/World"));
+const WorldSceneStudio = lazy(() => import("./studio/WorldScene"));
 
 function Body({ model, imageModels, admin }: { model: StudioModel; imageModels: StudioModel[]; admin: boolean }) {
   if (model.status !== "ready") {
@@ -36,6 +41,7 @@ function Body({ model, imageModels, admin }: { model: StudioModel; imageModels: 
     case "video":
       return <VideoStudio key={model.id} model={model} />;
     case "world":
+      if (model.result_kind === "scene") return <WorldSceneStudio key={model.id} model={model} />;
       if (model.engine === "diffusers_world") return <VideoStudio key={model.id} model={model} />;
       return <WorldStudio key={model.id} model={model} imageModels={imageModels} admin={admin} />;
     case "tts":
@@ -70,13 +76,13 @@ export default function Studio({ admin }: { admin: boolean }) {
         )}
       </div>
 
-      {q.isLoading ? null : models.length === 0 ? (
+      {q.error ? <Empty title="Couldn't load the Studio">{q.error.message}<Button className="mt-4" onClick={() => q.refetch()}>Try again</Button></Empty> : q.isLoading ? <div className="panel h-48 animate-pulse" aria-label="Loading Studio" /> : models.length === 0 ? (
         <Empty icon={<Sparkles className="size-8" />} title="No models running">
           {admin ? (
             <>
               Launch one and it shows up here.
               <div className="mt-5">
-                <Link to="/">
+                <Link to="/deploy/new">
                   <Button variant="primary">Launch a model</Button>
                 </Link>
               </div>
@@ -89,7 +95,6 @@ export default function Studio({ admin }: { admin: boolean }) {
         <>
           <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scroll-thin">
             {models.map((m) => {
-              const Icon = MODALITY_ICON[m.modality];
               const active = m.id === current?.id;
               return (
                 <button
@@ -100,7 +105,7 @@ export default function Studio({ admin }: { admin: boolean }) {
                     active ? "border-signal bg-signal-soft" : "border-line bg-panel hover:border-line-2",
                   )}
                 >
-                  <Icon className={cx("size-4", active ? "text-signal" : "text-fg-2")} />
+                  <ModelLogo id={m.model_id ?? ""} name={m.name} source={m.source} className="size-8" />
                   <span>
                     <span className="block text-[14px] font-medium leading-tight">{m.name}</span>
                     <span className="block font-mono text-[10px] uppercase tracking-wider text-fg-3">
@@ -113,11 +118,11 @@ export default function Studio({ admin }: { admin: boolean }) {
             })}
           </div>
           {current && (
-            <Body
+              <Suspense fallback={<div className="panel h-48 animate-pulse" aria-label="Loading workspace" />}><Body
               model={current}
               admin={admin}
               imageModels={models.filter((m) => m.modality === "image" && m.status === "ready" && m.runtime !== "comfyui")}
-            />
+            /></Suspense>
           )}
         </>
       )}

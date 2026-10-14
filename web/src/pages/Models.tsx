@@ -3,7 +3,6 @@ import { useNavigate } from "react-router";
 
 import { ModelBrowser } from "../components/ModelBrowser";
 import { ModelDetail } from "../components/ModelDetail";
-import { ModelImporter } from "../components/ModelImporter";
 import { Button, Drawer, SectionTitle, useToast } from "../components/ui";
 import { api } from "../lib/api";
 import { MODALITY_LABEL } from "../lib/format";
@@ -13,21 +12,16 @@ export default function Models() {
   const [modality, setModality] = useState<Modality>("text");
   const [open, setOpen] = useState<CatalogItem | null>(null);
   const [busy, setBusy] = useState(false);
-  const [importUrl, setImportUrl] = useState<string | null>(null);
-  const [localBrowse, setLocalBrowse] = useState(0);
   const nav = useNavigate();
   const toast = useToast();
 
   return (
     <div>
       <SectionTitle kicker="Catalog" title="Models">
-        <div className="flex flex-wrap items-center gap-4"><p className="max-w-md text-[13.5px] text-fg-2">Browse Hugging Face, Ollama and local models. Each model is sized against this machine.</p>
-          <Button onClick={() => setImportUrl("")}>Add model URL</Button></div>
+        <div className="flex flex-wrap items-center gap-4"><p className="max-w-lg text-[14px] text-fg-2">Find a model for this machine. Compare sizes, check GPU fit, and choose a runner.</p>
+          <Button onClick={() => nav("/imports")}>Import from URL</Button></div>
       </SectionTitle>
-      <ModelBrowser key={localBrowse} initialSource={localBrowse ? "attached" : "all"} modality={modality} onModality={setModality} onOpen={setOpen} />
-      <Drawer open={importUrl !== null} onClose={() => setImportUrl(null)} title="Add model from URL">
-        {importUrl !== null && <ModelImporter initialUrl={importUrl} onBrowse={m => { setModality(m); setLocalBrowse(v => v + 1); setImportUrl(null); }} />}
-      </Drawer>
+      <ModelBrowser modality={modality} onModality={setModality} onOpen={setOpen} />
       <Drawer open={!!open} onClose={() => setOpen(null)} title={open ? `${MODALITY_LABEL[open.modality]} model` : ""}>
         {open && (
           <ModelDetail
@@ -35,7 +29,7 @@ export default function Models() {
             item={open}
             busy={busy}
             actionLabel="Deploy now"
-            onImport={url => { setOpen(null); setImportUrl(url); }}
+            onImport={url => nav("/imports", { state: { url } })}
             onAction={async (c) => {
               setBusy(true);
               try {
@@ -49,7 +43,7 @@ export default function Models() {
               }
             }}
             secondary={(c) => (
-              <Button variant="ghost" onClick={() => nav("/", { state: { choice: c } })}>
+              <Button variant="ghost" onClick={() => nav("/deploy/new", { state: { choice: c } })}>
                 Customize…
               </Button>
             )}

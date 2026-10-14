@@ -143,7 +143,29 @@ class JobStore:
             raise HTTPException(404, "Result not ready")
         path = job["result"]
         media = "video/mp4" if path.endswith(".mp4") else "image/gif" if path.endswith(".gif") else "application/octet-stream"
+        if path.endswith(".zip"):
+            media = "application/zip"
         return FileResponse(path, media_type=media, filename=os.path.basename(path))
+
+    def assets(self, job_id: str) -> list[dict]:
+        from .world_assets import manifest
+
+        job = self.jobs.get(job_id)
+        if not job or not job.get("result"):
+            raise HTTPException(404, "Result not ready")
+        return manifest(job["result"])["assets"]
+
+    def asset(self, job_id: str, name: str) -> FileResponse:
+        from .world_assets import asset_path
+
+        job = self.jobs.get(job_id)
+        if not job or not job.get("result"):
+            raise HTTPException(404, "Result not ready")
+        try:
+            path, media = asset_path(job["result"], name)
+        except KeyError as exc:
+            raise HTTPException(404, "No such world asset") from exc
+        return FileResponse(path, media_type=media, filename=path.name)
 
     def _loop(self) -> None:
         while True:
@@ -184,3 +206,11 @@ def register_jobs(app: FastAPI, state: WorkerState, store_getter: Callable[[], J
     @app.get("/jobs/{job_id}/result")
     def result(job_id: str):
         return store_getter().result(job_id)
+
+    @app.get("/jobs/{job_id}/assets")
+    def assets(job_id: str):
+        return store_getter().assets(job_id)
+
+    @app.get("/jobs/{job_id}/assets/{name:path}")
+    def asset(job_id: str, name: str):
+        return store_getter().asset(job_id, name)

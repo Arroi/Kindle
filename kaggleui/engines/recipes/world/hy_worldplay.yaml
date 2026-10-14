@@ -1,0 +1,20 @@
+name: hy_worldplay
+title: HY-WorldPlay (5B)
+repo: tencent/HY-WorldPlay
+git: https://github.com/Tencent-Hunyuan/HY-WorldPlay
+env: venv
+python: "3.10"
+min_sm: 80
+adapter: hy_worldplay
+result_kind: video
+text_input: true
+prompt_conditioning: true
+controls: pose
+allow: ["wan_transformer/*", "wan_distilled_model/*"]
+requirements_file: requirements.txt
+requirements: ["sageattention", "opencv-python-headless", "sentencepiece"]
+extra_models:
+  - {repo: Wan-AI/Wan2.2-TI2V-5B-Diffusers, mode: diffusers}
+defaults: {frames: 17, steps: 4, fps: 24}
+max_frames: 257
+unverified: true

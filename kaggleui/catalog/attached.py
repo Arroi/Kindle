@@ -60,6 +60,12 @@ def scan(root: Path = Path("/kaggle/input"), max_depth: int = 7) -> list[dict]:
             dirnames[:] = []
             continue
 
+        if {"ve.safetensors", "t3_cfg.safetensors", "s3gen.safetensors", "tokenizer.json"} <= files:
+            found.append({"path": str(d), "name": label, "modality": "tts", "engine": "chatterbox",
+                          "size": _dir_weight_size(d)})
+            dirnames[:] = []
+            continue
+
         if "model_index.json" in files:
             modality = "image"
             engine = None
@@ -87,7 +93,15 @@ def scan(root: Path = Path("/kaggle/input"), max_depth: int = 7) -> list[dict]:
             archs = " ".join(cfg.get("architectures") or [])
             model_type = str(cfg.get("model_type", ""))
             is_ct2 = "model.bin" in files and ("vocabulary.json" in files or "vocabulary.txt" in files)
-            if is_ct2 and "whisper" in (rel.lower() + model_type):
+            if cfg.get("plbert") and cfg.get("vocab") and any(f.endswith(".pth") for f in files):
+                found.append({"path": str(d), "name": label, "modality": "tts", "engine": "kokoro",
+                              "size": _dir_weight_size(d)})
+                dirnames[:] = []
+            elif model_type in {"vits", "bark", "speecht5", "fastspeech2_conformer", "csm", "dia"}:
+                found.append({"path": str(d), "name": label, "modality": "tts", "engine": "transformers_tts",
+                              "size": _dir_weight_size(d), "experimental": True})
+                dirnames[:] = []
+            elif is_ct2 and "whisper" in (rel.lower() + model_type):
                 found.append({"path": str(d), "name": label, "modality": "stt", "engine": "faster_whisper",
                               "size": _dir_weight_size(d)})
                 dirnames[:] = []

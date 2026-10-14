@@ -2,6 +2,7 @@ import { AlertTriangle, Check, Cpu, HardDrive, KeyRound, Wifi, WifiOff, X } from
 
 import { GpuMeter, LedMeter } from "../components/meters";
 import { SectionTitle } from "../components/ui";
+import { UpdateNotice } from "../components/Updates";
 import { bytes, cx, duration } from "../lib/format";
 import { useLive } from "../lib/live";
 
@@ -24,6 +25,7 @@ export default function System() {
   return (
     <div>
       <SectionTitle kicker={s.platform} title={s.accelerator_label} />
+      <UpdateNotice full />
       {s.notes.length > 0 && (
         <div className="mb-4 space-y-2">
           {s.notes.map((n) => (

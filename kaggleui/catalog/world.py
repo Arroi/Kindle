@@ -42,4 +42,4 @@ def queries(q: str, want: int) -> list[dict]:
                 *({"query": q, "tag_filter": tag, "limit": limit} for tag in ("world-model", "world-models"))]
     return [*({"tag_filter": tag, "limit": limit} for tag in ("world-model", "world-models", "world-generation")),
             *({"query": family, "limit": min(max(want // 2, 20), 150)} for family in
-              ("Matrix-Game", "lingbot-world", "HunyuanWorld", "Yume-", "Cosmos-Predict", "Cosmos-Transfer", "Cosmos3", "oasis-"))]
+              ("Matrix-Game", "lingbot-world", "HunyuanWorld", "HY-World", "Yume-", "Cosmos-Predict", "Cosmos-Transfer", "Cosmos3", "oasis-"))]

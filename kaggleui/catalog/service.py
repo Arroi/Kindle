@@ -18,7 +18,6 @@ from ..system.probe import HardwareProfile
 from ..util import parse_params
 from . import attached, hf, ollama, world
 from .fit import Candidate, Fit, assess, gguf_size, pick_quant, rank, weights_from_safetensors
-from .imports import saved_models
 from .resolve import ENGINE_LABELS, MODALITY_PIPELINES, resolve_hf
 
 CURATED_PATH = Path(__file__).with_name("curated.yaml")
@@ -32,24 +31,35 @@ class CatalogService:
         self.client = httpx.AsyncClient(timeout=20, headers={"User-Agent": "kaggleui/0.1"})
         self.curated: dict[str, list[dict]] = yaml.safe_load(CURATED_PATH.read_text()) or {}
         self._cache: dict[str, tuple[float, Any]] = {}
+        self._pending: dict[str, asyncio.Task] = {}
         self._sem = asyncio.Semaphore(8)
 
     async def close(self) -> None:
+        for task in self._pending.values():
+            task.cancel()
+        await asyncio.gather(*self._pending.values(), return_exceptions=True)
         await self.client.aclose()
 
     async def _cached(self, key: str, ttl: float, factory: Callable[[], Any]) -> Any:
         hit = self._cache.get(key)
         if hit and time.time() - hit[0] < ttl:
             return hit[1]
-        value = await factory()
-        self._cache[key] = (time.time(), value)
-        return value
+        async def fetch():
+            try:
+                value = await factory()
+                self._cache[key] = (time.time(), value)
+                return value
+            finally:
+                self._pending.pop(key, None)
+        if key not in self._pending:
+            self._pending[key] = asyncio.create_task(fetch())
+        return await asyncio.shield(self._pending[key])
 
     # =========================================================================================
     # Search
     # =========================================================================================
     async def search(self, modality: str, q: str = "", source: str = "all", sort: str = "recommended",
-                     limit: int = 40, show_unsupported: bool | None = None, fit: str = "all") -> dict:
+                     limit: int = 40, show_unsupported: bool | None = None, fit: str = "all", live: bool = True) -> dict:
         """``fit="all"`` returns every model (tagged); ``fit="fits"`` drops the ones that won't run here."""
         hw = self.probe()
         q = q.strip()
@@ -85,12 +95,18 @@ class CatalogService:
                     if q and q.lower() not in (entry["id"] + " " + entry.get("name", "")).lower():
                         continue
                     add(self._world_item(entry, hw))
-                jobs.append(("hf", self._world_items(q, sort, hw, limit, more)))
-            elif MODALITY_PIPELINES.get(modality):
+                if live:
+                    jobs.append(("hf", self._world_items(q, sort, hw, limit, more)))
+            elif MODALITY_PIPELINES.get(modality) and live:
                 jobs.append(("hf", self._hf_items(modality, q, sort, hw, limit, more)))
         if source in ("all", "ollama") and modality == "text":
-            jobs.append(("ollama", self._ollama_items(q, sort, limit, more)))
-        if source in ("all", "attached"):
+            if live:
+                jobs.append(("ollama", self._ollama_items(q, sort, limit, more)))
+            else:
+                for raw in ollama.snapshot(q):
+                    add(self._from_ollama(raw))
+                statuses["ollama"] = "bundled"
+        if source in ("all", "attached") and live:
             jobs.append(("attached", self._attached_items(modality)))
         results = await asyncio.gather(*(j for _, j in jobs), return_exceptions=True)
         for (name, _), res in zip(jobs, results):
@@ -110,7 +126,8 @@ class CatalogService:
                 add(it)
 
         all_items = list(items.values())
-        await self._enrich(all_items)
+        if live:
+            await self._enrich(all_items)
         fits = [self._apply_fit(it, hw) for it in all_items]
         rank(fits)
         for it, f in zip(all_items, fits):
@@ -324,8 +341,7 @@ class CatalogService:
 
     async def _attached_items(self, modality: str) -> list[dict]:
         root = Path(os.environ.get("KAGGLEUI_INPUT_DIR", "/kaggle/input"))
-        found = await asyncio.to_thread(attached.scan, root)
-        found += await asyncio.to_thread(saved_models, self.imports_root)
+        found = await self._cached(f"attached:{root}", 30, lambda: asyncio.to_thread(attached.scan, root))
         out = []
         for f in found:
             if f["modality"] != modality:
@@ -337,7 +353,7 @@ class CatalogService:
                 "downloads": 0, "likes": 0, "updated": None, "gated": False, "capabilities": ["imported" if f.get("imported") else "attached"],
                 "experimental": bool(f.get("experimental")), "curated": False, "options": f.get("options", {}),
                 "recipe": f.get("recipe"), "url": f.get("url"), "attached": True,
-                "min_sm": f.get("min_sm"),
+                "min_sm": f.get("min_sm"), "min_vram": f.get("min_vram"),
             })
         return out
 
@@ -347,12 +363,17 @@ class CatalogService:
         jobs: list = []  # (callable, arg) so nothing beyond the cap is ever created
         for it in items:
             if it["source"] == "ollama":
-                jobs += [(self._ollama_variant_size, v) for v in it["variants"][:6] if not v.get("exact")]
+                v = next((v for v in it["variants"] if v["id"] == it["variant"]), None)
+                if v and not v.get("exact"):
+                    jobs.append((self._ollama_variant_size, v))
             elif (it["source"] == "hf" and it.get("engine") and it.get("size") is None
                   and it["modality"] != "text"):
                 jobs.append((self._hf_sizes, it))
         if jobs:
-            await asyncio.gather(*(fn(arg) for fn, arg in jobs[:160]), return_exceptions=True)
+            try:
+                await asyncio.wait_for(asyncio.gather(*(fn(arg) for fn, arg in jobs[:16]), return_exceptions=True), timeout=6)
+            except asyncio.TimeoutError:
+                pass  # keep estimates; exact metadata remains cached for the next request
         for it in items:
             if it["source"] == "ollama" and it["variants"]:
                 v = next((v for v in it["variants"] if v["id"] == it["variant"]), it["variants"][0])
@@ -396,6 +417,33 @@ class CatalogService:
             recipe = next(r for r in list_recipes() if r["name"] == it["recipe"])
             it["size"] = sum(int(s.get("size") or 0) for s in sib
                              if any(fnmatch.fnmatch(s["rfilename"], p) for p in recipe.get("allow", ["*"]))) or None
+            if recipe.get("extra_models"):
+                primary_size = it["size"] or 0
+                it["size"] = None  # partial metadata must not be mistaken for a full pipeline estimate
+                it["runtime_repos"] = [model["repo"] for model in recipe["extra_models"]]
+                extra = 0
+                repos = []
+                for model in recipe["extra_models"]:
+                    repo = model["repo"]
+                    async def fetch_extra(repo=repo):
+                        async with self._sem:
+                            return await hf.model_info(self.client, repo)
+                    details = await self._cached(f"hf-info:{repo}:main", 6 * 3600, fetch_extra)
+                    files = details.get("siblings") or []
+                    if model.get("mode") == "diffusers":
+                        amount = hf.diffusers_files(files)["size"]
+                    elif model.get("mode") == "transformers":
+                        amount = hf.transformers_files(files)["size"]
+                    else:
+                        amount = sum(int(s.get("size") or 0) for s in files if not model.get("allow") or
+                                     any(fnmatch.fnmatch(s["rfilename"], p) for p in model["allow"]))
+                    extra += amount
+                    repos.append(repo)
+                    if hf.is_gated(details.get("gated")):
+                        it["runtime_gated"] = True
+                it["extra_size"] = extra
+                it["runtime_repos"] = repos
+                it["size"] = primary_size + extra
         else:
             it["size"] = hf.repo_size(sib) or None
 
@@ -405,7 +453,7 @@ class CatalogService:
             modality=it["modality"], engine=it.get("engine"), weights_bytes=size if size is not None else it.get("size"),
             params=params if params is not None else it.get("params"), largest_component_bytes=it.get("largest"),
             ctx=int((it.get("options") or {}).get("ctx", 8192)), min_vram=it.get("min_vram"),
-            gated=bool(it.get("gated")), bf16_only=bool(it.get("bf16_only")),
+            gated=bool(it.get("gated") or it.get("runtime_gated")), bf16_only=bool(it.get("bf16_only")),
             experimental=bool(it.get("experimental")), curated=bool(it.get("curated")),
             downloads=int(it.get("downloads") or 0), likes=int(it.get("likes") or 0), updated=it.get("updated"),
             attached=bool(it.get("attached")),
@@ -533,6 +581,18 @@ class CatalogService:
         it["engine_label"] = ENGINE_LABELS.get(it.get("engine") or "", it.get("engine"))
         it["hardware"] = _hw_summary(hw)
         return it
+
+    def imported(self, model: dict) -> dict:
+        """An import can be customized directly without registering it in the catalog."""
+        item = {"key": f"import:{model['path']}", "source": "attached", "id": model["path"],
+                "name": model["name"], "modality": model["modality"], "engine": model.get("engine"),
+                "description": "Custom import · configure this checkpoint before deploying.",
+                "params": model.get("params"), "size": model.get("size"), "variant": None, "variants": [],
+                "downloads": 0, "likes": 0, "updated": None, "gated": False, "capabilities": ["imported"],
+                "experimental": bool(model.get("experimental")), "curated": False, "attached": True,
+                "options": model.get("options", {}), "recipe": model.get("recipe"), "url": model.get("url"),
+                "min_sm": model.get("min_sm"), "min_vram": model.get("min_vram")}
+        return self._finish_detail(item, self.probe())
 
     def selftest_specs(self) -> list[dict]:
         """Smallest curated model per modality, used by ``kaggleui selftest``."""

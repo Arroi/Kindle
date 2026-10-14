@@ -8,6 +8,7 @@ import { bytes, cx, params } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, DeploymentSpec, Variant } from "../lib/types";
 import { FitGauge } from "./meters";
+import { ModelLogo } from "./ModelLogo";
 import { Button, Field, Input, Select, VerdictTag } from "./ui";
 
 export interface ModelChoice {
@@ -87,6 +88,9 @@ export function OptionsForm({
     );
   }
   if (m === "world") {
+    if (options.recipe === "hunyuan_world_1" || options.recipe === "hy_world_2") {
+      return <p className="text-[13px] text-fg-2">Scene description, panorama input and reconstruction settings are available in Studio after launch.</p>;
+    }
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Default frames">
@@ -196,7 +200,7 @@ export function ModelDetail({
             {item.experimental && <span className="font-mono text-[10px] uppercase text-tight">experimental</span>}
             {detail.isFetching && <Loader className="size-3.5 animate-spin text-fg-3" />}
           </div>
-          <h2 className="display text-[38px] leading-none">{item.name}</h2>
+          <div className="flex items-start gap-4"><ModelLogo id={item.id} name={item.name} source={item.source} className="size-12" /><h2 className="display min-w-0 break-words text-[32px] leading-tight">{item.name}</h2></div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11.5px] text-fg-2">
             <span>{item.id}</span>
             {item.params ? <span>{params(item.params)} params</span> : null}
@@ -208,6 +212,7 @@ export function ModelDetail({
             )}
           </div>
           {item.description && <p className="mt-3 text-[14px] text-fg-2">{item.description}</p>}
+          {!!item.runtime_repos?.length && <div className="mt-3 text-[12px] text-fg-3"><p>The download estimate includes these base checkpoints:</p><div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">{item.runtime_repos.map(repo => <a key={repo} href={`https://huggingface.co/${repo}`} target="_blank" rel="noreferrer" className="text-fg-2 hover:text-signal hover:underline">{repo}</a>)}</div></div>}
         </div>
 
         {!item.engine ? (

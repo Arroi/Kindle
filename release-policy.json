@@ -1,0 +1,5 @@
+{
+  "minimum_supported": "0.1.8",
+  "revoked_versions": [],
+  "message": "This release is no longer supported. Update KaggleUI to continue running models."
+}

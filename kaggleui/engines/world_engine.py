@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
+import shutil
 import sys
 from pathlib import Path
 
@@ -36,17 +37,29 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
     if recipe.get("min_sm") and (ctx.hw.min_sm or 0) < recipe["min_sm"]:
         raise DeployError(f"{recipe['title']} requires an Ampere or newer GPU. T4/P100 aren't supported by this runner.")
     src_root = ctx.paths.envs / "src" / recipe["name"]
-    if not (src_root / ".git").exists():
+    ready = src_root / ".kaggleui-clone-ready"
+    if not ready.exists() and not recipe.get("adapter") and (src_root / ".git").exists():
+        ready.touch()  # retain older, already-installed recipes
+    if not ready.exists():
         ctx.progress("installing", None, f"Cloning {recipe['git']}")
         src_root.parent.mkdir(parents=True, exist_ok=True)
-        rc = await run_cmd(["git", "clone", "--depth", "1", recipe["git"], str(src_root)], on_line=ctx.log)
+        if src_root.exists():
+            shutil.rmtree(src_root)
+        clone = ["git", "clone", "--depth", "1"]
+        if recipe.get("recursive"):
+            clone += ["--recurse-submodules", "--shallow-submodules"]
+        rc = await run_cmd([*clone, recipe["git"], str(src_root)], on_line=ctx.log)
         if rc != 0:
             raise DeployError(f"Couldn't clone {recipe['git']}")
+        ready.touch()
     src = src_root / recipe.get("subdir", "")
 
     extra_env: dict[str, str] = {}
+    from . import hunyuan_install
+
+    requirements = hunyuan_install.requirements(recipe, src)
     if recipe.get("env") == "venv":
-        python = await ensure_venv(ctx, f"world-{recipe['name']}", recipe.get("requirements", []) + WORKER_BASE_REQS,
+        python = await ensure_venv(ctx, f"world-{recipe['name']}", requirements + WORKER_BASE_REQS,
                                    python=recipe.get("python", "3.11"),
                                    system_site_packages=bool(recipe.get("system_site_packages")),
                                    label=recipe["title"])
@@ -61,6 +74,8 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
             if rc != 0:
                 raise DeployError(f"Setup step failed: {step}")
         marker.write_text("ok")
+    if recipe.get("adapter"):
+        await hunyuan_install.prepare(recipe, src, python, ctx)
 
     if spec.model.source == "attached":
         weights = spec.model.id
@@ -76,4 +91,7 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
     return WorkerBackend("world", base), {"recipe": recipe["name"], "controls": recipe.get("controls"),
                                           "start_frame": recipe.get("start_frame"),
                                           "prompt_conditioning": bool(recipe.get("prompt_conditioning")),
+                                          "text_input": bool(recipe.get("text_input")),
+                                          "result_kind": recipe.get("result_kind", "video"),
+                                          "needs_vlm": bool(recipe.get("needs_vlm")),
                                           "unverified": bool(recipe.get("unverified"))}

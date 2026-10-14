@@ -23,37 +23,43 @@ class KokoroTTS:
     sample_rate = 24000
 
     def __init__(self, model_path: str):
-        from kokoro import KPipeline  # noqa: F401  (import check)
+        from kokoro import KModel
 
         self.model_path = model_path
+        weights = sorted(Path(model_path).glob("*.pth"))
+        if not weights:
+            raise ValueError("Kokoro needs config.json, a .pth checkpoint and a voices folder")
+        self.model = KModel(config=str(Path(model_path) / "config.json"), model=str(weights[0])).to(device()).eval()
         self.pipelines: dict[str, object] = {}
         voices_dir = Path(model_path) / "voices"
-        self.voices = sorted(p.stem for p in voices_dir.glob("*.pt")) if voices_dir.exists() else ["af_heart"]
-        self._pipeline("a")
+        self.voices = sorted(p.stem for p in voices_dir.glob("*.pt"))
+        if not self.voices:
+            raise ValueError("No Kokoro voice files found. Include voices/*.pt in the imported model.")
+        self._pipeline(self.voices[0][0])
 
     def _pipeline(self, lang: str):
         from kokoro import KPipeline
 
         if lang not in self.pipelines:
-            self.pipelines[lang] = KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M", device=device())
+            self.pipelines[lang] = KPipeline(lang_code=lang, model=self.model, device=device())
         return self.pipelines[lang]
 
     def synth(self, text: str, voice: str | None, speed: float, **_):
         import numpy as np
 
-        voice = OPENAI_TO_KOKORO.get(voice or "", voice) or "af_heart"
+        voice = OPENAI_TO_KOKORO.get(voice or "", voice) or ("af_heart" if "af_heart" in self.voices else self.voices[0])
         if voice not in self.voices:
-            voice = "af_heart"
+            raise ValueError(f"Unknown voice '{voice}'. List available voices at /v1/voices.")
         pipe = self._pipeline(voice[0])
-        chunks = [np.asarray(audio) for _, _, audio in pipe(text, voice=voice, speed=speed)]
+        chunks = [np.asarray(audio) for _, _, audio in pipe(text, voice=str(Path(self.model_path) / "voices" / f"{voice}.pt"), speed=speed)]
         return (np.concatenate(chunks) if chunks else np.zeros(1)), self.sample_rate
 
 
 class ChatterboxTTS:
-    def __init__(self, _model_path: str):
+    def __init__(self, model_path: str):
         from chatterbox.tts import ChatterboxTTS as _C
 
-        self.model = _C.from_pretrained(device=device())
+        self.model = _C.from_local(model_path, device=device())
         self.sample_rate = self.model.sr
         self.voices = ["default"]
 

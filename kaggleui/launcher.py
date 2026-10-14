@@ -75,7 +75,7 @@ def _show(state: dict) -> None:
              card_text(state["url"], state["admin_token"], state.get("password"), state.get("api_key")))
 
 
-def stop(home: str | None = None) -> bool:
+def stop(home: str | None = None, *, _preserve_pid: int | None = None) -> bool:
     paths = Paths(home)
     st = _read_state(paths)
     if not _running(st):
@@ -102,6 +102,8 @@ def stop(home: str | None = None) -> bool:
     def remember_children() -> None:
         try:
             for child in server.children(recursive=True):
+                if child.pid == _preserve_pid:
+                    continue
                 children[(child.pid, child.create_time())] = child
         except psutil.NoSuchProcess:
             pass

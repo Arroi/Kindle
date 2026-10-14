@@ -1,4 +1,4 @@
-import { KeyRound, Lock } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Lock } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { Brand } from "../components/Shell";
@@ -7,14 +7,13 @@ import { api } from "../lib/api";
 
 function Frame({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-[400px] stagger">
-        <div className="mb-8 flex justify-center">
-          <Brand />
-        </div>
-        <div className="panel p-6 sm:p-7">{children}</div>
-        {footer && <div className="mt-5 text-center text-[13px] text-fg-3">{footer}</div>}
-      </div>
+    <div className="login-page">
+      <header className="login-header"><Brand /><span className="text-[12px] text-fg-3">{__APP_VERSION__}</span></header>
+      <main className="login-layout page-enter">
+        <section className="login-intro"><span className="eyebrow">A notebook. A GPU. Your workspace.</span><h2 className="display mt-5 text-[38px] sm:text-[48px]">Open models,<br />within reach.</h2><p className="mt-5 max-w-sm text-[15px] leading-relaxed text-fg-2">Chat, images, video, speech, and 3D worlds. Run a model on your notebook and use it from any browser.</p><div className="mt-8 flex gap-3" aria-label="Supported model families">{["qwen-color", "deepseek-color", "mistral-color", "meta-color", "hunyuan-color"].map(brand => <span key={brand} className="model-logo size-11"><img src={`/brands/${brand}.svg`} width="28" height="28" alt={`${brand.replace("-color", "")} logo`} /></span>)}</div><p className="mt-5 text-[12px] text-fg-3">Open source · Powered by your notebook session</p></section>
+        <section className="login-form"><div>{children}</div>{footer && <div className="mt-6 border-t border-line pt-5 text-[13px] text-fg-3">{footer}</div>}</section>
+      </main>
+      <footer className="login-footer">KaggleUI is an independent project. <a href="https://github.com/UltraFEmotes/KaggleUI" target="_blank" rel="noreferrer" className="underline underline-offset-4">Source & help</a></footer>
     </div>
   );
 }
@@ -24,6 +23,7 @@ export function AdminLogin() {
   const [token, setToken] = useState("");
   const [error, setError] = useState(bad ? "That link's token didn't match. Paste the admin token from the notebook output." : "");
   const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -31,6 +31,7 @@ export function AdminLogin() {
     setError("");
     try {
       await api.login(token.trim());
+      if (!(await api.session()).admin) throw new Error("Your browser did not save the sign-in cookie. Open this link directly in a regular browser tab and try again.");
       location.assign("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -56,18 +57,20 @@ export function AdminLogin() {
         Paste the token printed in your Kaggle notebook, or open the link from that cell. It signs you in directly.
       </p>
       <form onSubmit={submit} className="space-y-3">
-        <Input
+        <label className="block text-[12px] font-medium text-fg-2" htmlFor="admin-token">Host token</label>
+        <div className="relative"><Input
+          id="admin-token"
           autoFocus
           value={token}
           onChange={(e) => setToken(e.target.value)}
           placeholder="Admin token"
           autoComplete="current-password"
-          type="password"
-          className="font-mono"
-        />
-        {error && <div className="text-[13px] text-worst">{error}</div>}
+          type={shown ? "text" : "password"}
+          className="pr-11 font-mono"
+        /><button type="button" onClick={() => setShown(!shown)} className="absolute right-3 top-3 text-fg-3" aria-label={shown ? "Hide token" : "Show token"}>{shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div>
+        {error && <div role="alert" className="text-[13px] text-worst">{error}</div>}
         <Button variant="primary" size="lg" className="w-full" busy={busy} disabled={!token.trim()}>
-          Unlock panel
+          Sign in as host
         </Button>
       </form>
     </Frame>
@@ -79,14 +82,16 @@ export function AccessLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
-      await api.accessLogin(password.trim());
-      location.assign(next.startsWith("/") ? next : "/studio");
+      await api.accessLogin(password);
+      if (!(await api.session()).access) throw new Error("Your browser did not save the sign-in cookie. Open the link directly in a regular browser tab and try again.");
+      location.assign(next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/studio");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Wrong password");
     } finally {
@@ -95,7 +100,7 @@ export function AccessLogin() {
   }
 
   return (
-    <Frame footer={<a className="underline underline-offset-4 hover:text-fg" href="/">Host? Sign in to the control panel</a>}>
+    <Frame footer={<a className="underline underline-offset-4 hover:text-fg" href="/host">Host? Sign in to the control panel</a>}>
       <div className="mb-1 flex items-center gap-2 text-signal">
         <Lock className="size-4" />
         <span className="readout text-signal">Password locked</span>
@@ -103,10 +108,11 @@ export function AccessLogin() {
       <h1 className="display mb-2 text-4xl">Studio access</h1>
       <p className="mb-5 text-[14px] text-fg-2">The host locked this KaggleUI with a password. Ask them for it.</p>
       <form onSubmit={submit} className="space-y-3">
-        <Input autoFocus value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
-        {error && <div className="text-[13px] text-worst">{error}</div>}
+        <label className="block text-[12px] font-medium text-fg-2" htmlFor="studio-password">Studio password</label>
+        <div className="relative"><Input id="studio-password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter the host’s password" type={shown ? "text" : "password"} className="pr-11" /><button type="button" onClick={() => setShown(!shown)} className="absolute right-3 top-3 text-fg-3" aria-label={shown ? "Hide password" : "Show password"}>{shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div>
+        {error && <div role="alert" className="text-[13px] text-worst">{error}</div>}
         <Button variant="primary" size="lg" className="w-full" busy={busy} disabled={!password.trim()}>
-          Enter
+          Open Studio
         </Button>
       </form>
     </Frame>

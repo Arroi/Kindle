@@ -136,6 +136,8 @@ export interface Variant {
 }
 
 export interface CatalogItem {
+  runtime_repos?: string[];
+  extra_size?: number;
   key: string;
   source: "hf" | "ollama" | "attached";
   id: string;
@@ -182,6 +184,7 @@ export interface CatalogMeta {
 }
 
 export interface Session {
+  compatibility?: { blocked: boolean; message: string };
   admin: boolean;
   access: boolean;
   password_enabled: boolean;
@@ -190,7 +193,25 @@ export interface Session {
   fake_hw: string | null;
 }
 
+export interface UpdateStatus {
+  current: string;
+  latest: string | null;
+  available: boolean;
+  blocked: boolean;
+  minimum_supported: string | null;
+  message: string;
+  release_url: string;
+  checked_at: number | null;
+  error: string | null;
+  progress: { status: string; message: string } | null;
+}
+
 export interface StudioModel {
+  model_id?: string;
+  source?: string;
+  text_input?: boolean;
+  result_kind?: "video" | "scene";
+  needs_vlm?: boolean;
   prompt_conditioning?: boolean;
   id: string;
   name: string;

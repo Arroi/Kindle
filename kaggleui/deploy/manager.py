@@ -108,6 +108,8 @@ class DeploymentManager:
 
     # -- lifecycle ----------------------------------------------------------------------------
     def create(self, spec: DeploymentSpec) -> Deployment:
+        if self.state.updates.blocked:
+            raise DeployError(self.state.updates.status()["message"])
         name = default_name(spec)
         taken = {d.served_name for d in self.deployments.values() if d.status in ACTIVE}
         base, i = name, 2

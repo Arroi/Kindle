@@ -114,8 +114,8 @@ class ModelImports:
                                       json.dumps(job), str(data), str(result)], env={"PYTHONUNBUFFERED": "1"}, on_line=on_line)
                 await proc.start()
                 while proc.running:
-                    await asyncio.sleep(0.5)
-                    job["bytes"] = dir_size(data)
+                    await asyncio.sleep(2)
+                    job["bytes"] = await asyncio.to_thread(dir_size, data)
                 rc = await proc.wait()
                 answer = json.loads(result.read_text()) if result.exists() else {"error": f"Download process exited ({rc})"}
                 if answer.get("error"):

@@ -15,6 +15,7 @@ from ..system.probe import Probe
 from ..tunnels.manager import TunnelManager
 from .auth import Auth
 from .events import EventBus
+from .updates import Updates
 
 
 @dataclass
@@ -28,6 +29,7 @@ class AppState:
     secrets: dict[str, bool] = field(default_factory=dict)
     started_at: float = field(default_factory=time.time)
     video_jobs: dict[str, dict] = field(default_factory=dict)
+    world_jobs: dict[str, dict] = field(default_factory=dict)
 
     auth: Auth = field(init=False)
     bus: EventBus = field(init=False)
@@ -37,9 +39,10 @@ class AppState:
     tunnels: TunnelManager = field(init=False)
     manager: DeploymentManager = field(init=False)
     interfaces: InterfaceManager = field(init=False)
+    updates: Updates = field(init=False)
 
     def __post_init__(self) -> None:
-        self.auth = Auth()
+        self.auth = Auth(self.paths.home / "session.key")
         self.bus = EventBus()
         self.probe = Probe(self.paths, fake=self.fake_hw)
         self.imports = ModelImports(self.paths.models / "imports")
@@ -47,6 +50,7 @@ class AppState:
         self.tunnels = TunnelManager(self.paths, on_change=lambda t: self.bus.publish("tunnel", t.info()))
         self.manager = DeploymentManager(self)
         self.interfaces = InterfaceManager(self)
+        self.updates = Updates(self)
 
     def main_url(self) -> str:
         t = self.tunnels.get("main")

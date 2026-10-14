@@ -1,29 +1,18 @@
-import {
-  Boxes,
-  Gauge,
-  KeyRound,
-  LogOut,
-  Menu,
-  Moon,
-  Plus,
-  Server,
-  MessageSquare,
-  Sun,
-  X,
-} from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, useLocation } from "react-router";
+import { Boxes, Gauge, KeyRound, LogOut, Moon, Plus, Server, MessageSquare, Sun, LayoutDashboard, Download, Search } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
 
 import { api } from "../lib/api";
 import { bytes, cx, duration } from "../lib/format";
 import { useLive } from "../lib/live";
 import { useTheme } from "../lib/theme";
-import { GpuMeter, LedMeter } from "./meters";
-import { CopyButton } from "./ui";
+import { UpdateNotice } from "./Updates";
+import { Button, Input } from "./ui";
 
 const NAV = [
-  { to: "/", label: "Launch", icon: Plus, end: true },
+  { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
   { to: "/models", label: "Models", icon: Boxes },
+  { to: "/imports", label: "Imports", icon: Download },
   { to: "/deployments", label: "Deployments", icon: Server },
   { to: "/studio", label: "Studio", icon: MessageSquare },
   { to: "/access", label: "Access & API", icon: KeyRound },
@@ -45,204 +34,59 @@ export function Brand({ small }: { small?: boolean }) {
   );
 }
 
-function SessionClock() {
+function QuickJump({ open, close }: { open: boolean; close: () => void }) {
   const { overview } = useLive();
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(t);
-  }, []);
-  if (!overview) return null;
-  const s = overview.system;
-  const remaining = Math.max(0, s.session_started + s.session_limit - now / 1000);
-  const frac = remaining / s.session_limit;
-  return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between">
-        <span className="readout">Session left</span>
-        <span className={cx("font-mono text-[13px]", frac < 0.1 ? "text-worst" : frac < 0.25 ? "text-tight" : "text-fg")}>
-          {duration(remaining)}
-        </span>
-      </div>
-      <div className="h-1 overflow-hidden rounded-full bg-panel-3">
-        <div className="h-full rounded-full bg-fg-3" style={{ width: `${frac * 100}%` }} />
-      </div>
-      <div className="mt-1 text-[11px] text-fg-3">
-        ≈ from a {Math.round(s.session_limit / 3600)}h limit{s.run_type ? ` · ${s.run_type}` : ""}
-      </div>
-    </div>
-  );
-}
-
-function TunnelStatus() {
-  const { overview, connected } = useLive();
-  const main = overview?.tunnels.find((t) => t.name === "main");
-  const up = connected && (main?.status === "up" || !main);
-  const url = overview?.main_url ?? "";
-  return (
-    <div className="rounded-lg border border-line bg-bg-2 p-2.5">
-      <div className="mb-1 flex items-center gap-2">
-        <span className={cx("size-2 rounded-full", up ? "bg-signal" : "bg-tight animate-blink")} />
-        <span className="readout">{connected ? (main ? main.label : "Local") : "Reconnecting"}</span>
-      </div>
-      <div className="flex items-center gap-1">
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-fg-2" title={url}>
-          {url.replace(/^https?:\/\//, "")}
-        </span>
-        {url && <CopyButton text={url} />}
-      </div>
-    </div>
-  );
-}
-
-function NavItems({ onNavigate }: { onNavigate?: () => void }) {
-  const { overview } = useLive();
-  const ready = overview?.deployments.filter((d) => d.status === "ready").length ?? 0;
-  const busy = overview?.deployments.filter((d) => ["queued", "installing", "downloading", "loading"].includes(d.status)).length ?? 0;
-  return (
-    <nav className="flex flex-col gap-1" aria-label="Workspace">
-      {NAV.map(({ to, label, icon: Icon, end }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={end}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            cx(
-              "group flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-colors",
-              isActive ? "bg-panel-3/60 font-medium text-fg" : "text-fg-2 hover:bg-panel-2 hover:text-fg",
-            )
-          }
-        >
-          {(
-            <>
-              <Icon className="size-[17px]" strokeWidth={1.7} />
-              <span className="flex-1">{label}</span>
-              {to === "/deployments" && (ready > 0 || busy > 0) && (
-                <span className="flex items-center gap-1 font-mono text-[10px]">
-                  {busy > 0 && <span className="rounded bg-tight-soft px-1.5 py-px text-tight">{busy}</span>}
-                  {ready > 0 && <span className="rounded bg-signal-soft px-1.5 py-px text-signal">{ready}</span>}
-                </span>
-              )}
-            </>
-          )}
-        </NavLink>
-      ))}
-    </nav>
-  );
-}
-
-function SidebarFooter() {
-  const [theme, toggle] = useTheme();
-  return (
-    <div className="flex flex-col gap-3">
-      <SessionClock />
-      <TunnelStatus />
-      <div className="flex items-center gap-1">
-        <button
-          onClick={toggle}
-          className="flex flex-1 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-fg-2 hover:bg-panel-2 hover:text-fg"
-        >
-          {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          {theme === "dark" ? "Light" : "Dark"}
-        </button>
-        <button
-          onClick={() => api.logout().then(() => location.assign("/"))}
-          className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-fg-2 hover:bg-panel-2 hover:text-fg"
-          title="Sign out"
-          aria-label="Sign out"
-        >
-          <LogOut className="size-4" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function StatusStrip() {
-  const { overview } = useLive();
-  if (!overview) return <div className="h-[58px]" />;
-  const s = overview.system;
-  const disk = s.disks.find((d) => d.key === "models");
-  return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-bg px-5 py-3 lg:px-8">
-      <div className="mr-auto flex items-center gap-2.5">
-        <span className="text-[13px] font-medium">{s.accelerator_label}</span>
-        {overview.fake_hw && <span className="rounded border border-info/40 px-1.5 py-px font-mono text-[9.5px] uppercase text-info">simulated</span>}
-        {overview.mock && <span className="rounded border border-tight/40 px-1.5 py-px font-mono text-[9.5px] uppercase text-tight">mock engines</span>}
-      </div>
-      <div className="hidden flex-wrap items-center gap-5 md:flex">
-        {s.gpus.map((g) => (
-          <GpuMeter key={g.index} gpu={g} compact />
-        ))}
-        <div className="w-[118px]">
-          <div className="mb-1 flex items-baseline justify-between">
-            <span className="readout">RAM</span>
-            <span className="font-mono text-[10px] text-fg-2">{bytes(s.ram_total - s.ram_available)}</span>
-          </div>
-          <LedMeter value={(s.ram_total - s.ram_available) / s.ram_total} segments={14} className="h-2.5" />
-        </div>
-        {disk && (
-          <div className="w-[118px]">
-            <div className="mb-1 flex items-baseline justify-between">
-              <span className="readout">Disk</span>
-              <span className="font-mono text-[10px] text-fg-2">{bytes(disk.free)} free</span>
-            </div>
-            <LedMeter value={disk.used / disk.total} segments={14} className="h-2.5" />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDialogElement>(null);
+  const nav = useNavigate();
+  useEffect(() => { if (open) { setQuery(""); ref.current?.showModal(); } else ref.current?.close(); }, [open]);
+  const options = [...NAV, { to: "/deploy/new", label: "New deployment", icon: Plus },
+    ...(overview?.deployments.filter(d => d.status === "ready").map(d => ({ to: `/studio/${d.id}`, label: d.name, icon: MessageSquare })) ?? [])]
+    .filter(option => option.label.toLowerCase().includes(query.toLowerCase()));
+  return <dialog aria-label="Quick navigation" ref={ref} onClose={close} onClick={e => { if (e.target === e.currentTarget) close(); }} className="command-dialog">
+    <form method="dialog" onSubmit={e => { e.preventDefault(); if (options[0]) { nav(options[0].to); close(); } }}>
+      <div className="flex items-center gap-3 border-b border-line p-4"><Search className="size-4 text-fg-3" /><Input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Jump to a page or running model…" aria-label="Quick navigation" className="border-0 bg-transparent" /><Button type="button" size="sm" variant="ghost" onClick={close}>Esc</Button></div>
+      <nav className="max-h-80 overflow-y-auto p-2">{options.map(({ to, label, icon: Icon }) => <Link key={to} to={to} onClick={close} className="flex items-center gap-3 rounded-md px-3 py-3 hover:bg-panel-2"><Icon className="size-4 text-fg-3" />{label}</Link>)}{!options.length && <p className="p-4 text-fg-3">No matching pages or running models.</p>}</nav>
+    </form>
+  </dialog>;
 }
 
 export function Shell({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const loc = useLocation();
-  useEffect(() => setOpen(false), [loc.pathname]);
-  return (
-    <div className="flex min-h-dvh">
-      <a href="#main-content" className="skip-link">Skip to content</a>
-      <aside className="sticky top-0 hidden h-dvh w-[216px] shrink-0 flex-col border-r border-line bg-bg-2 px-3 py-5 lg:flex">
-        <div className="px-2 pb-9">
-          <Brand />
-          <span className="mt-1 block pl-[42px] text-[11px] text-fg-3">Model workspace</span>
+  const [theme, toggle] = useTheme();
+  const [jump, setJump] = useState(false);
+  const { overview, connected, error } = useLive();
+  const location = useLocation();
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setJump(value => !value); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+  const system = overview?.system;
+  const ready = overview?.deployments.filter(d => d.status === "ready").length ?? 0;
+  return <div className="min-h-dvh">
+    <a href="#main-content" className="skip-link">Skip to content</a>
+    <header className="workspace-header">
+      <div className="workspace-bar">
+        <Link to="/" aria-label="KaggleUI home"><Brand small /></Link>
+        <span className="hidden border-l border-line pl-5 text-[12px] text-fg-3 sm:block">Your model workspace</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button onClick={() => setJump(true)} className="quick-jump" aria-label="Quick navigation (Control or Command K)"><Search className="size-3.5" /><span className="hidden sm:inline">Quick jump</span><kbd className="hidden text-[10px] text-fg-3 sm:inline">⌘ K</kbd></button>
+          <button onClick={toggle} className="toolbar-icon" aria-label="Toggle theme">{theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}</button>
+          <button onClick={() => api.logout().then(() => window.location.assign("/login"))} className="toolbar-icon" aria-label="Sign out"><LogOut className="size-4" /></button>
+          <Link to="/deploy/new" className="ml-1"><Button size="sm" variant="primary"><Plus className="size-4" /><span className="hidden sm:inline">Deploy model</span></Button></Link>
         </div>
-        <NavItems />
-        <div className="mt-auto px-1">
-          <SidebarFooter />
-        </div>
-      </aside>
-
-      {/* Mobile top bar + slide-over nav */}
-      <div className="fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-bg/90 px-4 backdrop-blur lg:hidden">
-        <Brand small />
-        <button onClick={() => setOpen(true)} className="rounded-md p-2 text-fg-2 hover:bg-panel-2" aria-label="Menu">
-          <Menu className="size-5" />
-        </button>
       </div>
-      {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-          <div className="absolute inset-y-0 right-0 flex w-[min(300px,85vw)] flex-col border-l border-line bg-panel px-3 py-4 animate-[rise_.2s_ease_both]">
-            <div className="mb-4 flex items-center justify-between px-2">
-              <Brand small />
-              <button onClick={() => setOpen(false)} className="rounded-md p-2 text-fg-2 hover:bg-panel-2" aria-label="Close">
-                <X className="size-5" />
-              </button>
-            </div>
-            <NavItems onNavigate={() => setOpen(false)} />
-            <div className="mt-auto px-1">
-              <SidebarFooter />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="min-w-0 flex-1 pt-14 lg:pt-0">
-        <StatusStrip />
-        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1320px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">{children}</main>
-      </div>
-    </div>
-  );
+      <div className="workspace-nav-wrap"><nav className="workspace-nav scroll-thin" aria-label="Workspace">{NAV.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} className={({ isActive }) => cx("workspace-link", isActive && "is-active")}><Icon className="size-3.5" strokeWidth={1.7} />{label}{to === "/deployments" && ready > 0 && <span className="nav-count">{ready}</span>}</NavLink>)}</nav></div>
+    </header>
+    <div className="resource-bar"><div className="resource-inner">
+      <span className="inline-flex items-center gap-2"><span className={cx("size-1.5 rounded-full", connected ? "bg-signal" : "bg-tight")} />{connected ? "Live" : error ? "Connection interrupted" : "Polling · live connection unavailable"}</span>
+      {system && <><span>{system.accelerator_label}</span><span className="hidden sm:inline">{bytes(system.vram_free_all)} VRAM free</span><span className="hidden md:inline">{bytes(system.ram_available)} RAM free</span><span className="ml-auto">≈ {duration(system.session_remaining)} left</span></>}
+      {overview?.mock && <span className="text-tight">Demo engines</span>}
+    </div></div>
+    <main id="main-content" tabIndex={-1} className="workspace-main"><UpdateNotice /><div key={location.pathname} className="page-enter">{children}</div></main>
+    <footer className="workspace-footer"><span>KaggleUI {__APP_VERSION__}</span><a href="https://github.com/UltraFEmotes/KaggleUI" target="_blank" rel="noreferrer">Source & help ↗</a><span className="ml-auto hidden sm:inline">Open models. Your session.</span></footer>
+    <QuickJump open={jump} close={() => setJump(false)} />
+  </div>;
 }

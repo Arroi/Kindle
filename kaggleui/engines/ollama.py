@@ -157,7 +157,10 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[OpenAIUpstre
         else:
             # Attached GGUF on disk: the CLI uploads local files into Ollama's blob store.
             mf = tempfile.NamedTemporaryFile("w", suffix=".Modelfile", delete=False)
-            mf.write(f"FROM {spec.model.id}\nPARAMETER num_ctx {num_ctx}\n")
+            path = spec.model.id
+            if any(c in path for c in ('\n', '\r', '"')):
+                raise DeployError("The model path contains unsupported quote or newline characters")
+            mf.write(f'FROM "{path}"\nPARAMETER num_ctx {num_ctx}\n')
             mf.close()
             rc = await run_cmd([server.exe or "ollama", "create", alias, "-f", mf.name],
                                env={"OLLAMA_HOST": base.replace("http://", "")}, on_line=ctx.log)

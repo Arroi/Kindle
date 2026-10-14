@@ -125,6 +125,8 @@ class Probe:
         self._started = self._session_start()
         self._internet: bool | None = None
         self._internet_checked = 0.0
+        self._snapshot: HardwareProfile | None = None
+        self._working_usage = (0.0, 0)
         if not self.fake:
             try:
                 import pynvml  # type: ignore
@@ -133,9 +135,21 @@ class Probe:
                 self._nvml = True
             except Exception:
                 self._nvml = False
+        self.refresh()
 
     # -- public -------------------------------------------------------------------------------
     def snapshot(self) -> HardwareProfile:
+        """Return the last background measurement without blocking the HTTP event loop."""
+        if self.fake:
+            return self._fake_snapshot()
+        assert self._snapshot is not None
+        return self._snapshot
+
+    def refresh(self) -> HardwareProfile:
+        self._snapshot = self._measure()
+        return self._snapshot
+
+    def _measure(self) -> HardwareProfile:
         if self.fake:
             return self._fake_snapshot()
         gpus = self._gpus()
@@ -286,7 +300,9 @@ class Probe:
                 # /kaggle/working shares a big disk but output is capped at 20 GB.
                 from ..util import dir_size
 
-                used_out = dir_size(path)
+                if time.monotonic() - self._working_usage[0] > 30:
+                    self._working_usage = (time.monotonic(), dir_size(path))
+                used_out = self._working_usage[1]
                 total, used, free = 20 * 1000**3, used_out, max(20 * 1000**3 - used_out, 0)
             disks.append(DiskInfo(key, label, str(path), total, used, free, note))
         return disks

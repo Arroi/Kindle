@@ -14,6 +14,7 @@ import os
 import secrets
 import time
 from collections import deque
+from pathlib import Path
 
 from starlette.requests import HTTPConnection as Request
 from starlette.responses import Response
@@ -29,12 +30,23 @@ FAILURE_WINDOW = 300
 
 
 class Auth:
-    def __init__(self) -> None:
+    def __init__(self, secret_path: Path | None = None) -> None:
         self.admin_token = os.environ.get("KAGGLEUI_ADMIN_TOKEN") or secrets.token_urlsafe(18)
         self.password = os.environ.get("KAGGLEUI_PASSWORD") or generate_password()
         self.api_key = os.environ.get("KAGGLEUI_API_KEY") or generate_api_key()
         self.internal_key = secrets.token_urlsafe(32)
         self._secret = secrets.token_bytes(32)
+        if secret_path is not None:
+            secret_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                fd = os.open(secret_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                with os.fdopen(fd, "wb") as stream:
+                    stream.write(self._secret)
+            except FileExistsError:
+                value = secret_path.read_bytes()
+                if len(value) == 32:
+                    self._secret = value
+            secret_path.chmod(0o600)
         self._failures: dict[str, deque[float]] = {}
 
     # -- cookie values ------------------------------------------------------------------------

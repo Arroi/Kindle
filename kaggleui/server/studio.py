@@ -30,6 +30,8 @@ async def studio_ws(ws: WebSocket, state: AppState) -> None:
         usage: dict = {}
         finish = None
         try:
+            if state.updates.blocked:
+                raise RuntimeError(state.updates.status()["message"])
             dep = state.manager.resolve(msg.get("model"), "text")
             if not dep or not dep.backend:
                 raise RuntimeError("That model isn't running")
@@ -79,5 +81,7 @@ async def studio_ws(ws: WebSocket, state: AppState) -> None:
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
-        for t in tasks.values():
+        pending = list(tasks.values())
+        for t in pending:
             t.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)

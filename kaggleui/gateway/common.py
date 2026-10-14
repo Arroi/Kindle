@@ -35,6 +35,8 @@ def state_of(request: Request) -> AppState:
 def check_access(request: Request, surface: str) -> None:
     """Allow internal callers, panel admins, Studio users (access cookie), or valid API keys."""
     st = state_of(request)
+    if st.updates.blocked:
+        raise GatewayError(426, st.updates.status()["message"], "upgrade_required")
     auth = st.auth
     if auth.is_internal(request) or auth.is_admin(request):
         return

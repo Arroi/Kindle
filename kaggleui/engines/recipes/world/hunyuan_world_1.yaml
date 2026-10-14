@@ -1,0 +1,25 @@
+name: hunyuan_world_1
+title: HunyuanWorld 1.0
+repo: tencent/HunyuanWorld-1
+git: https://github.com/Tencent-Hunyuan/HunyuanWorld-1.0
+env: venv
+python: "3.10"
+min_sm: 80
+adapter: hunyuan_world_1
+result_kind: scene
+text_input: true
+prompt_conditioning: true
+controls: scene
+allow: ["HunyuanWorld-PanoDiT-Text/*", "HunyuanWorld-PanoDiT-Image/*", "HunyuanWorld-PanoInpaint-Scene/*", "HunyuanWorld-PanoInpaint-Sky/*"]
+requirements: ["torch==2.5.1", "torchvision==0.20.1", "torchaudio==2.5.1", "diffusers==0.34.0",
+               "transformers==4.51.0", "peft==0.15.0", "accelerate>=1.6", "numpy<2", "opencv-python-headless",
+               "Pillow", "scikit-image", "scipy", "trimesh", "open3d>=0.18", "onnxruntime-gpu", "einops",
+               "timm", "py360convert", "kornia", "ultralytics", "matplotlib", "shapely", "sentencepiece",
+               "basicsr-fixed", "facexlib", "lmdb", "ninja", "cmake", "packaging", "Cython",
+               "huggingface_hub", "imageio", "safetensors"]
+extra_models:
+  - {repo: black-forest-labs/FLUX.1-dev, mode: diffusers}
+  - {repo: black-forest-labs/FLUX.1-Fill-dev, mode: diffusers}
+  - {repo: naver-iv/zim-anything-vitl, allow: ["zim_vit_l_2092/encoder.onnx", "zim_vit_l_2092/decoder.onnx"], link: "ZIM/zim_vit_l_2092", subfolder: zim_vit_l_2092}
+defaults: {steps: 50}
+unverified: true

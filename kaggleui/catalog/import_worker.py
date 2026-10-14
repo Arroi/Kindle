@@ -147,6 +147,9 @@ def download(job: dict, root: Path) -> dict:
                      if any(fnmatch.fnmatch(s["rfilename"], pattern) for pattern in recipe.get("allow", ["*"]))]
         elif any(s["rfilename"] == "model_index.json" for s in siblings):
             allow = hf.diffusers_files(siblings)["files"]
+        elif "kokoro" in job["repo"].lower():
+            allow = [s["rfilename"] for s in siblings if s["rfilename"].endswith((".json", ".pth")) or
+                     (s["rfilename"].startswith("voices/") and s["rfilename"].endswith(".pt"))]
         elif any(s["rfilename"] == "config.json" for s in siblings) and not profile:
             allow = hf.transformers_files(siblings)["files"]
         check_space(root, sum(int(s.get("size") or 0) for s in siblings if not allow or s["rfilename"] in allow))
@@ -175,7 +178,8 @@ def download(job: dict, root: Path) -> dict:
         models = [{"path": str(root), "name": job["name"], "modality": "world", "engine": profile["engine"],
                    "size": dir_size(root), "options": profile.get("options", {}), "recipe": profile.get("recipe"),
                    "params": profile.get("params_b", 0) * 1e9 or None, "experimental": True,
-                   "min_sm": profile.get("min_sm")}]
+                   "min_sm": profile.get("min_sm"),
+                   "min_vram": int(float(profile.get("min_vram_gb", 0)) * 1e9) or None}]
     else:
         models = attached.scan(root)
         if profile:  # custom world pipelines must not be misclassified as generic image/video pipelines

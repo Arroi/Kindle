@@ -7,6 +7,7 @@ import { bytes, compact, cx, MODALITY_LABEL, params } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, Gpu, Modality } from "../lib/types";
 import { FitGauge } from "./meters";
+import { ModelLogo } from "./ModelLogo";
 import { Button, Chip, Empty, Input, Segmented, Select, Toggle, VerdictTag } from "./ui";
 
 export const MODALITY_ORDER: Modality[] = ["text", "image", "video", "tts", "stt", "world"];
@@ -70,6 +71,7 @@ export function ModelCard({
         {unsupported ? <Chip>Runner unavailable</Chip> : <VerdictTag verdict={f.verdict} size="sm" />}
       </div>
       <div className="mb-1 flex items-baseline gap-2">
+        <ModelLogo id={item.id} name={item.name} source={item.source} />
         <h3 className="line-clamp-2 min-w-0 break-words text-[18px] font-semibold leading-snug [overflow-wrap:anywhere]">{item.name}</h3>
       </div>
       {item.source === "hf" && item.name !== item.id && <div className="mb-1 truncate font-mono text-[10.5px] text-fg-3">{item.id}</div>}
@@ -124,10 +126,13 @@ export function ModelCard({
 function ModelRow({ item, selected, onOpen }: { item: CatalogItem; selected: boolean; onOpen: () => void }) {
   return (
     <button type="button" className="model-row model-columns" onClick={onOpen} aria-pressed={selected}>
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-start gap-3.5">
+        <ModelLogo id={item.id} name={item.name} source={item.source} className="mt-0.5" />
+        <div className="min-w-0">
         <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
           <h3 className="min-w-0 break-words font-semibold text-[15px] [overflow-wrap:anywhere]">{item.name}</h3>
           <SourceBadge item={item} />
+        </div>
         </div>
         <p className="line-clamp-1 text-[13px] text-fg-2">{item.description || item.id}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-fg-3">
@@ -257,12 +262,19 @@ export function ModelBrowser({
     changeSort(null);
   }
 
-  const query = useQuery({
+  const preview = useQuery({
+    queryKey: ["search-preview", modality, dq, source, sort, showUnsupported, fitFilter, limit],
+    queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit, live: false }),
+    staleTime: 5 * 60_000,
+  });
+  const liveQuery = useQuery({
     queryKey: ["search", modality, dq, source, sort, showUnsupported, fitFilter, limit],
     queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit }),
     staleTime: 5 * 60_000,
     placeholderData: (prev) => (prev?.modality === modality ? prev : undefined),
   });
+  const query = { ...liveQuery, data: liveQuery.data ?? preview.data,
+    isLoading: liveQuery.isLoading && preview.isLoading, error: liveQuery.data || preview.data ? null : liveQuery.error };
   const loadingMore = query.isFetching && query.isPlaceholderData && (query.data?.items.length ?? 0) < limit;
 
   const sources = useMemo(() => {
@@ -272,7 +284,7 @@ export function ModelBrowser({
       { value: "hf", label: "Hugging Face" },
     ];
     if (modality === "text") base.push({ value: "ollama", label: "Ollama" });
-    base.push({ value: "attached", label: "Local" });
+    base.push({ value: "attached", label: "Notebook attachments" });
     return base;
   }, [modality]);
 
@@ -336,12 +348,13 @@ export function ModelBrowser({
       </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-fg-3" role="status" aria-live="polite">
         <span>
-          {query.isFetching && !loadingMore ? "Checking catalogs…" : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models${modality === "world" ? ` · ${query.data.counts.launchable ?? 0} with launch support` : ""} · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
+          {query.isFetching && !loadingMore ? (query.data ? "Showing available models · refreshing live catalogs…" : "Loading models…") : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""} models${modality === "world" ? ` · ${query.data.counts.launchable ?? 0} with launch support` : ""} · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
         </span>
         {(q || source !== "all" || (modality === "world" ? launchableOnly : unsupported) || fitFilter !== "all" || sortChoice) && (
           <button type="button" onClick={resetFilters} className="flex items-center gap-1 text-fg-2 hover:text-fg"><X className="size-3" /> Reset filters</button>
         )}
       </div>
+      {liveQuery.error && preview.data && <p role="status" className="mb-4 text-[12px] text-tight">Live catalog unavailable. Showing bundled results. <button className="underline" onClick={() => liveQuery.refetch()}>Retry</button></p>}
       {(sort === "params_asc" || sort === "params_desc") && (
         <p className="mb-4 text-[12px] text-fg-3">Sorted by the shown variant's parameter count. Unknown counts appear last. Load more to include more catalog results.</p>
       )}

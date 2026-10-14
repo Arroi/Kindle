@@ -86,6 +86,36 @@
   blurb: "Image and text-conditioned world video using Robbyant's native runner with CPU offload. Ampere or newer."
   tags: [image-to-world, text-conditioning]
 - {id: stdstu123/Yume-5B-720P, name: "Yume 5B 720p", params_b: 5.2, blurb: "Interactive world generation using the Yume runtime.", tags: [interactive-world]}
-- {id: tencent/HunyuanWorld-1, name: "HunyuanWorld 1.0", blurb: "Tencent's explorable 3D world generation model. Needs a 3D output integration.", tags: [3D-world]}
+- id: tencent/HunyuanWorld-1
+  name: HunyuanWorld 1.0 · Text / image to 3D
+  engine: world_recipe
+  recipe: hunyuan_world_1
+  min_sm: 80
+  min_vram_gb: 32
+  experimental: true
+  blurb: "Tencent's text/image-to-world runner: panorama generation, semantic layers and exported 3D meshes. Uses FLUX base models; their Hugging Face access is required."
+  tags: [text-to-3D, image-to-3D, 360-panorama, mesh-export]
+  options: {steps: 50}
+- id: tencent/HY-WorldPlay
+  name: HY-WorldPlay 1.5 · 5B
+  params_b: 5
+  engine: world_recipe
+  recipe: hy_worldplay
+  min_sm: 80
+  min_vram_gb: 24
+  experimental: true
+  blurb: "Tencent's WorldPlay 5B runner for text/image-conditioned video and camera action strings. Uses the WAN pipeline with SageAttention."
+  tags: [text-to-world, image-to-world, camera-actions]
+  options: {frames: 17, steps: 4, chunks: 1, pose: "w-4"}
+- id: tencent/HY-World-2.0
+  name: HY-World 2.0 · Text / image to 3D
+  engine: world_recipe
+  recipe: hy_world_2
+  min_sm: 80
+  min_vram_gb: 48
+  experimental: true
+  blurb: "Tencent's full 3D world pipeline with HY-Pano 2.0, navigation, WorldStereo and Gaussian scene export. Needs a separate vision-language server; upstream recommends 4+ GPUs."
+  tags: [text-to-3D, image-to-3D, Gaussian-splats, mesh-export]
+  options: {steps: 40}
 - {id: tencent/HunyuanWorld-Mirror, name: "HunyuanWorld Mirror", blurb: "Tencent's 3D world reconstruction model. Needs a 3D output integration.", tags: [3D-reconstruction]}
 - {id: tencent/HunyuanWorld-Voyager, name: "HunyuanWorld Voyager", blurb: "World video generation with camera trajectories using the Voyager runtime.", tags: [camera-control]}

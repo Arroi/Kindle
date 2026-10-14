@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import glob
+import json
 import math
 import os
 import random
@@ -54,6 +55,37 @@ def run_job(recipe: dict, src: str, weights: str, outputs: str, payload: dict, r
     stamp = str(int(time.time() * 1000))
     job_dir = Path(outputs) / f"world-{stamp}"
     job_dir.mkdir(parents=True, exist_ok=True)
+    if recipe.get("adapter"):
+        from .world_assets import package_scene
+
+        result_dir = job_dir / "result"
+        result_dir.mkdir()
+        spec = job_dir / "input.json"
+        spec.write_text(json.dumps(payload))
+        spec.chmod(0o600)
+        command = [sys.executable, "-m", "kaggleui.engines.workers.hunyuan_job", recipe["adapter"],
+                   src, weights, str(result_dir), str(spec)]
+        try:
+            proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            tail = []
+            for line in proc.stdout:
+                if line.startswith("KUI_JOB_PROGRESS "):
+                    event = json.loads(line[len("KUI_JOB_PROGRESS "):])
+                    report(event["progress"], event["message"])
+                else:
+                    print(line.rstrip(), flush=True)
+                    tail = (tail + [line.strip()])[-10:]
+            if proc.wait() != 0:
+                raise RuntimeError(f"{recipe['title']} failed: " + " | ".join(tail[-4:]))
+        finally:
+            spec.unlink(missing_ok=True)
+        if recipe.get("result_kind") == "scene":
+            report(0.98, "Packaging world assets")
+            return package_scene(result_dir, job_dir / "world.zip")
+        videos = sorted(result_dir.rglob("*.mp4"), key=lambda path: path.stat().st_mtime)
+        if not videos:
+            raise RuntimeError("WorldPlay finished without producing a video")
+        return str(videos[-1])
     defaults = recipe.get("defaults") or {}
     frames = min(int(payload.get("frames") or defaults.get("frames", 32)), int(recipe.get("max_frames", 300)))
     steps = int(payload.get("steps") or defaults.get("steps", 10))
@@ -124,7 +156,7 @@ def main() -> None:
     def get_store() -> JobStore:
         if "s" not in store:
             store["s"] = JobStore(args.outputs, lambda payload, report: run_job(
-                recipe, src, args.model, args.outputs, payload, report))
+                recipe, src, args.model, args.outputs, {**(recipe.get("defaults") or {}), **args.options, **payload}, report))
         return store["s"]
 
     register_jobs(app, state, get_store)

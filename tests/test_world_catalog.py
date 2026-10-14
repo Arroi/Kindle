@@ -49,7 +49,7 @@ async def test_world_default_discovers_more_than_recipes(catalog):
     assert "community/Yume-Qwen-4B" not in items
     assert items[DISCOVERED["id"]]["engine"] is None
     assert items[DISCOVERED["id"]]["spec"] is None
-    assert result["counts"]["launchable"] == 11
+    assert result["counts"]["launchable"] == 14
     assert items["Skywork/Matrix-Game-3.0"]["engine"] == "world_recipe"
     assert items["Etched/oasis-500m"]["spec"]["options"]["recipe"] == "oasis"
     assert search.await_count > 1
@@ -58,7 +58,7 @@ async def test_world_default_discovers_more_than_recipes(catalog):
 async def test_world_launchable_and_fit_filters(catalog):
     service, _ = catalog
     supported = await service.search("world", show_unsupported=False)
-    assert len(supported["items"]) == 11
+    assert len(supported["items"]) == 14
     assert all(item["engine"] and item["spec"] for item in supported["items"])
     assert supported["has_more"] is False
     fitting = await service.search("world", fit="fits")
@@ -73,7 +73,7 @@ async def test_world_offline_fallback_keeps_published_models(catalog):
     service, search = catalog
     search.side_effect = httpx.ConnectError("offline")
     result = await service.search("world", source="hf", sort="params_asc")
-    assert len(result["items"]) == 18
+    assert len(result["items"]) == 20
     assert result["sources"]["hf"].startswith("error")
     known = [item["params"] for item in result["items"] if item["params"]]
     assert known == sorted(known)

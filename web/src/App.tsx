@@ -6,10 +6,13 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { Brand, Shell } from "./components/Shell";
+import { Button, Empty } from "./components/ui";
 import { api } from "./lib/api";
 import { LiveProvider, useLive } from "./lib/live";
 import { useTheme } from "./lib/theme";
-import Launch from "./pages/Launch";
+const Launch = lazy(() => import("./pages/Launch"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Imports = lazy(() => import("./pages/Imports"));
 import { AccessLogin, AdminLogin } from "./pages/Login";
 
 const Models = lazy(() => import("./pages/Models"));
@@ -37,16 +40,19 @@ function VersionBanner({ server }: { server: string }) {
 }
 
 function AdminApp() {
-  const { overview } = useLive();
+  const { overview, error, refresh } = useLive();
   const loc = useLocation();
-  if (!overview) return <Loading />;
+  if (!overview) return error ? <div className="mx-auto max-w-lg p-10"><Empty title="Connection interrupted">{error.message}<Button className="mt-4" onClick={refresh}>Reconnect</Button></Empty></div> : <Loading />;
   return (
     <Shell>
       <VersionBanner server={overview.version} />
       <ErrorBoundary resetKey={loc.pathname}>
       <Suspense fallback={<Loading />}>
         <Routes>
-          <Route path="/" element={<Launch />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/deploy/new" element={<Launch />} />
+          <Route path="/imports" element={<Imports />} />
+          <Route path="/host" element={<Navigate to="/" replace />} />
           <Route path="/models" element={<Models />} />
           <Route path="/deployments" element={<Deployments />} />
           <Route path="/studio" element={<Studio admin />} />
@@ -86,8 +92,11 @@ function GuestStudio() {
 export default function App() {
   const session = useQuery({ queryKey: ["session"], queryFn: api.session, retry: 1 });
   if (session.isLoading) return <Loading />;
+  if (session.error) return <div className="mx-auto max-w-lg px-6 py-24"><Empty title="Can't reach KaggleUI">The server may be restarting, or the notebook session may have ended.<p className="mt-2 break-words text-worst">{session.error.message}</p><Button className="mt-5" onClick={() => session.refetch()}>Try again</Button></Empty></div>;
   const s = session.data;
   const path = location.pathname;
+
+  if (s?.compatibility?.blocked && !s.admin && path !== "/host") return <div className="mx-auto max-w-lg p-10"><Empty title="This server needs an update">{s.compatibility.message}<p className="mt-3">Ask the host to update KaggleUI.</p><a href="/host" className="mt-4 inline-block underline">Host sign-in</a></Empty></div>;
 
   if (s?.admin) {
     return (
@@ -98,13 +107,14 @@ export default function App() {
       </BrowserRouter>
     );
   }
-  if (path.startsWith("/studio") || path.startsWith("/login")) {
+  if (path !== "/host" && !new URLSearchParams(location.search).has("bad_token")) {
     return (
       <BrowserRouter>
         <Suspense fallback={<Loading />}>
           <Routes>
             <Route path="/studio/*" element={s?.access ? <GuestStudio /> : <Navigate to={`/login?next=${encodeURIComponent(path)}`} replace />} />
             <Route path="/login" element={s?.access ? <Navigate to="/studio" replace /> : <AccessLogin />} />
+            <Route path="*" element={<Navigate to={s?.access ? "/studio" : "/login"} replace />} />
           </Routes>
         </Suspense>
       </BrowserRouter>

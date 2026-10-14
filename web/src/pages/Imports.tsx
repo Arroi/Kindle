@@ -1,0 +1,20 @@
+import { useState } from "react";
+import { useLocation, useNavigate } from "react-router";
+
+import { ModelDetail } from "../components/ModelDetail";
+import { ModelImporter } from "../components/ModelImporter";
+import { Drawer, SectionTitle } from "../components/ui";
+import type { CatalogItem } from "../lib/types";
+
+export default function Imports() {
+  const location = useLocation();
+  const nav = useNavigate();
+  const [open, setOpen] = useState<CatalogItem | null>(null);
+  return <div>
+    <SectionTitle kicker="Your checkpoints" title="Custom imports"><p className="max-w-[65ch] text-fg-2">Download, configure, deploy. Your imports stay here, separate from the public model catalog.</p></SectionTitle>
+    <div className="max-w-3xl"><ModelImporter initialUrl={(location.state as { url?: string } | null)?.url} onCustomize={setOpen} /></div>
+    <Drawer open={!!open} onClose={() => setOpen(null)} title="Customize import">
+      {open && <ModelDetail key={open.key} item={open} actionLabel="Continue to deployment" onAction={choice => nav("/deploy/new", { state: { choice } })} />}
+    </Drawer>
+  </div>;
+}

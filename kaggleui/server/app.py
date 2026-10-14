@@ -37,7 +37,8 @@ def create_app(state: AppState) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         state.bus.bind_loop(asyncio.get_running_loop())
-        tasks = [asyncio.create_task(_metrics_loop(state)), asyncio.create_task(_startup(state))]
+        tasks = [asyncio.create_task(_metrics_loop(state)), asyncio.create_task(_startup(state)),
+                 asyncio.create_task(state.updates.run())]
         try:
             yield
         finally:
@@ -62,9 +63,14 @@ def create_app(state: AppState) -> FastAPI:
 
     @app.middleware("http")
     async def headers(request: Request, call_next):
+        if state.updates.blocked and request.url.path.startswith(("/v1/", "/api/", "/gradio/")):
+            return JSONResponse({"error": {"message": state.updates.status()["message"], "type": "upgrade_required"}},
+                                status_code=426, headers={"Cache-Control": "no-store"})
         response = await call_next(request)
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        if request.url.path.startswith(("/_kui/api/", "/v1/")):
+            response.headers["Cache-Control"] = "no-store"
         return response
 
     app.include_router(openai_gw.router)
@@ -86,7 +92,33 @@ def create_app(state: AppState) -> FastAPI:
     async def session(request: Request):
         return {"admin": state.auth.is_admin(request), "access": state.auth.has_access(request, state.settings),
                 "password_enabled": state.settings.access.password_enabled, "version": __version__,
-                "mock": state.mock, "fake_hw": state.fake_hw}
+                "mock": state.mock, "fake_hw": state.fake_hw, "compatibility": {"blocked": state.updates.blocked,
+                "message": state.updates.status()["message"]}}
+
+    @app.get("/_kui/api/updates")
+    async def update_status(request: Request, check: bool = False):
+        require_admin(request)
+        return await state.updates.check(force=check)
+
+    @app.post("/_kui/api/updates/install")
+    async def install_update(request: Request):
+        require_admin(request)
+        try:
+            return await state.updates.install()
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.get("/_kui/api/updates/logs")
+    async def update_logs(request: Request):
+        require_admin(request)
+        path = state.paths.logs / "update.log"
+        if not path.exists():
+            return {"lines": []}
+        def tail():
+            with path.open("rb") as stream:
+                stream.seek(max(0, path.stat().st_size - 64_000))
+                return stream.read().decode(errors="replace").splitlines()[-250:]
+        return {"lines": await asyncio.to_thread(tail)}
 
     @app.post("/_kui/api/login")
     async def login(request: Request, body: dict = Body(...)):
@@ -105,7 +137,7 @@ def create_app(state: AppState) -> FastAPI:
         ip = state.auth.client_ip(request)
         if state.auth.is_rate_limited(ip):
             raise HTTPException(429, "Too many attempts. Wait a few minutes.")
-        if not state.auth.check_password(str(body.get("password", "")).strip()):
+        if not state.auth.check_password(str(body.get("password", ""))):
             state.auth.record_failure(ip)
             raise HTTPException(401, "Wrong password")
         resp = JSONResponse({"ok": True})
@@ -266,12 +298,12 @@ def create_app(state: AppState) -> FastAPI:
     @app.get("/_kui/api/catalog/search")
     async def catalog_search(request: Request, modality: str = "text", q: str = "", source: str = "all",
                              sort: str = "recommended", limit: int = 40, show_unsupported: bool | None = None,
-                             fit: str = "all"):
+                             fit: str = "all", live: bool = True):
         require_admin(request)
         if modality not in MODALITIES:
             raise HTTPException(400, "unknown modality")
         return await state.catalog.search(modality, q, source, sort, max(1, min(limit, 300)), show_unsupported,
-                                          "fits" if fit == "fits" else "all")
+                                          "fits" if fit == "fits" else "all", live=live)
 
     @app.get("/_kui/api/catalog/detail")
     async def catalog_detail(request: Request, key: str):
@@ -297,6 +329,17 @@ def create_app(state: AppState) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @app.get("/_kui/api/catalog/imports/{ident}/models/{index}")
+    async def customize_import(request: Request, ident: str, index: int):
+        require_admin(request)
+        job = state.imports.jobs.get(ident)
+        if not job or job["status"] != "complete" or not 0 <= index < len(job["models"]):
+            raise HTTPException(404, "Imported checkpoint not found")
+        model = job["models"][index]
+        if not Path(model["path"]).exists():
+            raise HTTPException(410, "The imported files are no longer on disk. Download the model again.")
+        return state.catalog.imported(model)
+
     @app.delete("/_kui/api/catalog/imports/{ident}")
     async def cancel_import(request: Request, ident: str):
         require_admin(request)
@@ -312,6 +355,8 @@ def create_app(state: AppState) -> FastAPI:
     @app.post("/_kui/api/deployments")
     async def create_deployment(request: Request, spec: DeploymentSpec):
         require_admin(request)
+        if state.updates.blocked:
+            raise HTTPException(426, state.updates.status()["message"])
         dep = state.manager.create(spec)
         return dep.public()
 
@@ -326,6 +371,8 @@ def create_app(state: AppState) -> FastAPI:
     @app.post("/_kui/api/deployments/{dep_id}/restart")
     async def restart_deployment(request: Request, dep_id: str):
         require_admin(request)
+        if state.updates.blocked:
+            raise HTTPException(426, state.updates.status()["message"])
         dep = await state.manager.restart(dep_id)
         if not dep:
             raise HTTPException(404, "No such deployment")
@@ -404,9 +451,27 @@ def create_app(state: AppState) -> FastAPI:
                         "message": d.message, "progress": d.progress, "capabilities": d.info.get("capabilities", []),
                         "controls": d.info.get("controls"), "start_frame": d.info.get("start_frame"),
                         "prompt_conditioning": bool(d.info.get("prompt_conditioning")),
-                        "options": d.spec.options,
+                        "text_input": bool(d.info.get("text_input")), "result_kind": d.info.get("result_kind", "video"),
+                        "needs_vlm": bool(d.info.get("needs_vlm")),
+                        "options": d.spec.options, "model_id": d.spec.model.id, "source": d.spec.model.source,
                         "interface": d.interface, "engine": d.spec.model.engine, "runtime": d.info.get("runtime")})
         return out
+
+    @app.get("/_kui/api/studio/worlds/{ident}/content")
+    async def studio_world_content(request: Request, ident: str):
+        require_access(request)
+        try:
+            return await openai_gw.world_file_response(request, ident)
+        except Exception as exc:
+            return openai_gw.openai_error(openai_gw.wrap(exc))
+
+    @app.get("/_kui/api/studio/worlds/{ident}/assets/{path:path}")
+    async def studio_world_asset(request: Request, ident: str, path: str):
+        require_access(request)
+        try:
+            return await openai_gw.world_file_response(request, ident, path)
+        except Exception as exc:
+            return openai_gw.openai_error(openai_gw.wrap(exc))
 
     @app.websocket("/_kui/studio/ws")
     async def studio(ws: WebSocket):
@@ -483,10 +548,8 @@ def create_app(state: AppState) -> FastAPI:
 async def _metrics_loop(state: AppState) -> None:
     while True:
         await asyncio.sleep(2)
-        if not state.bus._subs:
-            continue
         try:
-            snap = await asyncio.to_thread(state.probe.snapshot)
+            snap = await asyncio.to_thread(state.probe.refresh)
             state.bus.publish("metrics", snap.to_dict())
         except Exception:
             pass
@@ -550,7 +613,7 @@ async def _startup(state: AppState) -> None:
             asyncio.create_task(announce())
 
     state.tunnels.on_change = on_tunnel
-    if state.preset:
+    if state.preset and not state.updates.blocked:
         for spec in state.preset.deployments:
             state.manager.create(spec)
     if ready:

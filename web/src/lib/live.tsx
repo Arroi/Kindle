@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { api } from "./api";
 import type { Deployment, Overview, Settings, System, Tunnel } from "./types";
 
 interface LiveState {
@@ -15,6 +17,7 @@ type Action =
   | { type: "deployment_removed"; data: { id: string } }
   | { type: "log"; data: { id: string; line: string } }
   | { type: "logs"; id: string; lines: string[] }
+  | { type: "log_batch"; data: Record<string, string[]> }
   | { type: "tunnel"; data: Tunnel }
   | { type: "settings"; data: Settings }
   | { type: "credentials"; data: Overview["credentials"] }
@@ -36,6 +39,11 @@ function reducer(state: LiveState, a: Action): LiveState {
       const prev = state.logs[a.data.id] ?? [];
       const next = prev.length >= MAX_LOG ? [...prev.slice(-MAX_LOG + 1), a.data.line] : [...prev, a.data.line];
       return { ...state, logs: { ...state.logs, [a.data.id]: next } };
+    }
+    case "log_batch": {
+      const logs = { ...state.logs };
+      for (const [id, lines] of Object.entries(a.data)) logs[id] = [...(logs[id] ?? []), ...lines].slice(-MAX_LOG);
+      return { ...state, logs };
     }
   }
   if (!ov) return state;
@@ -75,20 +83,31 @@ function reducer(state: LiveState, a: Action): LiveState {
   return state;
 }
 
-interface LiveCtx extends LiveState {
+interface LiveCtx extends Omit<LiveState, "logs"> {
   dispatch: (a: Action) => void;
+  error: Error | null;
+  refresh: () => void;
 }
 
 const Ctx = createContext<LiveCtx | null>(null);
+const LogsCtx = createContext<Record<string, string[]>>({});
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { overview: null, logs: {}, connected: false });
   const retry = useRef(0);
+  const cache = useQueryClient();
+  const fallback = useQuery({ queryKey: ["overview"], queryFn: api.overview, retry: 1,
+    refetchInterval: state.connected ? false : 8000, refetchOnWindowFocus: true });
+  useEffect(() => { if (fallback.data) dispatch({ type: "overview", data: fallback.data }); }, [fallback.data]);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
     let timer: number | undefined;
     let closed = false;
+    let lines: Record<string, string[]> = {};
+    const flush = window.setInterval(() => {
+      if (Object.keys(lines).length) { dispatch({ type: "log_batch", data: lines }); lines = {}; }
+    }, 100);
 
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -99,7 +118,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       };
       ws.onmessage = (ev) => {
         try {
-          dispatch(JSON.parse(ev.data));
+          const event: Action = JSON.parse(ev.data);
+          if (event.type === "log") (lines[event.data.id] ??= []).push(event.data.line);
+          else dispatch(event);
         } catch {
           /* ignore */
         }
@@ -108,7 +129,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "connected", value: false });
         if (closed) return;
         if (ev.code === 4401) {
-          location.reload();
+          void cache.invalidateQueries({ queryKey: ["session"] });
           return;
         }
         const delay = Math.min(1000 * 2 ** retry.current, 15000);
@@ -120,12 +141,15 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     return () => {
       closed = true;
       window.clearTimeout(timer);
+      window.clearInterval(flush);
       ws?.close();
     };
-  }, []);
+  }, [cache]);
 
-  const value = useMemo(() => ({ ...state, dispatch }), [state]);
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  const value = useMemo(() => ({ overview: state.overview, connected: state.connected, dispatch,
+    error: fallback.error, refresh: () => { void fallback.refetch(); } }),
+    [state.overview, state.connected, fallback.error, fallback.refetch]);
+  return <Ctx.Provider value={value}><LogsCtx.Provider value={state.logs}>{children}</LogsCtx.Provider></Ctx.Provider>;
 }
 
 export function useLive(): LiveCtx {
@@ -137,3 +161,5 @@ export function useLive(): LiveCtx {
 export function useOverview(): Overview | null {
   return useLive().overview;
 }
+
+export function useLogs() { return useContext(LogsCtx); }

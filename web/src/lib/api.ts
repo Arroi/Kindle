@@ -11,6 +11,7 @@ import type {
   Session,
   Settings,
   StudioModel,
+  UpdateStatus,
 } from "./types";
 
 export class ApiError extends Error {
@@ -26,7 +27,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData) && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
-  const res = await fetch(path, { credentials: "same-origin", ...init, headers });
+  const res = await fetch(path, { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(30_000), ...init, headers });
   if (!res.ok) {
     let msg = res.statusText;
     try {
@@ -54,6 +55,9 @@ export const api = {
   accessLogin: (password: string) => request("/_kui/api/access-login", { method: "POST", body: json({ password }) }),
   logout: () => request("/_kui/api/logout", { method: "POST" }),
   overview: () => request<Overview>("/_kui/api/overview"),
+  updates: (check = false) => request<UpdateStatus>(`/_kui/api/updates?check=${check}`),
+  installUpdate: () => request<UpdateStatus>("/_kui/api/updates/install", { method: "POST" }),
+  updateLogs: () => request<{ lines: string[] }>("/_kui/api/updates/logs"),
   updateSettings: (patch: Partial<{ [K in keyof Settings]: Partial<Settings[K]> }>) =>
     request<Settings>("/_kui/api/settings", { method: "PUT", body: json(patch) }),
   regenerate: (which: "password" | "api_key") =>
@@ -63,6 +67,7 @@ export const api = {
   importModel: (body: { url: string; kind?: string; name?: string; revision?: string }) =>
     request<ModelImport>("/_kui/api/catalog/imports", { method: "POST", body: json(body) }),
   cancelImport: (id: string) => request<ModelImport>(`/_kui/api/catalog/imports/${id}`, { method: "DELETE" }),
+  customizeImport: (id: string, index: number) => request<CatalogItem>(`/_kui/api/catalog/imports/${id}/models/${index}`),
   search: (p: {
     modality: Modality;
     q?: string;
@@ -71,6 +76,7 @@ export const api = {
     show_unsupported?: boolean;
     fit?: "all" | "fits";
     limit?: number;
+    live?: boolean;
   }) => {
     const qs = new URLSearchParams({
       modality: p.modality,
@@ -80,6 +86,7 @@ export const api = {
       show_unsupported: String(Boolean(p.show_unsupported)),
       fit: p.fit ?? "all",
       limit: String(p.limit ?? 40),
+      live: String(p.live ?? true),
     });
     return request<SearchResult>(`/_kui/api/catalog/search?${qs}`);
   },

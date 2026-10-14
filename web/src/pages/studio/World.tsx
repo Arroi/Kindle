@@ -7,7 +7,7 @@ import { gateway } from "../../lib/api";
 import type { StudioModel } from "../../lib/types";
 import { ActionBuilder, ClipList, fileToB64, ImagePick, JobProgress, runVideoJob, type Segment } from "./Media";
 
-type Start = "describe" | "upload" | "default";
+type Start = "text" | "describe" | "upload" | "default";
 
 /**
  * World models (Oasis, Matrix-Game) are driven by a starting frame plus actions, not text.
@@ -18,7 +18,7 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
   const toast = useToast();
   const minecraft = model.controls === "minecraft";
   const canPaint = imageModels.length > 0;
-  const [start, setStart] = useState<Start>(canPaint ? "describe" : "default");
+  const [start, setStart] = useState<Start>(model.text_input ? "text" : canPaint ? "describe" : "default");
   const [prompt, setPrompt] = useState("");
   const [motionPrompt, setMotionPrompt] = useState("");
   const [painter, setPainter] = useState(imageModels[0]?.name ?? "");
@@ -29,6 +29,8 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
   const [steps, setSteps] = useState<number>(Number(o.steps ?? 10));
   const [seed, setSeed] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
+  const [chunks, setChunks] = useState<number>(Number(o.chunks ?? 1));
+  const [pose, setPose] = useState<string>(String(o.pose ?? "w-4"));
   const [job, setJob] = useState<{ id: string; progress: number; message: string } | null>(null);
   const [videos, setVideos] = useState<{ url: string; prompt: string; frame?: string }[]>([]);
   const segFrames = segments.reduce((sum, x) => sum + x.frames, 0);
@@ -60,6 +62,8 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
     try {
       const body: Record<string, unknown> = { model: model.name, frames, steps, seed: seed ? Number(seed) : undefined };
       if (model.prompt_conditioning) body.prompt = motionPrompt || "A coherent scene with natural motion.";
+      if (start === "text") body.prompt = prompt;
+      if (model.controls === "pose") { body.chunks = chunks; body.pose = pose; }
       if (minecraft) body.actions = segments.map(({ keys, camera, frames }) => ({ keys, camera, frames }));
       let frame: string | undefined;
       if (start === "describe") {
@@ -69,7 +73,7 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
         body.input_reference_b64 = await fileToB64(file);
         frame = URL.createObjectURL(file);
       }
-      const label = start === "describe" ? prompt : minecraft ? segments.map((x) => x.label).join(", ") : "";
+      const label = start === "text" || start === "describe" ? prompt : minecraft ? segments.map((x) => x.label).join(", ") : motionPrompt;
       const url = await runVideoJob(body, setJob);
       setVideos((vs) => [{ url, prompt: label || "default start frame", frame }, ...vs]);
     } catch (e) {
@@ -79,25 +83,28 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
     }
   }
 
-  const blocked = start === "describe" ? !prompt.trim() || !canPaint : start === "upload" ? !file : false;
+  const blocked = start === "text" ? !prompt.trim() : start === "describe" ? !prompt.trim() || !canPaint : start === "upload" ? !file : false;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[400px_minmax(0,1fr)]">
       <div className="panel space-y-4 p-4">
         <div>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="readout">Starting frame</span>
+            <span className="readout">{model.text_input ? "World input" : "Starting frame"}</span>
             <Segmented<Start>
               size="sm"
               value={start}
               onChange={setStart}
-              options={[
+              options={model.text_input ? [
+                { value: "text", label: "Text" }, { value: "upload", label: "Image" },
+              ] : [
                 { value: "describe", label: "Describe it" },
                 { value: "upload", label: "Upload" },
                 { value: "default", label: "Default" },
               ]}
             />
           </div>
+          {start === "text" && <Field label="Describe the scene"><Textarea rows={4} value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="First-person view walking through a quiet mountain village…" /></Field>}
           {start === "describe" &&
             (canPaint ? (
               <div className="space-y-2.5">
@@ -135,7 +142,7 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
                 {model.name} starts from an image, not text. Deploy an image model too (SD Turbo is 2.6 GB and quick) and you can describe
                 the starting scene here.
                 {admin && (
-                  <Link to="/" className="mt-2 block font-medium text-signal underline underline-offset-4">
+                  <Link to="/deploy/new" className="mt-2 block font-medium text-signal underline underline-offset-4">
                     Launch an image model →
                   </Link>
                 )}
@@ -145,9 +152,12 @@ export default function WorldStudio({ model, imageModels, admin }: { model: Stud
           {start === "default" && <p className="text-[12.5px] text-fg-3">Starts from the model's own sample frame.</p>}
         </div>
 
-        {model.prompt_conditioning && <Field label="Scene and motion prompt"><Textarea rows={3} value={motionPrompt} onChange={e => setMotionPrompt(e.target.value)} placeholder="Describe the scene and how it should move…" /></Field>}
+        {model.prompt_conditioning && start !== "text" && <Field label="Scene and motion prompt"><Textarea rows={3} value={motionPrompt} onChange={e => setMotionPrompt(e.target.value)} placeholder="Describe the scene and how it should move…" /></Field>}
         {minecraft && <ActionBuilder segments={segments} onChange={setSegments} />}
-        <Slider label="Frames" value={frames} min={4} max={300} onChange={setFrames} />
+        {model.controls === "pose" ? <>
+          <Field label="Video chunks" hint="Each chunk produces 16 frames"><Select value={chunks} onChange={e => { const n = Number(e.target.value); setChunks(n); if (/^w-\d+$/.test(pose)) setPose(`w-${n*4}`); }}>{[1,2,4,8,16].map(n => <option key={n} value={n}>{n} · {n*16} frames</option>)}</Select></Field>
+          <Field label="Camera actions" hint={`Movement: w/a/s/d. Rotation: up/down/left/right. Durations must total ${chunks*4}.`}><Input value={pose} onChange={e => setPose(e.target.value)} placeholder={`w-${chunks*4}`} /></Field>
+        </> : <Slider label="Frames" value={frames} min={4} max={300} onChange={setFrames} />}
         <Slider label="Steps" value={steps} min={1} max={60} onChange={setSteps} />
         <Field label="Seed">
           <Input value={seed} onChange={(e) => setSeed(e.target.value.replace(/\D/g, ""))} placeholder="random" />
