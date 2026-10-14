@@ -136,6 +136,8 @@ class TransformersTTS:
                 kwargs["preprocess_params"] = {"voice_preset": voice}
             elif self.kind == "vits":
                 kwargs["forward_params"] = {"speaker_id": int(voice)}
+        if self.kind == "vits" and self.voice_mode == "speakers" and "forward_params" not in kwargs:
+            kwargs["forward_params"] = {"speaker_id": 0}
         out = self.pipe(text, **kwargs)
         audio = np.asarray(out["audio"], dtype=np.float32).squeeze()
         return audio, int(out["sampling_rate"])
