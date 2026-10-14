@@ -85,6 +85,7 @@ class Updates:
         async with self._lock:
             if self.checked_at and time.time() - self.checked_at < (30 if force else 3600):
                 return self.status()
+            was_blocked = self.blocked
             errors = []
             async with httpx.AsyncClient(timeout=10, follow_redirects=True,
                                          headers={"User-Agent": f"KaggleUI/{__version__}"}) as client:
@@ -116,14 +117,13 @@ class Updates:
                     errors.append(f"Couldn't check the {kind}; using the last known result.")
             self.checked_at = time.time()
             self.error = " ".join(errors) or None
+            if self.blocked and not was_blocked:
+                await self.state.manager.shutdown()
             return self.status()
 
     async def run(self):
         while True:
-            was_blocked = self.blocked
             await self.check()
-            if self.blocked and not was_blocked:
-                await self.state.manager.shutdown()
             await asyncio.sleep(600)
 
     async def install(self) -> dict:

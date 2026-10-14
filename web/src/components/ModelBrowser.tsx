@@ -133,12 +133,12 @@ function ModelRow({ item, selected, onOpen }: { item: CatalogItem; selected: boo
           <h3 className="min-w-0 break-words font-semibold text-[15px] [overflow-wrap:anywhere]">{item.name}</h3>
           <SourceBadge item={item} />
         </div>
-        </div>
         <p className="line-clamp-1 text-[13px] text-fg-2">{item.description || item.id}</p>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-fg-3">
           {item.variant && <span>{item.variant}</span>}
           {item.capabilities.slice(0, 2).map((cap) => <span key={cap}>{cap}</span>)}
           {item.experimental && <span className="text-tight">Experimental</span>}
+        </div>
         </div>
       </div>
       <div className="model-stats">
