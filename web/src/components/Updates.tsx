@@ -20,7 +20,7 @@ export function UpdateNotice({ full = false }: { full?: boolean }) {
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-signal-soft text-signal"><ArrowDownToLine className="size-4" /></span>
       <div className="min-w-0 flex-1">
         <h2 className="text-[14px] font-semibold">{update?.blocked ? "Update required" : update?.available ? `KaggleUI ${update.latest} is available` : `KaggleUI ${update?.current ?? __APP_VERSION__}`}</h2>
-        <p className="mt-0.5 text-[13px] text-fg-2">{running ? update?.progress?.message : update?.blocked ? update.message : update?.available ? "Install the latest release and restart your workspace." : "Your workspace is up to date."}</p>
+        <p className="mt-0.5 text-[13px] text-fg-2">{running ? update?.progress?.message : update?.blocked ? update.message : update?.available ? "Install the latest release and restart your workspace." : update?.latest ? "Your workspace is up to date." : query.isFetching ? "Checking releases…" : "Release status unavailable. Try checking again."}</p>
       </div>
       {update?.available && !running && <Button size="sm" variant="primary" busy={busy} onClick={async () => {
         setBusy(true);

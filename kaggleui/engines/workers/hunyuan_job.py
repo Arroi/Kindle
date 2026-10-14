@@ -148,6 +148,7 @@ HunyuanPanoPipeline(pipe)(sys.argv[2],prompt=spec.get("prompt") or "",negative_p
              str(src / "hyworld2/panogen"), str(weights)], src)
     gen = src / "hyworld2/worldgen"
     env = {"KUI_WORLD2_VLM_URL": endpoint, "KUI_WORLD2_VLM_KEY": key,
+           "KUI_WORLD2_WEIGHTS": str(weights),
            "PYTHONPATH": os.pathsep.join([str(gen), str(src), os.environ.get("PYTHONPATH", "")])}
     # The upstream CLI still takes host/port, while the patched client also accepts HTTPS and API keys.
     vlm = ["--llm_addr", parts.hostname, "--llm_port", str(parts.port or (443 if parts.scheme == "https" else 80)),

@@ -64,6 +64,16 @@ async def prepare(recipe: dict, src: Path, python: str, ctx: EngineContext) -> N
                 if "import os" not in text:
                     text = "import os\n" + text
                 file.write_text(text)
+        file = src / "hyworld2/worldgen/src/retrieval_wm.py"
+        text = file.read_text().replace('"torchrun", f"--nproc_per_node=',
+                                        'sys.executable, "-m", "torch.distributed.run", "--standalone", f"--nproc_per_node=')
+        if "import sys" not in text:
+            text = "import sys\n" + text
+        file.write_text(text)
+        file = src / "hyworld2/worldrecon/pipeline.py"
+        text = file.read_text().replace('default="tencent/HY-World-2.0"',
+                                        'default=os.environ.get("KUI_WORLD2_WEIGHTS", "tencent/HY-World-2.0")')
+        file.write_text(text)
     for model in recipe.get("extra_models", []):
         siblings = await repo_files(model["repo"])
         if model.get("mode") == "diffusers":
