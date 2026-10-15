@@ -22,6 +22,7 @@ export default function System() {
   const { overview } = useLive();
   if (!overview) return null;
   const s = overview.system;
+  const devices = s.gpus.length ? s.gpus : s.tpus ?? [];
   return (
     <div>
       <SectionTitle title={s.accelerator_label} description={`${s.platform}. Hardware, storage, session time and the secrets KaggleUI can see.`} />
@@ -38,15 +39,15 @@ export default function System() {
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="panel min-w-0 p-5 lg:col-span-2">
           <div className="readout mb-4">Accelerators</div>
-          {s.gpus.length === 0 ? (
-            <p className="text-fg-2">No GPU detected.</p>
+          {devices.length === 0 ? (
+            <p className="text-fg-2">No GPU or TPU detected.</p>
           ) : (
             <div className="grid gap-5 sm:grid-cols-2">
-              {s.gpus.map((g) => (
+              {devices.map((g) => (
                 <div key={g.index} className="rounded-xl border border-line bg-bg-2 p-4">
                   <div className="mb-3 flex items-baseline justify-between">
                     <span className="display text-[24px]">{g.name.replace("NVIDIA ", "")}</span>
-                    <span className="font-mono text-[11px] text-fg-3">sm_{g.sm ?? "?"}</span>
+                    <span className="font-mono text-[11px] text-fg-3">{g.kind === "tpu" ? "HBM" : `sm_${g.sm ?? "?"}`}</span>
                   </div>
                   <GpuMeter gpu={g} />
                 </div>

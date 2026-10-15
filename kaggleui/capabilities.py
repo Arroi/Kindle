@@ -16,6 +16,47 @@ ALIASES = {"thinking": "reasoning", "think": "reasoning", "reasoner": "reasoning
            "tool-use": "tools", "tool-calling": "tools", "function-calling": "tools"}
 CONTROL_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
+CTX_FIELDS = ("max_sequence_length", "max_position_embeddings", "n_positions", "seq_length",
+              "max_seq_len", "n_ctx")
+EXTENDING_ROPE = {"linear", "dynamic", "yarn", "longrope"}
+
+
+def context_length(config: dict | None) -> int | None:
+    """Longest sequence a text model can take, read from its config.json.
+
+    Checks the text stack of multimodal configs, and applies the RoPE factor for checkpoints
+    that only record the base window (e.g. ``max_position_embeddings: 2048`` with ``linear`` ×8).
+    Configs that already store the extended length report it as-is.
+    """
+    config = config or {}
+    stacks = [config]
+    if isinstance(config.get("text_config"), dict):
+        stacks.append(config["text_config"])
+
+    def field(name: str) -> int | None:
+        for cfg in stacks:
+            value = cfg.get(name)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
+        return None
+
+    declared = [value for name in CTX_FIELDS if (value := field(name)) is not None]
+    if not declared:
+        return None
+    best = max(declared)
+    pos = field("max_position_embeddings") or field("n_positions") or best
+    for cfg in stacks:
+        scaling = cfg.get("rope_scaling")
+        if not isinstance(scaling, dict):
+            continue
+        factor = scaling.get("factor")
+        kind = str(scaling.get("type") or scaling.get("rope_type") or "").lower()
+        # With original_max_position_embeddings set, the length fields already carry the extension.
+        if isinstance(factor, (int, float)) and factor > 1 and kind in EXTENDING_ROPE \
+                and not isinstance(scaling.get("original_max_position_embeddings"), int):
+            best = max(best, int(pos * factor))
+    return best
+
 
 def _reasoning(supported=None, values=(), source="unknown", toggle=None, default=None) -> dict:
     return {"supported": supported, "efforts": list(values), "source": source, "toggle": toggle,

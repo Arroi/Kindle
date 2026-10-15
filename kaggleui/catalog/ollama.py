@@ -73,6 +73,15 @@ def is_local_model(item: dict) -> bool:
     return bool(item.get("sizes")) or item.get("downloads", 0) > 0
 
 
+def parse_context(value: str | None) -> int | None:
+    """Tokens from a tag label like ``128K``. K and M are binary, as ollama.com counts them."""
+    match = re.fullmatch(r"(\d+)\s*([KM]?)", value or "", re.I)
+    if not match:
+        return None
+    scale = {"": 1, "K": 1024, "M": 1024**2}[match.group(2).upper()]
+    return int(match.group(1)) * scale
+
+
 async def search(client: httpx.AsyncClient, query: str = "", capability: str | None = None,
                  order: str | None = None, page: int = 1) -> list[dict]:
     params = {}

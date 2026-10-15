@@ -160,8 +160,9 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
     for i in range(11):
         ctx.progress("downloading", i / 10, f"Downloading {spec.model.id}: {i * 10}% (simulated)")
         await asyncio.sleep(0.25)
-    ctx.progress("loading", None, "Loading into GPU memory (simulated)")
-    ctx.log(f"[mock] loading {spec.model.id} on GPUs {ctx.gpus}")
+    ctx.progress("loading", None, "Loading into accelerator memory (simulated)")
+    where = f"TPU ({len(ctx.hw.tpus)} chips)" if ctx.hw.accelerator == "tpu" and ctx.hw.tpus else f"GPUs {ctx.gpus or 'none'}"
+    ctx.log(f"[mock] loading {spec.model.id} on {where}")
     await asyncio.sleep(0.8)
     caps = ["completion", "tools"] if spec.modality == "text" else []
     info: dict = {"mock": True, "capabilities": caps}

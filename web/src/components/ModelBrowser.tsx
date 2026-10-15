@@ -3,7 +3,7 @@ import { AlertTriangle, Download, HardDrive, Heart, LayoutGrid, List, Search, Sl
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../lib/api";
-import { bytes, compact, cx, MODALITY_LABEL, params } from "../lib/format";
+import { bytes, compact, cx, memoryPool, MODALITY_LABEL, params, tokens } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, Gpu, Modality } from "../lib/types";
 import { FitGauge } from "./meters";
@@ -57,12 +57,12 @@ function FitBar({ item }: { item: CatalogItem }) {
 
 export function ModelCard({
   item,
-  gpus,
+  devices,
   selected,
   onOpen,
 }: {
   item: CatalogItem;
-  gpus: Gpu[];
+  devices: Gpu[];
   selected?: boolean;
   onOpen: () => void;
 }) {
@@ -91,6 +91,7 @@ export function ModelCard({
       <div className="mb-3 flex flex-wrap gap-1.5">
         {item.variant && <Chip>{item.variant}</Chip>}
         {item.params && params(item.params).toLowerCase() !== (item.variant ?? "").toLowerCase() ? <Chip>{params(item.params)}</Chip> : null}
+        {tokens(item.context_length) ? <Chip>{tokens(item.context_length)} ctx</Chip> : null}
         {item.size ? (
           <Chip>
             <HardDrive className="size-3" />
@@ -101,7 +102,7 @@ export function ModelCard({
         {item.experimental && <Chip tone="warn">experimental</Chip>}
       </div>
       <div className="mt-auto">
-        {unsupported ? <p className="text-[12px] text-fg-3">View the published model and its requirements.</p> : <FitGauge fit={f} gpus={gpus} />}
+        {unsupported ? <p className="text-[12px] text-fg-3">View the published model and its requirements.</p> : <FitGauge fit={f} devices={devices} />}
         <div className="mt-2 flex items-start justify-between gap-2">
           <p className="line-clamp-2 text-[12px] text-fg-2">{unsupported ? "This architecture needs a model-specific runner." : f.reasons[0]}</p>
           {f.warnings.length > 0 && (
@@ -230,7 +231,8 @@ export function ModelBrowser({
   initialSource?: string;
 }) {
   const { overview } = useLive();
-  const gpus = overview?.system.gpus ?? [];
+  const pool = overview ? memoryPool(overview.system) : null;
+  const devices = pool?.devices ?? [];
   const [q, setQ] = useState("");
   const [source, setSource] = useState(initialSource);
   const broaderCatalog = ["world", "mesh", "audio"].includes(modality);
@@ -425,12 +427,12 @@ export function ModelBrowser({
         <div className={cx(view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden", query.isPlaceholderData && "opacity-60")} aria-busy={query.isFetching}>
           {view === "list" && (
             <div className="model-header model-columns border-b border-line px-5 py-2.5 text-[12px] font-medium text-fg-3" aria-hidden="true">
-              <span>Model</span><span>Params</span><span>Download</span><span>{modality === "world" ? "Support / GPU fit" : "Fit on this GPU · VRAM"}</span>
+              <span>Model</span><span>Params</span><span>Download</span><span>{modality === "world" ? "Support / GPU fit" : pool?.tpu ? "Fit on this TPU · HBM" : "Fit on this GPU · VRAM"}</span>
             </div>
           )}
           {query.data?.items.map((it) => (
             view === "grid"
-              ? <ModelCard key={it.key} item={it} gpus={gpus} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
+              ? <ModelCard key={it.key} item={it} devices={devices} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
               : <ModelRow key={it.key} item={it} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
           ))}
         </div>

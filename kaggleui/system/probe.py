@@ -1,4 +1,4 @@
-"""Hardware/session probe: GPUs (via NVML), RAM, disks, Kaggle session timing.
+"""Hardware/session probe: GPUs (via NVML), TPU chips, RAM, disks, Kaggle session timing.
 
 ``--fake-hw`` profiles (t4x2, p100, tpu, cpu) let the UI and fit engine be developed off-Kaggle.
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import shutil
 import socket
 import subprocess
@@ -22,9 +23,16 @@ from ..util import GiB, MiB
 GPU_SESSION_LIMIT = 12 * 3600
 TPU_SESSION_LIMIT = 9 * 3600
 
+# HBM (GiB) per TPU chip by accelerator version. libtpu doesn't expose per-chip memory,
+# so these are the published capacities used for fit estimates.
+TPU_HBM_GIB = {"v2": 8, "v3": 16, "v4": 32, "v5e": 16, "v5p": 95, "v6e": 32, "v7x": 32}
+
 
 @dataclass
 class GpuInfo:
+    """One memory device. ``kind`` distinguishes CUDA GPUs from TPU chips so the UI and the
+    fit gauge can show either accelerator with the same per-device meters."""
+
     index: int
     name: str
     vram_total: int
@@ -32,6 +40,7 @@ class GpuInfo:
     util: int | None = None
     temp: int | None = None
     compute_capability: str | None = None
+    kind: str = "gpu"  # gpu | tpu
 
     @property
     def vram_free(self) -> int:
@@ -70,6 +79,7 @@ class HardwareProfile:
     session_started: float
     session_limit: int
     internet: bool | None
+    tpus: list[GpuInfo] = field(default_factory=list)
     fake: str | None = None
     notes: list[str] = field(default_factory=list)
 
@@ -90,9 +100,11 @@ class HardwareProfile:
         d["session_remaining"] = max(int(self.session_limit - elapsed), 0)
         d["vram_total_all"] = sum(g.vram_total for g in self.gpus)
         d["vram_free_all"] = sum(g.vram_free for g in self.gpus)
-        for g, gd in zip(self.gpus, d["gpus"]):
-            gd["vram_free"] = g.vram_free
-            gd["sm"] = g.sm
+        d["hbm_total_all"] = sum(t.vram_total for t in self.tpus)
+        d["hbm_free_all"] = sum(t.vram_free for t in self.tpus)
+        for device, dd in zip((*self.gpus, *self.tpus), (*d["gpus"], *d["tpus"])):
+            dd["vram_free"] = device.vram_free
+            dd["sm"] = device.sm
         return d
 
 
@@ -109,7 +121,8 @@ FAKE_PROFILES: dict[str, dict] = {
         "ram": int(31.4 * GiB),
         "accelerator": "gpu",
     },
-    "tpu": {"label": "TPU VM v3-8", "gpus": [], "ram": int(330 * GiB), "accelerator": "tpu"},
+    "tpu": {"label": "TPU VM v5e-8", "gpus": [], "tpus": [("TPU v5e chip", 16 * GiB)] * 8,
+            "ram": int(330 * GiB), "accelerator": "tpu"},
     "cpu": {"label": "CPU only", "gpus": [], "ram": int(31.4 * GiB), "accelerator": "cpu"},
 }
 
@@ -153,13 +166,15 @@ class Probe:
         if self.fake:
             return self._fake_snapshot()
         gpus = self._gpus()
+        tpus = [] if gpus else self._tpus()
         vm = psutil.virtual_memory()
-        accel = "gpu" if gpus else ("tpu" if self._has_tpu() else "cpu")
+        accel = "gpu" if gpus else ("tpu" if tpus else "cpu")
         return HardwareProfile(
             platform="kaggle" if ON_KAGGLE else ("colab" if ON_COLAB else "local"),
             accelerator=accel,
-            accelerator_label=self._label(gpus, accel),
+            accelerator_label=self._label(gpus, tpus, accel),
             gpus=gpus,
+            tpus=tpus,
             cpu_count=psutil.cpu_count(logical=True) or 1,
             ram_total=vm.total,
             ram_available=vm.available,
@@ -168,7 +183,7 @@ class Probe:
             session_started=self._started,
             session_limit=TPU_SESSION_LIMIT if accel == "tpu" else GPU_SESSION_LIMIT,
             internet=self.internet(),
-            notes=self._notes(gpus, accel),
+            notes=self._notes(gpus, tpus, accel),
         )
 
     def internet(self) -> bool | None:
@@ -273,12 +288,39 @@ class Probe:
         return any(Path("/dev").glob("accel*")) if Path("/dev").exists() else False
 
     @staticmethod
-    def _label(gpus: list[GpuInfo], accel: str) -> str:
-        if not gpus:
-            return "TPU" if accel == "tpu" else "CPU only"
-        names = {g.name.replace("Tesla ", "").replace("NVIDIA ", "").split("-")[0] for g in gpus}
-        name = "/".join(sorted(names))
-        return f"GPU {name} ×{len(gpus)}" if len(gpus) > 1 else f"GPU {name}"
+    def _tpu_type() -> tuple[str | None, int | None]:
+        """(version, chip count) from the session's environment, e.g. ``("v5e", 8)``."""
+        for var in ("TPU_ACCELERATOR_TYPE", "TPU_NAME"):
+            match = re.search(r"v(\d+)(litepod|e|p|x)?(?:-(\d+))?", os.environ.get(var, ""), re.I)
+            if match:
+                suffix = (match.group(2) or "").lower()
+                version = f"v{match.group(1)}" + ("e" if suffix == "litepod" else suffix)
+                return version, int(match.group(3)) if match.group(3) else None
+        if "COLAB_TPU_ADDR" in os.environ:
+            return "v2", 8  # the classic Colab TPU is a single v2-8 slice
+        return None, None
+
+    def _tpus(self) -> list[GpuInfo]:
+        """TPU chips as memory devices. HBM use isn't exposed by libtpu, so chips read as idle."""
+        if not self._has_tpu():
+            return []
+        version, typed_chips = self._tpu_type()
+        devices = sorted(Path("/dev").glob("accel*")) if Path("/dev").is_dir() else []
+        chips = len(devices) or typed_chips or (8 if "COLAB_TPU_ADDR" in os.environ else 1)
+        hbm = TPU_HBM_GIB.get(version or "", 16) * GiB
+        name = f"TPU {version} chip" if version else "TPU chip"
+        return [GpuInfo(i, name, hbm, 0, kind="tpu") for i in range(chips)]
+
+    @staticmethod
+    def _label(gpus: list[GpuInfo], tpus: list[GpuInfo], accel: str) -> str:
+        if gpus:
+            names = {g.name.replace("Tesla ", "").replace("NVIDIA ", "").split("-")[0] for g in gpus}
+            name = "/".join(sorted(names))
+            return f"GPU {name} ×{len(gpus)}" if len(gpus) > 1 else f"GPU {name}"
+        if tpus:
+            version = tpus[0].name.removeprefix("TPU ").removesuffix(" chip")
+            return f"TPU {version} ×{len(tpus)}" if version else f"TPU ×{len(tpus)}"
+        return "CPU only"
 
     def _disks(self) -> list[DiskInfo]:
         disks = []
@@ -307,12 +349,15 @@ class Probe:
             disks.append(DiskInfo(key, label, str(path), total, used, free, note))
         return disks
 
-    def _notes(self, gpus: list[GpuInfo], accel: str) -> list[str]:
+    def _notes(self, gpus: list[GpuInfo], tpus: list[GpuInfo], accel: str) -> list[str]:
         notes = []
         if accel == "tpu":
-            notes.append("TPUs aren't supported yet. Switch the notebook accelerator to GPU T4 ×2.")
+            chips = len(tpus) or 8
+            notes.append(f"{chips} TPU chips detected. Text models run through vLLM's TPU backend "
+                         "(experimental): the first start compiles XLA graphs and can take 10–30 minutes. "
+                         "Ollama, Diffusers, TTS and ASR models need a GPU T4 ×2.")
         elif accel == "cpu":
-            notes.append("No GPU detected. Turn on an accelerator (GPU T4 ×2 recommended) in notebook settings.")
+            notes.append("No accelerator detected. Turn on a GPU (GPU T4 ×2 recommended) or a TPU in notebook settings.")
         if any((g.sm or 0) < 70 for g in gpus):
             notes.append("P100 (sm_60): vLLM is unavailable and some recent PyTorch builds dropped support. "
                          "Ollama/GGUF models work best here.")
@@ -327,6 +372,8 @@ class Probe:
             used = 280 * MiB + self.reserved.get(i, 0)
             util = min(100, random.randint(0, 4) + (60 if self.reserved.get(i) else 0))
             gpus.append(GpuInfo(i, name, total, min(used, total), util, 38 + util // 4, cc))
+        tpus = [GpuInfo(i, name, total, 0, kind="tpu")
+                for i, (name, total) in enumerate(prof.get("tpus", []))]
         ram_total = prof["ram"]
         reserved_ram = sum(self.reserved.values()) // 8
         disk_total = 73 * 1000**3
@@ -344,6 +391,7 @@ class Probe:
             accelerator=accel,
             accelerator_label=prof["label"],
             gpus=gpus,
+            tpus=tpus,
             cpu_count=4,
             ram_total=ram_total,
             ram_available=int(ram_total * 0.86) - reserved_ram,
@@ -353,5 +401,5 @@ class Probe:
             session_limit=TPU_SESSION_LIMIT if accel == "tpu" else GPU_SESSION_LIMIT,
             internet=True,
             fake=self.fake,
-            notes=self._notes(gpus, accel),
+            notes=self._notes(gpus, tpus, accel),
         )

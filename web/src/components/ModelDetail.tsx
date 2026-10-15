@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { api } from "../lib/api";
-import { bytes, cx, params } from "../lib/format";
+import { bytes, cx, memoryPool, params, tokens } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, DeploymentSpec, Variant } from "../lib/types";
 import { FitGauge } from "./meters";
@@ -20,24 +20,38 @@ export interface ModelChoice {
 
 const CTX = [2048, 4096, 8192, 16384, 32768, 65536];
 
+/** Selector options: the standard steps up to this model's window, then the window itself. */
+function ctxOptions(max?: number | null): number[] {
+  if (!max) return CTX;
+  return [...CTX.filter((c) => c < max), max];
+}
+
 /** Engine options shown per modality. Values are merged into spec.options. */
 function EngineOptions({
   item,
   options,
   onChange,
 }: {
-  item: Pick<CatalogItem, "modality" | "engine" | "source" | "custom_code">;
+  item: Pick<CatalogItem, "modality" | "engine" | "source" | "custom_code" | "context_length">;
   options: Record<string, any>;
   onChange: (o: Record<string, any>) => void;
 }) {
   const set = (k: string, v: unknown) => onChange({ ...options, [k]: v === "" ? undefined : v });
   const m = item.modality;
   if (m === "text") {
+    const fallback = Math.min(8192, item.context_length ?? 8192);
     return (
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Context length" hint="Longer context uses more VRAM for the KV cache.">
-          <Select value={String(options.ctx ?? 8192)} onChange={(e) => set("ctx", Number(e.target.value))}>
-            {CTX.map((c) => (
+        <Field
+          label="Context length"
+          hint={
+            item.context_length
+              ? `This model supports up to ${tokens(item.context_length)} tokens. Longer context uses more VRAM for the KV cache.`
+              : "Longer context uses more VRAM for the KV cache."
+          }
+        >
+          <Select value={String(options.ctx ?? fallback)} onChange={(e) => set("ctx", Number(e.target.value))}>
+            {ctxOptions(item.context_length).map((c) => (
               <option key={c} value={c}>
                 {c.toLocaleString()} tokens
               </option>
@@ -161,7 +175,7 @@ export function ModelDetail({
   onImport?: (url: string) => void;
 }) {
   const { overview } = useLive();
-  const gpus = overview?.system.gpus ?? [];
+  const devices = overview ? memoryPool(overview.system).devices : [];
   const canDetail = base.source === "hf" || base.source === "ollama";
   const detail = useQuery({
     queryKey: ["detail", base.key],
@@ -224,6 +238,7 @@ export function ModelDetail({
             <span>{item.id}</span>
             {item.brand && <span>{item.brand.label}</span>}
             {item.params ? <span>{params(item.params)} params</span> : null}
+            {item.context_length ? <span>{tokens(item.context_length)} context</span> : null}
             {item.engine_label && <span>{item.engine_label}</span>}
             {item.url && (
               <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-fg-2 hover:text-signal">
@@ -246,7 +261,7 @@ export function ModelDetail({
           </div>
         ) : <div className="rounded-xl border border-line bg-bg-2 p-4">
           <div className="readout mb-3">Fit on this machine</div>
-          <FitGauge fit={item.fit} gpus={gpus} />
+          <FitGauge fit={item.fit} devices={devices} />
           <ul className="mt-3 space-y-1 text-[13px]">
             {item.fit.reasons.map((r) => (
               <li key={r} className="text-fg-2">
@@ -299,7 +314,11 @@ export function ModelDetail({
         {item.engine && (
           <div>
             <div className="readout mb-2">Settings</div>
-            <OptionsForm item={{ ...item, engine: engine ?? item.engine }} options={options} onChange={setOptions} />
+            <OptionsForm
+              item={{ ...item, engine: engine ?? item.engine, context_length: picked?.context_length ?? item.context_length }}
+              options={options}
+              onChange={setOptions}
+            />
           </div>
         )}
 

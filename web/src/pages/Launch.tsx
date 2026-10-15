@@ -24,7 +24,7 @@ import { ModelDetail, type ModelChoice } from "../components/ModelDetail";
 import { AccessForm, ApiForm, ExposurePicker, OptionCard, StreamingNote, type ApiState } from "../components/settings";
 import { Button, Drawer, SectionTitle, Toggle, useToast } from "../components/ui";
 import { api } from "../lib/api";
-import { bytes, cx, MODALITY_LABEL } from "../lib/format";
+import { bytes, cx, memoryPool, MODALITY_LABEL } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, DeploymentSpec, Modality, TunnelProvider } from "../lib/types";
 
@@ -148,7 +148,7 @@ export default function Launch() {
     if (!interfaceOptions(modality).some((o) => o.value === iface)) setIface("studio");
   }, [modality, iface]);
 
-  const gpus = overview?.system.gpus ?? [];
+  const devices = overview ? memoryPool(overview.system).devices : [];
   const ifaceLabel = interfaceOptions(modality).find((o) => o.value === iface)?.title ?? iface;
   const surfaces = (["openai", "anthropic", "ollama"] as const).filter((k) => apiState[k]);
 
@@ -313,7 +313,7 @@ export default function Launch() {
                 <span className="readout">Footprint</span>
                 <span className="font-mono text-[11px] text-fg-2">{bytes(choice.item.size)} download</span>
               </div>
-              <FitGauge fit={choice.item.fit} gpus={gpus} />
+              <FitGauge fit={choice.item.fit} devices={devices} />
             </div>
           )}
           <SheetRow label="Interface">{ifaceLabel}</SheetRow>

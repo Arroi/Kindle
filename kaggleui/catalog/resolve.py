@@ -66,7 +66,7 @@ class Resolution:
 
 
 def resolve_hf(modality: str, repo_id: str, library: str | None, tags: list[str] | None,
-               min_sm: int | None) -> Resolution:
+               min_sm: int | None, accelerator: str = "gpu") -> Resolution:
     rid = repo_id.lower()
     tagset = {t.lower() for t in (tags or [])}
     lib = (library or "").lower()
@@ -93,6 +93,8 @@ def resolve_hf(modality: str, repo_id: str, library: str | None, tags: list[str]
         if lib in ("mlx", "onnx", "openvino", "coreml") or "mlx" in tagset:
             return Resolution(None, note=f"{lib or 'This'} format isn't supported on Kaggle GPUs")
         if lib in ("transformers", "") and ("safetensors" in tagset or lib == "transformers"):
+            if accelerator == "tpu":
+                return Resolution("vllm", experimental=True, note="Runs on the TPU through vLLM's TPU backend")
             if (min_sm or 0) >= 70:
                 return Resolution("vllm", experimental=True, note="vLLM on T4 is experimental; Transformers is the fallback")
             return Resolution("transformers")

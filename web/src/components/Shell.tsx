@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 
 import { api } from "../lib/api";
-import { bytes, cx, duration } from "../lib/format";
+import { bytes, cx, duration, memoryPool } from "../lib/format";
 import { useLive } from "../lib/live";
 import { useTheme } from "../lib/theme";
 import { CommunityLinks } from "./CommunityLinks";
@@ -133,6 +133,7 @@ function MachineChip() {
   }, []);
   const system = overview?.system;
   if (!system) return null;
+  const pool = memoryPool(system);
   const remaining = Math.max(0, system.session_started + system.session_limit - now / 1000);
   const low = remaining < system.session_limit * 0.1;
   const label = connected ? "Live" : error ? "Connection interrupted" : "Reconnecting";
@@ -141,7 +142,7 @@ function MachineChip() {
       <span className={cx("dot", connected ? "dot-live" : "dot-warn")} aria-label={label} />
       <b className="hide-xs">{system.accelerator_label.replace("GPU ", "")}</b>
       <span className="sep hide-sm" />
-      <span className="hide-sm">{bytes(system.vram_free_all)} free</span>
+      <span className="hide-sm">{bytes(pool.free)} free</span>
       <span className="sep hide-xs" />
       <span className={cx(low && "text-worst")}>{duration(remaining)}</span>
     </Link>

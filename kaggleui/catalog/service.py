@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 import yaml
 
-from ..capabilities import profile
+from ..capabilities import context_length, profile
 from ..system.probe import HardwareProfile
 from ..util import parse_params
 from . import attached, brands, hf, ollama, world
@@ -268,7 +268,8 @@ class CatalogService:
 
     def _from_hf(self, raw: dict, modality: str, hw: HardwareProfile, order: int) -> dict:
         rid = raw["id"]
-        res = resolve_hf(modality, rid, raw.get("library_name"), raw.get("tags"), hw.min_sm)
+        res = resolve_hf(modality, rid, raw.get("library_name"), raw.get("tags"), hw.min_sm,
+                         accelerator=hw.accelerator)
         st = raw.get("safetensors") or {}
         gg = raw.get("gguf") or {}
         params = gg.get("total") or st.get("total")
@@ -277,6 +278,9 @@ class CatalogService:
         if not is_gguf and modality == "text":
             size = weights_from_safetensors(st.get("parameters"))
         dtypes = set((st.get("parameters") or {}).keys())
+        windows = [ctx for ctx in (gg.get("context_length"),
+                                   context_length(raw.get("config")) if modality == "text" else None)
+                   if isinstance(ctx, int) and ctx > 0]
         return {
             "key": f"hf:{rid}", "source": "hf", "id": rid, "name": rid.split("/")[-1], "modality": modality,
             "engine": res.engine, "description": res.note or "", "params": params, "size": size,
@@ -286,7 +290,7 @@ class CatalogService:
             "pipeline_tag": raw.get("pipeline_tag"), "capabilities": [], "experimental": res.experimental,
             "curated": False, "options": {}, "url": f"https://huggingface.co/{rid}",
             "bf16_only": dtypes == {"BF16"} and modality in ("image", "video"),
-            "context_length": gg.get("context_length"), "_order": order,
+            "context_length": max(windows) if windows else None, "_order": order,
             **(profile(rid, tags=raw.get("tags", []), config=raw.get("config"), pipeline=raw.get("pipeline_tag")) if modality == "text" else {}),
         }
 
@@ -499,11 +503,17 @@ class CatalogService:
             it["size"] = hf.repo_size(sib) or None
 
     # -- fit ----------------------------------------------------------------------------------
+    def _planned_ctx(self, it: dict) -> int:
+        """Serving context for this deployment: the chosen length, capped by the model's window."""
+        ctx = int((it.get("options") or {}).get("ctx") or 8192)
+        limit = it.get("context_length")
+        return min(ctx, int(limit)) if limit else ctx
+
     def _candidate(self, it: dict, size: int | None = None, params: float | None = None) -> Candidate:
         return Candidate(
             modality=it["modality"], engine=it.get("engine"), weights_bytes=size if size is not None else it.get("size"),
             params=params if params is not None else it.get("params"), largest_component_bytes=it.get("largest"),
-            ctx=int((it.get("options") or {}).get("ctx", 8192)), min_vram=it.get("min_vram"),
+            ctx=self._planned_ctx(it), min_vram=it.get("min_vram"),
             gated=bool(it.get("gated") or it.get("runtime_gated")), bf16_only=bool(it.get("bf16_only")),
             experimental=bool(it.get("experimental")), curated=bool(it.get("curated")),
             downloads=int(it.get("downloads") or 0), likes=int(it.get("likes") or 0), updated=it.get("updated"),
@@ -548,6 +558,12 @@ class CatalogService:
         options = {**(it.get("options") or {}), **f.suggest}
         if it.get("recipe"):
             options["recipe"] = it["recipe"]
+        limit = it.get("context_length")
+        ctx = int(options.get("ctx") or 8192)
+        if limit:
+            ctx = min(ctx, int(limit))
+        if ctx != 8192 or "ctx" in options:
+            options["ctx"] = ctx  # pin the effective window so engines don't fall back to 8192
         return {
             "modality": it["modality"],
             "model": {"source": it["source"], "id": it["id"], "variant": it.get("variant"), "engine": it["engine"]},
@@ -578,9 +594,13 @@ class CatalogService:
             p = parse_params(t["tag"]) or (t["size"] / 0.62)
             f = assess(self._candidate(it, t["size"], p), hw)
             variants.append({"id": t["tag"], "ref": f"{name}:{t['tag']}", "label": t["tag"], "size": t["size"],
-                             "params": p, "context": t.get("context"), "input": t.get("input"),
+                             "params": p, "context": t.get("context"),
+                             "context_length": ollama.parse_context(t.get("context")), "input": t.get("input"),
                              "fit": {"verdict": f.verdict, "reasons": f.reasons, "warnings": f.warnings}})
         it["variants"] = variants or it["variants"]
+        windows = [v["context_length"] for v in it["variants"] if v.get("context_length")]
+        if windows:
+            it["context_length"] = max(windows)
         return self._finish_detail(it, hw)
 
     async def _hf_detail(self, repo: str, hw: HardwareProfile) -> dict:
@@ -634,6 +654,9 @@ class CatalogService:
             if modality == "text":
                 it.update(profile(repo, tags=info.get("tags", []), config=data["config"], template=data["template"],
                                   pipeline=info.get("pipeline_tag")))
+                ctx = context_length(data["config"])
+                if ctx and ctx > (it.get("context_length") or 0):
+                    it["context_length"] = ctx
         return self._finish_detail(it, hw)
 
     def _finish_detail(self, it: dict, hw: HardwareProfile) -> dict:
@@ -660,18 +683,28 @@ class CatalogService:
 
     def selftest_specs(self) -> list[dict]:
         """Smallest curated model per modality, used by ``kaggleui selftest``."""
+        from .fit import TPU_ENGINES
+
         hw = self.probe()
         out = []
         for modality, entries in self.curated.items():
             for e in entries:
                 if e.get("selftest"):
                     it = self._from_curated(e, modality)
+                    if hw.accelerator == "tpu" and it.get("engine") not in TPU_ENGINES:
+                        continue  # selftest models on a TPU session must use the TPU runner
                     f = assess(self._candidate(it), hw)
                     out.append(self._spec(it, f))
+        if hw.accelerator == "tpu" and hw.tpus and not any(s and s["modality"] == "text" for s in out):
+            # None of the curated selftest models run on a TPU; use a tiny text model to exercise the TPU runner.
+            out.append({"modality": "text", "options": {"ctx": 2048},
+                        "model": {"source": "hf", "id": "HuggingFaceTB/SmolLM2-135M-Instruct",
+                                  "variant": None, "engine": "vllm"}})
         return [s for s in out if s]
 
 
 def _hw_summary(hw: HardwareProfile) -> dict:
-    return {"accelerator": hw.accelerator_label, "gpus": len(hw.gpus),
-            "vram_free": sum(g.vram_free for g in hw.gpus), "ram_available": hw.ram_available,
+    return {"accelerator": hw.accelerator_label, "gpus": len(hw.gpus), "tpus": len(hw.tpus),
+            "vram_free": sum(g.vram_free for g in hw.gpus), "hbm_free": sum(t.vram_free for t in hw.tpus),
+            "ram_available": hw.ram_available,
             "disk_free": hw.models_disk.free if hw.models_disk else None, "fake": hw.fake}

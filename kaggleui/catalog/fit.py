@@ -39,6 +39,8 @@ OFFLOAD_ENGINES = {"diffusers", "diffusers_video", "diffusers_world", "transform
 ENGINE_MIN_SM = {"vllm": 70, "diffusers_world": 80}
 # Engines that are fine on CPU for small models.
 CPU_FRIENDLY = {"ollama", "faster_whisper", "kokoro", "transformers_asr", "transformers_tts", "mock"}
+# Engines with a TPU path. vLLM's TPU backend shards one model across every chip in the slice.
+TPU_ENGINES = {"vllm"}
 
 GPU_HEADROOM = 0.97  # fraction of free VRAM we let a model plan to use
 COMFORT = 0.85  # above this fraction of capacity a fit is "tight"
@@ -154,6 +156,25 @@ def assess(c: Candidate, hw: HardwareProfile) -> Fit:
     if disk_needed and models_disk and disk_needed > models_disk.free:
         return done("worst", "none", [f"Not enough disk: needs {human_bytes(disk_needed)}, "
                                       f"{human_bytes(models_disk.free)} free"])
+
+    if hw.accelerator == "tpu" and hw.tpus:
+        if c.engine not in TPU_ENGINES:
+            return done("worst", "none", [f"{c.engine or 'This runner'} needs a CUDA GPU; KaggleUI doesn't run "
+                                          "it on TPUs. Switch the accelerator to GPU T4 ×2, or pick a text "
+                                          "model (vLLM runs on TPU)."])
+        if need is None:
+            return done("tight", "single", ["Size unknown, so fit can't be estimated"])
+        capacity = int(sum(t.vram_free for t in hw.tpus) * GPU_HEADROOM)
+        chips = len(hw.tpus)
+        spread = [f"Sharded across {chips} TPU chips"] if chips > 1 else []
+        pct = f"≈{human_bytes(need)} of {human_bytes(capacity)} HBM"
+        placement = "split" if chips > 1 else "single"
+        if need <= capacity * COMFORT:
+            return done("good", placement, [pct] + spread, capacity)
+        if need <= capacity:
+            return done("tight", placement, [pct + " (near the limit)"] + spread, capacity)
+        return done("worst", "none", [f"Needs ≈{human_bytes(need)} HBM; {human_bytes(capacity)} available on "
+                                      f"{hw.accelerator_label}"], capacity)
 
     if hw.accelerator != "gpu" or not hw.gpus:
         if c.engine in CPU_FRIENDLY and need is not None and need <= hw.ram_available * 0.8:

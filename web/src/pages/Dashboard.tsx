@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import { GpuMeter, LedMeter, ProgressBar } from "../components/meters";
 import { ModelLogo } from "../components/ModelLogo";
 import { Button, CopyButton, SectionTitle } from "../components/ui";
-import { bytes, cx, duration, MODALITY_LABEL } from "../lib/format";
+import { bytes, cx, duration, memoryPool, MODALITY_LABEL } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { Deployment } from "../lib/types";
 
@@ -55,7 +55,11 @@ function RunRow({ d }: { d: Deployment }) {
         <div className="truncate text-[14px] font-medium">{d.name}</div>
         <div className="mt-0.5 truncate text-[12.5px] text-fg-3">
           {MODALITY_LABEL[d.modality]} · {d.spec.model.engine}
-          {d.gpus.length ? ` · ${d.gpus.map((g) => `GPU${g}`).join(" + ")}` : ""}
+          {d.info?.device === "tpu"
+            ? ` · TPU ×${d.info.tensor_parallel ?? ""}`
+            : d.gpus.length
+              ? ` · ${d.gpus.map((g) => `GPU${g}`).join(" + ")}`
+              : ""}
         </div>
         {starting && (
           <div className="mt-2.5 max-w-sm">
@@ -119,6 +123,7 @@ export default function Dashboard() {
   }, []);
   if (!overview) return null;
   const system = overview.system;
+  const pool = memoryPool(system);
   const active = overview.deployments.filter((d) => !["stopped", "stopping"].includes(d.status));
   const ready = active.filter((d) => d.status === "ready");
   const starting = active.filter((d) => STARTING.includes(d.status));
@@ -134,8 +139,9 @@ export default function Dashboard() {
         description={
           <>
             {system.accelerator_label}
-            {system.gpus.length > 0 && <> with {bytes(system.vram_free_all)} of {bytes(system.vram_total_all)} GPU memory free</>}. About {hm(remaining)}{" "}
-            left in this session.
+            {pool.devices.length > 0 && (
+              <> with {bytes(pool.free)} of {bytes(pool.total)} {pool.tpu ? "HBM" : "GPU memory"} free</>
+            )}. About {hm(remaining)} left in this session.
           </>
         }
       >
@@ -207,9 +213,9 @@ export default function Dashboard() {
                 <span className="text-[14px] font-medium">{system.accelerator_label}</span>
                 <span className="text-[12px] text-fg-3">{system.platform}</span>
               </div>
-              {system.gpus.length ? (
+              {pool.devices.length ? (
                 <div className="space-y-4">
-                  {system.gpus.map((gpu) => (
+                  {pool.devices.map((gpu) => (
                     <GpuMeter key={gpu.index} gpu={gpu} />
                   ))}
                 </div>

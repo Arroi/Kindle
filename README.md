@@ -4,6 +4,7 @@ One notebook cell turns a free Kaggle GPU into a model host. Run it, open the li
 
 - **Model categories:** Text (LLMs), Image, Video, Text-to-speech, Audio generation, Speech-to-text, World models and 3D models. Runner availability is shown separately from catalog discovery.
 - **Live catalog** from Hugging Face and Ollama, plus models attached under `/kaggle/input`. Every model is sized against *this* machine's VRAM, RAM and disk and tagged **Best fit**, **Fits**, **Tight** or **Won't fit**, with the reason. Toggle between **All models** and **Fits this GPU**, sort by **Lowest parameters** or **Highest parameters**, and use **Load more** to browse deeper. Parameter sorting uses the shown variant; unknown counts appear last.
+- **Correct context windows:** each text model shows its true maximum context length — read from model configs and GGUF metadata, with RoPE extensions applied — and the context-length picker offers values up to that maximum (131K for Llama 3.x, 256K for Qwen3, 1.01M for Qwen2.5-1M, and so on).
 - **Interfaces:** the built-in Studio, Gradio, Open WebUI (text) or ComfyUI (image/video).
 - **Password lock** for the interfaces (generated, toggleable). The control panel always needs your admin token.
 - **APIs:** OpenAI-compatible, Anthropic-compatible and Ollama-compatible endpoints, each toggleable, with an API key.
@@ -73,7 +74,7 @@ These new audio adapters are **experimental and have not been verified with real
 
 1. Create a notebook on [kaggle.com](https://www.kaggle.com/code) (**+ Create → New Notebook**).
 2. In the right sidebar under **Session options**:
-   - **Accelerator:** `GPU T4 x2` (recommended; `GPU P100` also works).
+   - **Accelerator:** `GPU T4 x2` (recommended; `GPU P100` also works). `TPU VM v5e-8` serves text models through vLLM's TPU backend — see [Running on a TPU](#running-on-a-tpu).
    - **Internet:** **On** (needs a phone-verified Kaggle account).
 3. Paste this into a cell and run it:
 
@@ -87,6 +88,15 @@ These new audio adapters are **experimental and have not been verified with real
 5. In the panel: **Deploy model → pick a type → pick a model → choose interface/password/API → Launch**. Install, download and load progress appear live under **Deployments**. When it shows **Ready**, open **Studio** or call the API.
 
 The cell keeps running so the session stays alive. Interrupt it to get the notebook back; the server keeps running in the background. `kaggleui.stop()` shuts it down.
+
+### Running on a TPU
+
+Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and launch KaggleUI exactly as above. The panel detects the chips, sizes models against the combined HBM (8 × 16 GiB on v5e-8) and serves text models by sharding them across every chip through **vLLM's TPU backend** (`PJRT_DEVICE=TPU`, tensor parallelism = chip count).
+
+- The first deployment compiles XLA graphs and can take **10–30 minutes** before it reports Ready; later starts are much faster. The deployment log shows compile progress.
+- Only **text** models run on a TPU. Ollama, Diffusers, TTS and ASR runners need a CUDA GPU, so those models are marked **Won't fit** in the catalog on a TPU session; open the same panel with `GPU T4 x2` for them.
+- vLLM runs in **bf16** on TPU, and TPU sessions are limited to about **9 hours** (the session bar accounts for this).
+- TPU usage on Kaggle is quota-limited per week; if no TPU option appears in the notebook settings, your account has no remaining TPU quota.
 
 ### If the link won't open
 
@@ -198,6 +208,7 @@ Submit `POST /v1/worlds` with `model`, `prompt`, and optional `input_reference_b
 | Type | Engines |
 |---|---|
 | Text | Ollama (GGUF from Ollama or any HF GGUF repo; splits big models across both T4s), vLLM (experimental on T4), Transformers |
+| Text on a TPU session | vLLM with the TPU backend (experimental; one model sharded across all chips) |
 | Image | Diffusers (SD 1.5/2/XL/3.5, FLUX with 4-bit + offload…), or ComfyUI |
 | Video | Diffusers (Wan 2.1/2.2, CogVideoX, LTX-Video…), slow on T4 |
 | Text-to-speech | Kokoro, Chatterbox, Transformers TTS |

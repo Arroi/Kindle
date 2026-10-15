@@ -30,13 +30,14 @@ export function LedMeter({ value, segments = 20, className }: { value: number; s
 }
 
 export function GpuMeter({ gpu, compact }: { gpu: Gpu; compact?: boolean }) {
+  const tpu = gpu.kind === "tpu";
   const frac = gpu.vram_total ? gpu.vram_used / gpu.vram_total : 0;
-  const name = gpu.name.replace("Tesla ", "").replace("NVIDIA ", "").split("-")[0];
+  const name = tpu ? gpu.name.replace("TPU ", "").replace(" chip", "") : gpu.name.replace("Tesla ", "").replace("NVIDIA ", "").split("-")[0];
   return (
     <div className={cx("min-w-0", compact ? "w-[132px]" : "w-full")}>
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
         <span className="truncate text-[12.5px] text-fg-2">
-          <span className="font-mono text-fg-3">GPU{gpu.index}</span> {name}
+          <span className="font-mono text-fg-3">{tpu ? "TPU" : "GPU"}{gpu.index}</span> {name}
         </span>
         <span className="font-mono text-[12px] text-fg">{Math.round(frac * 100)}%</span>
       </div>
@@ -46,9 +47,13 @@ export function GpuMeter({ gpu, compact }: { gpu: Gpu; compact?: boolean }) {
           <span>
             {bytes(gpu.vram_used)} / {bytes(gpu.vram_total)}
           </span>
-          <span>
-            {gpu.util ?? 0}% util{gpu.temp != null ? ` · ${gpu.temp}°C` : ""}
-          </span>
+          {tpu ? (
+            <span>HBM</span>
+          ) : (
+            <span>
+              {gpu.util ?? 0}% util{gpu.temp != null ? ` · ${gpu.temp}°C` : ""}
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -56,28 +61,30 @@ export function GpuMeter({ gpu, compact }: { gpu: Gpu; compact?: boolean }) {
 }
 
 /**
- * The model's estimated VRAM drawn against this machine's GPUs.
- * Each GPU is its own segment (so "split across 2 GPUs" is visible), overflow is hatched.
+ * The model's estimated VRAM/HBM drawn against this machine's memory devices.
+ * Each device is its own segment (so "split across 2 GPUs" is visible), overflow is hatched.
  */
-export function FitGauge({ fit, gpus, className }: { fit: Fit; gpus: Gpu[]; className?: string }) {
+export function FitGauge({ fit, devices, className }: { fit: Fit; devices: Gpu[]; className?: string }) {
+  const tpu = devices.some((d) => d.kind === "tpu");
+  const unit = tpu ? "HBM" : "VRAM";
   const need = fit.vram_needed ?? 0;
   const color = VERDICT_COLOR[fit.verdict];
-  if (!gpus.length) {
+  if (!devices.length) {
     return (
       <div className={cx("font-mono text-[11px] text-fg-3", className)}>
-        {need ? `≈${bytes(need)} needed · no GPU` : "no GPU"}
+        {need ? `≈${bytes(need)} needed · no ${tpu ? "TPU" : "GPU"}` : `no ${tpu ? "TPU" : "GPU"}`}
       </div>
     );
   }
-  const usable = fit.placement === "split" || fit.placement === "none" ? gpus : gpus.slice(0, 1);
-  const total = gpus.reduce((s, g) => s + g.vram_total, 0);
+  const usable = fit.placement === "split" || fit.placement === "none" ? devices : devices.slice(0, 1);
+  const total = devices.reduce((s, g) => s + g.vram_total, 0);
   const overflow = Math.max(0, need - total);
   const scale = total + overflow;
   let remaining = need;
   return (
     <div className={className}>
       <div className="flex h-3 w-full gap-[3px]">
-        {gpus.map((g) => {
+        {devices.map((g) => {
           const inPlay = usable.includes(g);
           const take = inPlay ? Math.min(remaining, g.vram_total) : 0;
           remaining -= take;
@@ -87,7 +94,7 @@ export function FitGauge({ fit, gpus, className }: { fit: Fit; gpus: Gpu[]; clas
               key={g.index}
               className="relative h-full overflow-hidden rounded-[3px] bg-panel-3"
               style={{ width: `${(g.vram_total / scale) * 100}%` }}
-              title={`GPU${g.index}: ${bytes(g.vram_total)}`}
+              title={`${tpu ? "TPU" : "GPU"}${g.index}: ${bytes(g.vram_total)}`}
             >
               {used > 0 && (
                 <div
@@ -106,21 +113,25 @@ export function FitGauge({ fit, gpus, className }: { fit: Fit; gpus: Gpu[]; clas
           <div
             className="hatch h-full rounded-[3px] text-worst"
             style={{ width: `${(overflow / scale) * 100}%` }}
-            title={`${bytes(overflow)} more than the GPUs hold`}
+            title={`${bytes(overflow)} more than the ${tpu ? "chips" : "GPUs"} hold`}
           />
         )}
       </div>
       <div className="mt-1.5 flex items-baseline justify-between gap-2 font-mono text-[10.5px] text-fg-2">
-        <span>{need ? `≈${bytes(need)} VRAM` : "size unknown"}</span>
+        <span>{need ? `≈${bytes(need)} ${unit}` : "size unknown"}</span>
         <span className="truncate text-fg-3">
           {fit.placement === "split"
-            ? `split · ${gpus.length} GPUs`
+            ? tpu
+              ? `sharded · ${devices.length} chips`
+              : `split · ${devices.length} GPUs`
             : fit.placement === "offload"
               ? "CPU offload"
               : fit.placement === "cpu"
                 ? "CPU only"
                 : fit.placement === "single"
-                  ? "1 GPU"
+                  ? tpu
+                    ? "1 chip"
+                    : "1 GPU"
                   : `${bytes(total)} total`}
         </span>
       </div>

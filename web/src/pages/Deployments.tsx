@@ -168,8 +168,14 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <Pipeline d={d} />
         <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11.5px] text-fg-3">
-          <span>{d.gpus.length ? d.gpus.map((g) => `GPU${g}`).join(" + ") : "CPU"}</span>
-          {d.vram_estimate > 0 && <span>≈{bytes(d.vram_estimate)} VRAM</span>}
+          <span>
+            {d.info?.device === "tpu"
+              ? `TPU ×${d.info.tensor_parallel ?? ""}`
+              : d.gpus.length
+                ? d.gpus.map((g) => `GPU${g}`).join(" + ")
+                : "CPU"}
+          </span>
+          {d.vram_estimate > 0 && <span>≈{bytes(d.vram_estimate)} {d.info?.device === "tpu" ? "HBM" : "VRAM"}</span>}
           {d.ready_at && <span>up {duration(Date.now() / 1000 - d.ready_at)}</span>}
         </div>
       </div>

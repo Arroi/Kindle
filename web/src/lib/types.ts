@@ -11,6 +11,7 @@ export interface Gpu {
   temp: number | null;
   compute_capability: string | null;
   sm: number | null;
+  kind?: "gpu" | "tpu";
 }
 
 export interface Disk {
@@ -28,6 +29,7 @@ export interface System {
   accelerator: string;
   accelerator_label: string;
   gpus: Gpu[];
+  tpus: Gpu[];
   cpu_count: number;
   ram_total: number;
   ram_available: number;
@@ -42,6 +44,8 @@ export interface System {
   notes: string[];
   vram_total_all: number;
   vram_free_all: number;
+  hbm_total_all: number;
+  hbm_free_all: number;
 }
 
 export interface Settings {
@@ -131,6 +135,7 @@ export interface Variant {
   size: number | null;
   params: number | null;
   context?: string | null;
+  context_length?: number | null;
   input?: string | null;
   fit?: { verdict: Verdict; reasons: string[]; warnings?: string[] };
 }
@@ -174,6 +179,7 @@ export interface CatalogItem {
   spec: DeploymentSpec | null;
   library?: string | null;
   files?: number;
+  context_length?: number | null;
 }
 
 export interface SearchResult {
@@ -182,7 +188,7 @@ export interface SearchResult {
   modality: Modality;
   items: CatalogItem[];
   sources: Record<string, string>;
-  hardware: { accelerator: string; gpus: number; vram_free: number; ram_available: number; disk_free: number | null; fake: string | null };
+  hardware: { accelerator: string; gpus: number; tpus: number; vram_free: number; hbm_free: number; ram_available: number; disk_free: number | null; fake: string | null };
   counts?: { total: number; fits: number; shown: number; launchable?: number };
   has_more?: boolean;
 }

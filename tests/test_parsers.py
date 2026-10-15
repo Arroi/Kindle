@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from kaggleui.capabilities import context_length
 from kaggleui.catalog import hf, ollama
 from kaggleui.catalog.attached import scan
 from kaggleui.catalog.resolve import resolve_hf
@@ -69,12 +70,38 @@ def test_resolver():
     assert resolve_hf("text", "a/b-GGUF", "gguf", [], 75).engine == "ollama"
     assert resolve_hf("text", "a/b", "transformers", ["safetensors"], 75).engine == "vllm"
     assert resolve_hf("text", "a/b", "transformers", ["safetensors"], 60).engine == "transformers"
+    assert resolve_hf("text", "a/b", "transformers", ["safetensors"], None, accelerator="tpu").engine == "vllm"
     assert resolve_hf("text", "a/b", "mlx", [], 75).engine is None
     assert resolve_hf("image", "a/b-lora", "diffusers", ["lora"], 75).engine is None
     assert resolve_hf("stt", "openai/whisper-small", "transformers", ["whisper"], 75).engine == "transformers_asr"
     assert resolve_hf("stt", "Systran/faster-whisper-tiny", "ctranslate2", [], 75).engine == "faster_whisper"
     r = resolve_hf("tts", "x/custom-tts", "transformers", [], 75)
     assert r.engine == "transformers_tts" and r.experimental
+
+
+def test_context_length_reads_real_configs():
+    assert context_length(None) is None
+    assert context_length({"max_position_embeddings": 32768}) == 32768
+    # Qwen2.5-1M: the declared max already is the served window.
+    assert context_length({"max_position_embeddings": 1010000}) == 1010000
+    # DeepSeek-V3 style: yarn scaling already folded into the declared max; 40× must not apply.
+    deepseek = {"max_position_embeddings": 163840,
+                "rope_scaling": {"type": "yarn", "factor": 40, "original_max_position_embeddings": 4096}}
+    assert context_length(deepseek) == 163840
+    # longchat style: base window plus a linear factor, with no original_max to mark the extension.
+    longchat = {"max_position_embeddings": 2048, "max_sequence_length": 16384,
+                "rope_scaling": {"type": "linear", "factor": 8}}
+    assert context_length(longchat) == 16384
+    # Multimodal configs keep the window in the text stack.
+    assert context_length({"vision_config": {"depth": 24},
+                           "text_config": {"max_position_embeddings": 262144}}) == 262144
+
+
+def test_ollama_context_labels_parse_to_tokens():
+    assert ollama.parse_context("128K") == 131072
+    assert ollama.parse_context("1M") == 1048576
+    assert ollama.parse_context("4096") == 4096
+    assert ollama.parse_context(None) is None and ollama.parse_context("x") is None
 
 
 def test_attached_scan(tmp_path):

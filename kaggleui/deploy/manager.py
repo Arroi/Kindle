@@ -193,7 +193,9 @@ class DeploymentManager:
                             hw=st.probe.snapshot(), log=lambda line: self._log(dep, line), progress=progress,
                             internal_key=st.auth.internal_key, main_port=st.port, processes=dep.processes)
         try:
-            self._log(dep, f"Deploying {dep.spec.model.id} with {dep.spec.model.engine} on GPUs {dep.gpus or 'none'}")
+            hw = st.probe.snapshot()
+            where = f"TPU ({len(hw.tpus)} chips)" if hw.accelerator == "tpu" and hw.tpus else f"GPUs {dep.gpus or 'none'}"
+            self._log(dep, f"Deploying {dep.spec.model.id} with {dep.spec.model.engine} on {where}")
             if dep.spec.interface == "comfyui":
                 await st.interfaces.start(dep, ctx)
                 dep.info["runtime"] = "comfyui"
