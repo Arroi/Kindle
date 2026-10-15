@@ -64,7 +64,7 @@ function Row({ item, hf, onSaved }: { item: SecretItem; hf?: SecretDetails["hf"]
         <span className="font-medium">{info.label}</span>
         <span
           className={cx(
-            "rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-wider",
+            "rounded-[5px] px-1.5 py-px text-[11px] font-medium",
             item.set ? "bg-signal-soft text-signal" : "bg-panel-3 text-fg-3",
           )}
         >
@@ -100,7 +100,7 @@ function Row({ item, hf, onSaved }: { item: SecretItem; hf?: SecretDetails["hf"]
           className="font-mono text-[12.5px]"
         />
         <div className="flex gap-2">
-          <Button type="submit" variant="primary" busy={busy === "save"} disabled={!value.trim()}>
+          <Button type="submit" variant={value.trim() ? "primary" : "outline"} busy={busy === "save"} disabled={!value.trim()}>
             Save
           </Button>
           {item.set && (
@@ -149,7 +149,7 @@ export function SecretsCard() {
       <div className="mb-1.5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="readout mb-1.5">Hugging Face, tunnels, notifications</div>
-          <h2 className="display text-[28px]">Keys & tokens</h2>
+          <h2 className="display text-[30px]">Keys & tokens</h2>
         </div>
         <Button size="sm" onClick={reload} busy={reloading}>
           <RefreshCw className="size-3.5" /> Reload Kaggle secrets

@@ -121,7 +121,7 @@ export default function Access() {
 
   return (
     <div>
-      <SectionTitle kicker="Security & integration" title="Access & API" />
+      <SectionTitle title="Access & API" description="Who can reach this machine, which APIs are open, and the keys other apps need to connect." />
       <div className="grid gap-4 xl:grid-cols-2">
         <SecretsCard />
         <Card kicker="Who can get in" title="Access">
@@ -149,7 +149,7 @@ export default function Access() {
           <div className="mt-4 space-y-2">
             {overview.tunnels.map((t) => (
               <div key={t.name} className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-bg-2 px-3 py-2 text-[12.5px]">
-                <span className={t.status === "up" ? "size-2 rounded-full bg-signal" : "size-2 rounded-full bg-tight"} />
+                <span className={t.status === "up" ? "dot dot-live" : "dot dot-warn"} />
                 <span className="readout">{t.name}</span>
                 <span className="min-w-0 flex-1 truncate font-mono text-fg-2">{t.url ?? t.status}</span>
                 {t.error && <span className="w-full text-worst">{t.error}</span>}

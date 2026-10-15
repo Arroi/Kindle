@@ -1,4 +1,4 @@
-import { Check, Copy, Eye, EyeOff, Loader, X } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, LoaderCircle, X } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -31,19 +31,21 @@ export function Button({
       {...rest}
       disabled={rest.disabled || busy}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-[background,border-color,color,transform] duration-150",
-        "disabled:cursor-not-allowed disabled:opacity-45 active:translate-y-px",
+        "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium",
+        "transition-[background,border-color,color,box-shadow,transform,opacity] duration-150 ease-out",
+        "disabled:pointer-events-none disabled:opacity-40 active:scale-[0.98]",
         size === "sm" && "h-8 px-3 text-[13px]",
-        size === "md" && "h-10 px-4 text-sm",
-        size === "lg" && "h-12 px-6 text-[15px]",
-        variant === "primary" && "bg-signal text-signal-ink hover:brightness-110 font-semibold",
-        variant === "outline" && "border border-line-2 bg-panel-2 text-fg hover:border-fg-3",
+        size === "md" && "h-9 px-3.5 text-[13.5px]",
+        size === "lg" && "h-11 px-5 text-[14.5px]",
+        variant === "primary" &&
+          "bg-signal text-signal-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_1px_2px_rgb(0_0_0/0.2)] hover:opacity-90",
+        variant === "outline" && "border border-line-2 bg-panel text-fg shadow-[var(--edge)] hover:border-fg-3 hover:bg-panel-2",
         variant === "ghost" && "text-fg-2 hover:bg-panel-2 hover:text-fg",
-        variant === "danger" && "border border-worst/40 text-worst hover:bg-worst-soft",
+        variant === "danger" && "border border-line-2 text-worst hover:border-worst/50 hover:bg-worst-soft",
         className,
       )}
     >
-      {busy ? <Loader className="size-4 animate-spin" /> : null}
+      {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
       {children}
     </button>
   );
@@ -71,21 +73,21 @@ export function Toggle({
         disabled={disabled}
         onClick={() => onChange(!checked)}
         className={cx(
-          "relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors",
-          checked ? "border-signal bg-signal" : "border-line-2 bg-panel-3",
+          "relative mt-px h-[22px] w-[38px] shrink-0 rounded-full transition-colors duration-200",
+          checked ? "bg-fg" : "bg-panel-3 shadow-[inset_0_0_0_1px_var(--line-2)]",
         )}
       >
         <span
           className={cx(
-            "absolute top-0.5 size-[18px] rounded-full transition-all",
-            checked ? "left-[22px] bg-signal-ink" : "left-0.5 bg-fg-3",
+            "absolute top-[3px] size-4 rounded-full shadow-sm transition-[left,background] duration-200 ease-out",
+            checked ? "left-[19px] bg-bg" : "left-[3px] bg-fg-3",
           )}
         />
       </button>
       {(label || hint) && (
         <span className="min-w-0">
-          {label && <span className="block font-medium">{label}</span>}
-          {hint && <span className="block text-[13px] text-fg-2">{hint}</span>}
+          {label && <span className="block text-[13.5px] font-medium leading-snug">{label}</span>}
+          {hint && <span className="mt-0.5 block text-[12.5px] leading-snug text-fg-3">{hint}</span>}
         </span>
       )}
     </label>
@@ -104,7 +106,7 @@ export function Segmented<T extends string>({
   size?: "sm" | "md";
 }) {
   return (
-    <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-line bg-bg-2 p-0.5 scroll-thin">
+    <div className="inline-flex max-w-full gap-0.5 overflow-x-auto rounded-[10px] border border-line bg-bg-2 p-[3px] scroll-thin">
       {options.map((o) => (
         <button
           key={o.value}
@@ -112,9 +114,11 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           aria-pressed={value === o.value}
           className={cx(
-            "whitespace-nowrap rounded-md font-medium transition-colors",
-            size === "sm" ? "px-2.5 py-1 text-[12.5px]" : "px-3.5 py-1.5 text-[13px]",
-            value === o.value ? "bg-panel-3 text-fg shadow-sm" : "text-fg-2 hover:text-fg",
+            "whitespace-nowrap rounded-[7px] font-medium transition-[background,color,box-shadow] duration-150",
+            size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-8 px-3.5 text-[13px]",
+            value === o.value
+              ? "bg-panel-3 text-fg shadow-[var(--edge),0_1px_2px_rgb(0_0_0/0.15)]"
+              : "text-fg-3 hover:text-fg",
           )}
         >
           {o.label}
@@ -158,13 +162,14 @@ export function CopyButton({ text, className, label }: { text: string; className
     <button
       type="button"
       onClick={() => copy(text)}
-      title="Copy"
+      title={copied ? "Copied" : "Copy"}
+      aria-label={label ?? "Copy"}
       className={cx(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-fg-2 transition-colors hover:bg-panel-3 hover:text-fg",
+        "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-fg-3 transition-colors hover:bg-panel-3 hover:text-fg",
         className,
       )}
     >
-      {copied ? <Check className="size-3.5 text-signal" /> : <Copy className="size-3.5" />}
+      {copied ? <Check className="size-3.5 text-good" /> : <Copy className="size-3.5" />}
       {label && <span>{copied ? "Copied" : label}</span>}
     </button>
   );
@@ -175,16 +180,17 @@ export function CopyField({ value, secret, label }: { value: string; secret?: bo
   return (
     <div>
       {label && <div className="readout mb-1.5">{label}</div>}
-      <div className="flex items-center gap-1 rounded-lg border border-line bg-bg-2 py-1 pl-3 pr-1">
-        <code className="min-w-0 flex-1 truncate font-mono text-[12.5px]">
+      <div className="flex h-10 items-center gap-1 rounded-lg border border-line bg-bg-2 pl-3 pr-1">
+        <code className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-fg">
           {shown ? value : "•".repeat(Math.min(value.length, 28))}
         </code>
         {secret && (
           <button
             type="button"
             onClick={() => setShown(!shown)}
-            className="rounded-md p-1.5 text-fg-2 hover:bg-panel-3 hover:text-fg"
+            className="grid size-7 place-items-center rounded-md text-fg-3 hover:bg-panel-3 hover:text-fg"
             title={shown ? "Hide" : "Show"}
+            aria-label={shown ? "Hide value" : "Show value"}
           >
             {shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
           </button>
@@ -196,24 +202,39 @@ export function CopyField({ value, secret, label }: { value: string; secret?: bo
 }
 
 const SHORT_VERDICT: Record<Verdict, string> = { best: "Best fit", good: "Fits", tight: "Tight", worst: "Won't fit" };
+const VERDICT_TONE: Record<Verdict, string> = {
+  best: "text-good",
+  good: "text-good",
+  tight: "text-tight",
+  worst: "text-worst",
+};
 
+/** Fit verdict: a colored dot and a word. "Best fit" gets a filled ink badge so it stands out in lists. */
 export function VerdictTag({ verdict, size = "md" }: { verdict: Verdict; size?: "sm" | "md" }) {
-  const styles: Record<Verdict, string> = {
-    best: "bg-signal text-signal-ink border-signal",
-    good: "border-good/45 text-good bg-good-soft",
-    tight: "border-tight/45 text-tight bg-tight-soft",
-    worst: "border-worst/45 text-worst bg-worst-soft",
-  };
+  const label = size === "sm" ? SHORT_VERDICT[verdict] : VERDICT_LABEL[verdict];
+  if (verdict === "best") {
+    return (
+      <span
+        className={cx(
+          "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-fg font-medium text-bg",
+          size === "sm" ? "px-1.5 py-px text-[11.5px]" : "px-2 py-0.5 text-[12px]",
+        )}
+      >
+        <span className="size-1.5 rounded-full bg-good" />
+        {label}
+      </span>
+    );
+  }
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded border font-medium",
-        size === "sm" ? "px-1.5 py-px text-[11px]" : "px-2 py-0.5 text-[12px]",
-        styles[verdict],
+        "inline-flex items-center gap-1.5 whitespace-nowrap font-medium",
+        size === "sm" ? "text-[12px]" : "text-[12.5px]",
+        VERDICT_TONE[verdict],
       )}
     >
-      {verdict === "best" && <span className="size-1.5 rounded-full bg-signal-ink" />}
-      {size === "sm" ? SHORT_VERDICT[verdict] : VERDICT_LABEL[verdict]}
+      <span className="size-1.5 rounded-full bg-current" />
+      {label}
     </span>
   );
 }
@@ -222,11 +243,11 @@ export function Chip({ children, tone = "plain", className }: { children: ReactN
   return (
     <span
       className={cx(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-px text-[11.5px]",
-        tone === "plain" && "border-line bg-panel-2 text-fg-2",
-        tone === "info" && "border-info/35 text-info",
-        tone === "warn" && "border-tight/40 text-tight",
-        tone === "signal" && "border-signal/40 text-signal",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-[5px] px-1.5 py-px text-[11.5px] font-medium",
+        tone === "plain" && "bg-panel-3 text-fg-2",
+        tone === "info" && "bg-panel-3 text-info",
+        tone === "warn" && "bg-tight-soft text-tight",
+        tone === "signal" && "bg-good-soft text-good",
         className,
       )}
     >
@@ -235,41 +256,21 @@ export function Chip({ children, tone = "plain", className }: { children: ReactN
   );
 }
 
+const FIELD =
+  "w-full rounded-lg border border-line bg-bg-2 text-[13.5px] text-fg placeholder:text-fg-3 transition-[border-color,box-shadow] duration-150 " +
+  "hover:border-line-2 focus:border-fg-3 focus:shadow-[0_0_0_3px_var(--signal-soft)] focus:outline-none disabled:opacity-50";
+
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...rest}
-      className={cx(
-        "h-10 w-full rounded-lg border border-line bg-bg-2 px-3 text-sm text-fg placeholder:text-fg-3",
-        "transition-colors focus:border-signal/60 focus:outline-none",
-        className,
-      )}
-    />
-  );
+  return <input {...rest} className={cx(FIELD, "h-9 px-3", className)} />;
 }
 
 export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <textarea
-      {...rest}
-      className={cx(
-        "w-full rounded-lg border border-line bg-bg-2 px-3 py-2.5 text-sm text-fg placeholder:text-fg-3",
-        "resize-y transition-colors focus:border-signal/60 focus:outline-none",
-        className,
-      )}
-    />
-  );
+  return <textarea {...rest} className={cx(FIELD, "resize-y px-3 py-2.5 leading-relaxed", className)} />;
 }
 
 export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      {...rest}
-      className={cx(
-        "h-10 w-full rounded-lg border border-line bg-bg-2 px-3 text-sm text-fg focus:border-signal/60 focus:outline-none",
-        className,
-      )}
-    >
+    <select {...rest} className={cx(FIELD, "h-9 px-3", className)}>
       {children}
     </select>
   );
@@ -278,9 +279,9 @@ export function Select({ className, children, ...rest }: SelectHTMLAttributes<HT
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="readout mb-1.5 block">{label}</span>
+      <span className="mb-1.5 block text-[12.5px] font-medium text-fg-2">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-[12.5px] text-fg-3">{hint}</span>}
+      {hint && <span className="mt-1.5 block text-[12px] leading-snug text-fg-3">{hint}</span>}
     </label>
   );
 }
@@ -305,7 +306,7 @@ export function Slider({
   return (
     <label className="block">
       <span className="mb-1.5 flex items-baseline justify-between">
-        <span className="readout">{label}</span>
+        <span className="text-[12.5px] font-medium text-fg-2">{label}</span>
         <span className="font-mono text-[12px] text-fg">{format ? format(value) : value}</span>
       </span>
       <input
@@ -315,30 +316,40 @@ export function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-[var(--signal)]"
+        className="w-full accent-[var(--fg)]"
       />
     </label>
   );
 }
 
-export function SectionTitle({ kicker, title, children }: { kicker?: string; title: ReactNode; children?: ReactNode }) {
+/** Page title in the display serif, an optional one-line description, and actions on the right. */
+export function SectionTitle({
+  title,
+  description,
+  children,
+}: {
+  kicker?: string;
+  title: ReactNode;
+  description?: ReactNode;
+  children?: ReactNode;
+}) {
   return (
-    <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        {kicker && <div className="readout mb-2">{kicker}</div>}
-        <h1 className="display text-[28px] sm:text-[34px]">{title}</h1>
+    <header className="page-head">
+      <div className="min-w-0">
+        <h1 className="display">{title}</h1>
+        {description && <p>{description}</p>}
       </div>
-      {children}
-    </div>
+      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
+    </header>
   );
 }
 
 export function Empty({ icon, title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
   return (
-    <div className="panel flex flex-col items-center px-6 py-12 text-center">
-      {icon && <div className="mb-3 text-fg-3">{icon}</div>}
-      <div className="display text-2xl">{title}</div>
-      {children && <div className="mt-2 max-w-md text-fg-2">{children}</div>}
+    <div className="panel-quiet flex flex-col items-center px-6 py-14 text-center">
+      {icon && <div className="mb-4 grid size-11 place-items-center rounded-xl border border-line bg-panel text-fg-2">{icon}</div>}
+      <div className="display text-[28px]">{title}</div>
+      {children && <div className="mt-2 max-w-md text-[13.5px] text-fg-2">{children}</div>}
     </div>
   );
 }
@@ -369,15 +380,17 @@ export function Drawer({
   }, [open, onClose]);
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px] animate-[rise_.2s_ease_both]" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex justify-end p-0 sm:p-2">
+      <div className="absolute inset-0 bg-[rgb(8_8_7/0.5)] backdrop-blur-[3px] animate-[rise_.18s_ease_both]" onClick={onClose} />
       <aside
-        className="relative flex h-full w-full flex-col border-l border-line bg-panel shadow-2xl animate-[rise_.25s_cubic-bezier(.2,.7,.2,1)_both]"
+        role="dialog"
+        aria-modal="true"
+        className="relative flex h-full w-full flex-col overflow-hidden border-line bg-panel shadow-[0_30px_80px_-20px_rgb(0_0_0/0.6)] sm:rounded-2xl sm:border animate-[rise_.24s_cubic-bezier(.2,.7,.2,1)_both]"
         style={{ maxWidth: width }}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
-          <div className="min-w-0 truncate font-medium">{title}</div>
-          <button onClick={onClose} className="rounded-md p-1.5 text-fg-2 hover:bg-panel-3 hover:text-fg" title="Close">
+        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line px-5">
+          <div className="min-w-0 truncate text-[13.5px] font-medium text-fg-2">{title}</div>
+          <button onClick={onClose} className="toolbar-icon" title="Close" aria-label="Close">
             <X className="size-4" />
           </button>
         </div>
@@ -409,16 +422,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 left-1/2 z-[60] flex w-[min(440px,calc(100vw-32px))] -translate-x-1/2 flex-col gap-2">
+      <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex w-[min(400px,calc(100vw-40px))] flex-col gap-2" aria-live="polite">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={cx(
-              "pointer-events-auto rounded-xl border px-4 py-3 text-sm shadow-xl animate-[rise_.25s_ease_both]",
-              t.tone === "ok" ? "border-line-2 bg-panel-3 text-fg" : "border-worst/50 bg-panel-3 text-worst",
-            )}
+            className="pointer-events-auto flex items-start gap-3 rounded-xl border border-line-2 bg-panel px-4 py-3 text-[13.5px] shadow-[var(--edge),0_20px_50px_-20px_rgb(0_0_0/0.5)] animate-[rise_.22s_ease_both]"
           >
-            {t.text}
+            <span className={cx("mt-[7px] size-1.5 shrink-0 rounded-full", t.tone === "ok" ? "bg-good" : "bg-worst")} />
+            <span className={t.tone === "error" ? "text-fg" : "text-fg"}>{t.text}</span>
           </div>
         ))}
       </div>

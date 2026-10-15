@@ -4,7 +4,7 @@ import { lazy, Suspense } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
 import { ProgressBar } from "../components/meters";
-import { Button, Empty } from "../components/ui";
+import { Button, Empty, SectionTitle } from "../components/ui";
 import { api } from "../lib/api";
 import { ModelLogo } from "../components/ModelLogo";
 import { cx, MODALITY_LABEL } from "../lib/format";
@@ -65,11 +65,7 @@ export default function Studio({ admin }: { admin: boolean }) {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="readout mb-2">Workspace / Studio</div>
-          <h1 className="display text-[28px] sm:text-[34px]">Studio</h1>
-        </div>
+      <SectionTitle title="Studio" description="Try your running models: chat, generate images and video, speak and transcribe.">
         {ifaceUrl && ifaceName && (
           <a href={ifaceUrl} target="_blank" rel="noreferrer">
             <Button>
@@ -77,7 +73,7 @@ export default function Studio({ admin }: { admin: boolean }) {
             </Button>
           </a>
         )}
-      </div>
+      </SectionTitle>
 
       {q.error ? <Empty title="Couldn't load the Studio">{q.error.message}<Button className="mt-4" onClick={() => q.refetch()}>Try again</Button></Empty> : q.isLoading ? <div className="panel h-48 animate-pulse" aria-label="Loading Studio" /> : models.length === 0 ? (
         <Empty icon={<Sparkles className="size-8" />} title="No models running">
@@ -104,18 +100,19 @@ export default function Studio({ admin }: { admin: boolean }) {
                   key={m.id}
                   onClick={() => nav(`/studio/${m.id}`)}
                   className={cx(
-                    "flex shrink-0 items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left transition-colors",
-                    active ? "border-signal bg-signal-soft" : "border-line bg-panel hover:border-line-2",
+                    "flex shrink-0 items-center gap-3 rounded-xl border py-2 pl-2 pr-3.5 text-left transition-[border-color,background] duration-150",
+                    active ? "border-fg-3 bg-panel-2 shadow-[var(--edge)]" : "border-line bg-panel hover:border-line-2",
                   )}
                 >
                   <ModelLogo id={m.model_id ?? ""} name={m.name} source={m.source} className="size-8" />
                   <span>
                     <span className="block text-[14px] font-medium leading-tight">{m.name}</span>
-                    <span className="block font-mono text-[10px] uppercase tracking-wider text-fg-3">
-                      {MODALITY_LABEL[m.modality]} · {m.status}
+                    <span className="flex items-center gap-1.5 text-[12px] text-fg-3">
+                      <span className={cx("dot", m.status === "ready" ? "dot-live" : m.status === "error" ? "dot-bad" : "dot-warn")} />
+                      {MODALITY_LABEL[m.modality]}
+                      {m.status !== "ready" && <span className="capitalize">· {m.status}</span>}
                     </span>
                   </span>
-                  <span className={cx("ml-1 size-2 rounded-full", m.status === "ready" ? "bg-signal" : m.status === "error" ? "bg-worst" : "bg-tight animate-blink")} />
                 </button>
               );
             })}

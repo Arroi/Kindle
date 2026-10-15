@@ -17,9 +17,8 @@ export default function Models() {
 
   return (
     <div>
-      <SectionTitle kicker="Catalog" title="Models">
-        <div className="flex flex-wrap items-center gap-4"><p className="max-w-lg text-[14px] text-fg-2">Find a model for this machine. Compare sizes, check GPU fit, and choose a runner.</p>
-          <Button onClick={() => nav("/imports")}>Import from URL</Button></div>
+      <SectionTitle title="Models" description="Live from Hugging Face and Ollama. Every model is sized against this machine's GPUs, memory and disk before you download it.">
+        <Button onClick={() => nav("/imports")}>Import from URL</Button>
       </SectionTitle>
       <ModelBrowser modality={modality} onModality={setModality} onOpen={setOpen} />
       <Drawer open={!!open} onClose={() => setOpen(null)} title={open ? `${MODALITY_LABEL[open.modality]} model` : ""}>

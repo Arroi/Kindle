@@ -216,7 +216,7 @@ export function ModelDetail({
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             {item.engine ? <VerdictTag verdict={item.fit.verdict} /> : <span className="text-[12px] text-fg-2">Runner unavailable</span>}
-            {item.experimental && <span className="font-mono text-[10px] uppercase text-tight">experimental</span>}
+            {item.experimental && <span className="rounded-[5px] bg-tight-soft px-1.5 py-px text-[11px] font-medium text-tight">Experimental</span>}
             {detail.isFetching && <Loader className="size-3.5 animate-spin text-fg-3" />}
           </div>
           <div className="flex items-start gap-4"><ModelLogo id={item.id} name={item.name} source={item.source} className="size-12" /><h2 className="display min-w-0 break-words text-[32px] leading-tight">{item.name}</h2></div>

@@ -24,7 +24,7 @@ export default function System() {
   const s = overview.system;
   return (
     <div>
-      <SectionTitle kicker={s.platform} title={s.accelerator_label} />
+      <SectionTitle title={s.accelerator_label} description={`${s.platform}. Hardware, storage, session time and the secrets KaggleUI can see.`} />
       <UpdateNotice full />
       {s.notes.length > 0 && (
         <div className="mb-4 space-y-2">

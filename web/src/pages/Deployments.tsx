@@ -1,4 +1,4 @@
-import { ExternalLink, FileCode2, Plus, RotateCcw, ScrollText, SlidersHorizontal, Sparkles, Square } from "lucide-react";
+import { Check, ExternalLink, FileCode2, Plus, RotateCcw, ScrollText, SlidersHorizontal, Sparkles, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -18,28 +18,33 @@ function Pipeline({ d }: { d: Deployment }) {
   const idx = d.status === "queued" ? -1 : STAGES.indexOf(d.status as (typeof STAGES)[number]);
   const failed = d.status === "error";
   return (
-    <div className="flex items-center gap-1.5">
+    <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px]" aria-label="Deployment progress">
       {STAGES.map((s, i) => {
         const done = idx > i || d.status === "ready";
         const current = idx === i && d.status !== "ready";
         return (
-          <div key={s} className="flex items-center gap-1.5">
+          <li key={s} className="flex items-center gap-1.5">
             <span
               className={cx(
-                "rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider",
-                done && "border-signal/50 text-signal",
-                current && !failed && "border-signal bg-signal text-signal-ink",
-                current && failed && "border-worst bg-worst-soft text-worst",
-                !done && !current && "border-line text-fg-3",
+                "inline-flex items-center gap-1.5",
+                done && "text-fg-2",
+                current && !failed && "font-medium text-fg",
+                current && failed && "font-medium text-worst",
+                !done && !current && "text-fg-3",
               )}
             >
+              {done ? (
+                <Check className="size-3.5 text-good" strokeWidth={2.5} />
+              ) : (
+                <span className={cx("dot", current ? (failed ? "dot-bad" : "dot-warn") : "")} />
+              )}
               {STAGE_LABEL[s]}
             </span>
-            {i < STAGES.length - 1 && <span className={cx("h-px w-3", done ? "bg-signal/60" : "bg-line-2")} />}
-          </div>
+            {i < STAGES.length - 1 && <span className={cx("h-px w-5", done ? "bg-line-2" : "bg-line")} aria-hidden />}
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }
 
@@ -123,19 +128,18 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
   }
 
   return (
-    <div ref={ref} className={cx("panel scroll-mt-24 p-5", focus && "border-signal/60")}>
+    <div ref={ref} className={cx("panel scroll-mt-24 p-5 sm:p-6", focus && "border-fg-3")}>
       <div className="flex flex-wrap items-start gap-4">
-        <ModelLogo id={d.spec.model.id} name={d.name} source={d.spec.model.source} className="size-11" />
+        <ModelLogo id={d.spec.model.id} name={d.name} source={d.spec.model.source} className="size-10" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="display text-[28px] leading-none">{d.name}</h3>
-            <CopyButton text={d.name} />
+          <div className="flex flex-wrap items-center gap-1">
+            <h3 className="text-[17px] font-semibold tracking-[-0.02em]">{d.name}</h3>
+            <CopyButton text={d.name} label="Copy API model name" className="!px-1.5 [&>span]:sr-only" />
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-fg-3">
-            <span>{d.spec.model.id}</span>
-            {d.spec.model.variant && <span>{d.spec.model.variant}</span>}
-            <span>{d.spec.model.engine}</span>
-            <span>{MODALITY_LABEL[d.modality]}</span>
+          <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-1 text-[12.5px] text-fg-3">
+            <span className="font-mono">{d.spec.model.id}</span>
+            {d.spec.model.variant && <span className="font-mono">· {d.spec.model.variant}</span>}
+            <span>· {MODALITY_LABEL[d.modality]} on {d.spec.model.engine}</span>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -161,9 +165,9 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
         </div>
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <Pipeline d={d} />
-        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-fg-2">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11.5px] text-fg-3">
           <span>{d.gpus.length ? d.gpus.map((g) => `GPU${g}`).join(" + ") : "CPU"}</span>
           {d.vram_estimate > 0 && <span>≈{bytes(d.vram_estimate)} VRAM</span>}
           {d.ready_at && <span>up {duration(Date.now() / 1000 - d.ready_at)}</span>}
@@ -177,7 +181,10 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
         </div>
       )}
       {d.status === "error" && (
-        <div className="mt-4 rounded-lg border border-worst/40 bg-worst-soft px-3.5 py-2.5 text-[13.5px] text-worst">{d.error}</div>
+        <div className="mt-4 rounded-lg border border-worst/30 bg-worst-soft px-3.5 py-2.5 text-[13.5px] leading-relaxed text-fg">
+          <span className="font-medium text-worst">Failed. </span>
+          {d.error}
+        </div>
       )}
       <Drawer open={configure} onClose={() => setConfigure(false)} title={`Retry ${d.name}`}>
         <div className="space-y-5 p-5">
@@ -190,11 +197,11 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
       </Drawer>
 
       {ifaceName && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-bg-2 px-3.5 py-2.5">
-          <span className="readout">{ifaceName}</span>
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-line bg-bg-2 px-3.5 py-2">
+          <span className="text-[12.5px] font-medium text-fg-2">{ifaceName}</span>
           {iface.status === "up" && iface.url ? (
             <>
-              <a href={iface.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate font-mono text-[12px] text-signal hover:underline">
+              <a href={iface.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg underline decoration-line-2 underline-offset-4 hover:decoration-fg">
                 {iface.url}
               </a>
               <CopyButton text={iface.url} />
@@ -210,7 +217,7 @@ function DeploymentCard({ d, focus }: { d: Deployment; focus: boolean }) {
           {iface.share_url && (
             <span className="flex w-full items-center gap-2 font-mono text-[12px]">
               <span className="readout">share</span>
-              <a href={iface.share_url} target="_blank" rel="noreferrer" className="truncate text-signal hover:underline">
+              <a href={iface.share_url} target="_blank" rel="noreferrer" className="truncate text-fg underline decoration-line-2 underline-offset-4 hover:decoration-fg">
                 {iface.share_url}
               </a>
               <CopyButton text={iface.share_url} />
@@ -237,7 +244,7 @@ export default function Deployments() {
 
   return (
     <div>
-      <SectionTitle kicker="Running on this machine" title="Deployments">
+      <SectionTitle title="Deployments" description="Everything installed, loading or running on this machine, with live logs.">
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => api.preset().then((p) => setPreset(p.cell))} disabled={!deps.length}>
             <FileCode2 className="size-4" /> Export launch cell

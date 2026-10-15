@@ -8,7 +8,7 @@ const VERDICT_COLOR: Record<Verdict, string> = {
   worst: "var(--worst)",
 };
 
-/** LED-style segmented meter, like a rack unit's level display. */
+/** Segmented level meter. Ink until it gets full, then amber, then red. */
 export function LedMeter({ value, segments = 20, className }: { value: number; segments?: number; className?: string }) {
   const lit = Math.round(Math.max(0, Math.min(1, value)) * segments);
   return (
@@ -16,12 +16,12 @@ export function LedMeter({ value, segments = 20, className }: { value: number; s
       {Array.from({ length: segments }, (_, i) => {
         const frac = (i + 1) / segments;
         const on = i < lit;
-        const color = frac > 0.9 ? "var(--worst)" : frac > 0.75 ? "var(--tight)" : "var(--signal)";
+        const color = frac > 0.9 ? "var(--worst)" : frac > 0.75 ? "var(--tight)" : "var(--fg)";
         return (
           <span
             key={i}
-            className="h-full flex-1 rounded-[1.5px] transition-[background,opacity] duration-300"
-            style={{ background: on ? color : "var(--panel-3)", opacity: on ? 1 : 0.9 }}
+            className="h-full flex-1 rounded-[1px] transition-[background,opacity] duration-300"
+            style={{ background: on ? color : "var(--panel-3)", opacity: on ? (frac > 0.75 ? 1 : 0.85) : 1 }}
           />
         );
       })}
@@ -31,17 +31,18 @@ export function LedMeter({ value, segments = 20, className }: { value: number; s
 
 export function GpuMeter({ gpu, compact }: { gpu: Gpu; compact?: boolean }) {
   const frac = gpu.vram_total ? gpu.vram_used / gpu.vram_total : 0;
+  const name = gpu.name.replace("Tesla ", "").replace("NVIDIA ", "").split("-")[0];
   return (
     <div className={cx("min-w-0", compact ? "w-[132px]" : "w-full")}>
-      <div className="mb-1 flex items-baseline justify-between gap-2">
-        <span className="readout truncate">
-          GPU{gpu.index} · {gpu.name.replace("Tesla ", "").replace("NVIDIA ", "").split("-")[0]}
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <span className="truncate text-[12.5px] text-fg-2">
+          <span className="font-mono text-fg-3">GPU{gpu.index}</span> {name}
         </span>
-        <span className="font-mono text-[10px] text-fg-2">{Math.round(frac * 100)}%</span>
+        <span className="font-mono text-[12px] text-fg">{Math.round(frac * 100)}%</span>
       </div>
-      <LedMeter value={frac} segments={compact ? 16 : 28} className="h-2.5" />
+      <LedMeter value={frac} segments={compact ? 16 : 32} className="h-2" />
       {!compact && (
-        <div className="mt-1.5 flex justify-between font-mono text-[11px] text-fg-2">
+        <div className="mt-1.5 flex justify-between font-mono text-[11.5px] text-fg-3">
           <span>
             {bytes(gpu.vram_used)} / {bytes(gpu.vram_total)}
           </span>

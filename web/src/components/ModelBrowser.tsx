@@ -27,22 +27,31 @@ function useDebounced<T>(value: T, ms: number): T {
 function SourceBadge({ item }: { item: CatalogItem }) {
   const label = item.source === "hf" ? "HF" : item.source === "ollama" ? "Ollama" : item.capabilities.includes("imported") ? "Imported" : "Attached";
   return (
-    <span className="flex items-center gap-1.5">
-      <span
-        className={cx(
-          "rounded px-1.5 py-px text-[11px] font-medium",
-          item.source === "attached" ? "bg-info/15 text-info" : "bg-panel-3 text-fg-2",
-        )}
-      >
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cx("rounded-[5px] border px-1.5 font-mono text-[10.5px] leading-[18px]", item.source === "attached" ? "border-info/40 text-info" : "border-line-2 text-fg-3")}>
         {label}
       </span>
       {item.curated && (
-        <span className="flex items-center gap-1 text-[11px] text-fg-2" title="Curated model">
+        <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-fg-2" title="Picked and tested on Kaggle GPUs">
           <Star className="size-3 fill-current" />
           Pick
         </span>
       )}
     </span>
+  );
+}
+
+const VERDICT_FILL: Record<string, string> = { best: "var(--good)", good: "var(--good)", tight: "var(--tight)", worst: "var(--worst)" };
+
+/** Compact fit indicator: estimated VRAM as a share of what this machine can give it. */
+function FitBar({ item }: { item: CatalogItem }) {
+  const need = item.fit.vram_needed ?? 0;
+  const cap = item.fit.capacity ?? 0;
+  const frac = need && cap ? Math.min(need / cap, 1) : 0;
+  return (
+    <div className="mt-1.5 h-[3px] w-full overflow-hidden rounded-full bg-panel-3" aria-hidden>
+      <div className="h-full rounded-full" style={{ width: `${Math.max(frac * 100, need ? 4 : 0)}%`, background: VERDICT_FILL[item.fit.verdict] }} />
+    </div>
   );
 }
 
@@ -64,8 +73,8 @@ export function ModelCard({
       type="button"
       onClick={onOpen}
       className={cx(
-        "panel group flex h-full w-full min-w-0 flex-col p-5 text-left transition-[border-color,background] duration-150 hover:bg-panel-2",
-        selected ? "border-signal ring-1 ring-signal" : "hover:border-line-2",
+        "panel group flex h-full w-full min-w-0 flex-col p-5 text-left transition-[border-color,background,transform] duration-150 hover:-translate-y-px hover:border-line-2 hover:bg-panel-2",
+        selected && "border-fg ring-1 ring-fg",
       )}
       aria-pressed={!!selected}
     >
@@ -75,7 +84,7 @@ export function ModelCard({
       </div>
       <div className="mb-1 flex items-baseline gap-2">
         <ModelLogo id={item.id} name={item.name} source={item.source} />
-        <h3 className="line-clamp-2 min-w-0 break-words text-[18px] font-semibold leading-snug [overflow-wrap:anywhere]">{item.name}</h3>
+        <h3 className="line-clamp-2 min-w-0 break-words text-[16px] font-semibold leading-snug tracking-[-0.015em] [overflow-wrap:anywhere]">{item.name}</h3>
       </div>
       {item.source === "hf" && item.name !== item.id && <div className="mb-1 truncate font-mono text-[10.5px] text-fg-3">{item.id}</div>}
       <p className="mb-3 line-clamp-2 min-h-[2.6em] text-[13px] leading-snug text-fg-2">{item.description || " "}</p>
@@ -126,32 +135,46 @@ function ModelRow({ item, selected, onOpen }: { item: CatalogItem; selected: boo
   return (
     <button type="button" className="model-row model-columns" onClick={onOpen} aria-pressed={selected}>
       <div className="flex min-w-0 items-start gap-3.5">
-        <ModelLogo id={item.id} name={item.name} source={item.source} className="mt-0.5" />
+        <ModelLogo id={item.id} name={item.name} source={item.source} className="mt-px" />
         <div className="min-w-0">
-        <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h3 className="min-w-0 break-words font-semibold text-[15px] [overflow-wrap:anywhere]">{item.name}</h3>
-          <SourceBadge item={item} />
-        </div>
-        <p className="line-clamp-1 text-[13px] text-fg-2">{item.description || item.id}</p>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-fg-3">
-          {item.variant && <span>{item.variant}</span>}
-          <CapabilityTags capabilities={item.capabilities} />
-          {item.experimental && <span className="text-tight">Experimental</span>}
-        </div>
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <h3 className="min-w-0 break-words text-[14.5px] font-medium tracking-[-0.01em] [overflow-wrap:anywhere]">{item.name}</h3>
+            <SourceBadge item={item} />
+          </div>
+          <p className="mt-0.5 line-clamp-1 text-[13px] text-fg-3">{item.description || item.id}</p>
+          {(item.variant || item.capabilities.length > 0 || item.experimental) && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11.5px] text-fg-3">
+              {item.variant && <span className="font-mono">{item.variant}</span>}
+              <CapabilityTags capabilities={item.capabilities} />
+              {item.experimental && <span className="text-tight">Experimental</span>}
+            </div>
+          )}
         </div>
       </div>
       <div className="model-stats">
         <div>
-          <span className="block text-[13px] font-medium tabular-nums">{params(item.params) || "Unknown"}</span>
-          <span className="text-[11px] text-fg-3 @3xl:hidden">Parameters</span>
+          <span className="block font-mono text-[13px] text-fg">{params(item.params) || "—"}</span>
+          <span className="text-[11.5px] text-fg-3 @[760px]:hidden">Parameters</span>
         </div>
         <div>
-          <span className="block text-[13px] tabular-nums">{bytes(item.size)}</span>
-          <span className="text-[11px] text-fg-3 @3xl:hidden">Download</span>
+          <span className="block font-mono text-[13px] text-fg-2">{bytes(item.size)}</span>
+          <span className="text-[11.5px] text-fg-3 @[760px]:hidden">Download</span>
         </div>
-        <div className="model-fit">
-          {item.engine ? <VerdictTag verdict={item.fit.verdict} size="sm" /> : <Chip>Runner unavailable</Chip>}
-          <span className="mt-1 block text-[11px] text-fg-3">{!item.engine ? "View model details" : item.fit.vram_needed ? `≈${bytes(item.fit.vram_needed)} VRAM` : "Estimate unavailable"}</span>
+        <div className="model-fit min-w-[150px]">
+          {item.engine ? (
+            <>
+              <div className="flex items-baseline justify-between gap-2">
+                <VerdictTag verdict={item.fit.verdict} size="sm" />
+                <span className="font-mono text-[11.5px] text-fg-3">{item.fit.vram_needed ? `${bytes(item.fit.vram_needed)}` : "?"}</span>
+              </div>
+              <FitBar item={item} />
+            </>
+          ) : (
+            <>
+              <span className="text-[12px] font-medium text-fg-3">No runner yet</span>
+              <span className="mt-0.5 block text-[11.5px] text-fg-3">View model details</span>
+            </>
+          )}
         </div>
       </div>
     </button>
@@ -322,28 +345,28 @@ export function ModelBrowser({
       )}
       {modality === "audio" && <p className="mb-5 max-w-[80ch] text-[13px] text-fg-2">Music, sound effects and mixed audio scenes. Voice-based speech synthesis is in Text to speech.</p>}
       {modality === "mesh" && <p className="mb-5 max-w-[80ch] text-[13px] text-fg-2">Browse text-to-3D and image-to-3D checkpoints, including TRELLIS, Hunyuan3D and TripoSR. Download from model details; deployment requires a configured runner.</p>}
-      <div className="mb-4 flex flex-col gap-3 @4xl:flex-row @4xl:items-center">
+      <div className="mb-4 flex flex-col gap-2.5 @2xl:flex-row @2xl:items-center">
         <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-3" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-3" aria-hidden />
           <Input
             aria-label="Search models"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={modality === "text" ? "Search models (qwen, gemma, coder…)" : `Search ${MODALITY_LABEL[modality].toLowerCase()} models`}
-            className="pl-9"
+            className="h-10 pl-9 text-[14px]"
           />
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button variant={filtersOpen || chips.length ? "outline" : "ghost"} onClick={() => setFiltersOpen(open => !open)}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 @2xl:flex-nowrap">
+          <Button className="h-10" variant="outline" onClick={() => setFiltersOpen(open => !open)}
             aria-expanded={filtersOpen} aria-controls="catalog-filter-panel"><SlidersHorizontal className="size-4" /> Filters
             {chips.length > 0 && <span className="catalog-filter-count">{chips.length}</span>}</Button>
-          <Select aria-label="Sort models" value={sort} onChange={(e) => changeSort(e.target.value)} className="catalog-sort">
+          <Select aria-label="Sort models" value={sort} onChange={(e) => changeSort(e.target.value)} className="order-last h-10 w-full @2xl:order-none @2xl:w-52">
             {SORTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
-          <div className="flex h-10 items-center rounded-lg border border-line p-0.5" role="group" aria-label="Model layout">
+          <div className="flex h-10 items-center gap-0.5 rounded-lg border border-line bg-bg-2 p-[3px]" role="group" aria-label="Model layout">
             {(["list", "grid"] as const).map((value) => {
               const Icon = value === "list" ? List : LayoutGrid;
-              return <button key={value} type="button" onClick={() => changeView(value)} aria-label={`${value === "list" ? "List" : "Grid"} view`} aria-pressed={view === value} className={cx("rounded-md p-2 transition-colors", view === value ? "bg-panel-3 text-fg" : "text-fg-3 hover:text-fg")}><Icon className="size-4" /></button>;
+              return <button key={value} type="button" onClick={() => changeView(value)} aria-label={`${value === "list" ? "List" : "Grid"} view`} aria-pressed={view === value} className={cx("grid size-8 place-items-center rounded-md transition-colors", view === value ? "bg-panel-3 text-fg shadow-[var(--edge)]" : "text-fg-3 hover:text-fg")}><Icon className="size-4" /></button>;
             })}
           </div>
         </div>
@@ -389,7 +412,7 @@ export function ModelBrowser({
       {filterError ? <Empty title="Check parameter range">{filterError}</Empty> : query.isLoading ? (
         <div className={view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden"} aria-label="Loading models" aria-busy="true">
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className={cx("animate-pulse bg-panel-2", view === "grid" ? "panel h-[248px]" : "m-4 h-16 rounded-md")} />
+            <div key={i} className={cx("animate-pulse", view === "grid" ? "panel h-[248px] bg-panel-2" : "flex items-center gap-3.5 border-b border-line px-5 py-4 last:border-0")}>{view === "list" && <><span className="size-9 rounded-[10px] bg-panel-3" /><span className="flex-1 space-y-2"><span className="block h-3 w-40 rounded bg-panel-3" /><span className="block h-2.5 w-72 max-w-full rounded bg-panel-2" /></span><span className="hidden h-3 w-24 rounded bg-panel-3 sm:block" /></>}</div>
           ))}
         </div>
       ) : query.error ? (
@@ -401,8 +424,8 @@ export function ModelBrowser({
       ) : (
         <div className={cx(view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden", query.isPlaceholderData && "opacity-60")} aria-busy={query.isFetching}>
           {view === "list" && (
-            <div className="model-header model-columns border-b border-line bg-panel-2 px-5 py-2.5 text-[12px] text-fg-3" aria-hidden="true">
-              <span>Model</span><span>Parameters</span><span>Download</span><span className="text-right">{modality === "world" ? "Support / GPU fit" : "GPU fit"}</span>
+            <div className="model-header model-columns border-b border-line px-5 py-2.5 text-[12px] font-medium text-fg-3" aria-hidden="true">
+              <span>Model</span><span>Params</span><span>Download</span><span>{modality === "world" ? "Support / GPU fit" : "Fit on this GPU · VRAM"}</span>
             </div>
           )}
           {query.data?.items.map((it) => (

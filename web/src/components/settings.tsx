@@ -93,7 +93,7 @@ export function ExposurePicker({ value, onChange }: { value: TunnelProvider; onC
 
 function Tag({ children, tone = "plain" }: { children: ReactNode; tone?: "plain" | "signal" }) {
   return (
-    <span className={cx("rounded px-1.5 py-px font-mono text-[9.5px] uppercase tracking-wider", tone === "signal" ? "bg-signal-soft text-signal" : "bg-panel-3 text-fg-3")}>
+    <span className={cx("rounded-[5px] px-1.5 py-px text-[11px] font-medium", tone === "signal" ? "bg-good-soft text-good" : "bg-panel-3 text-fg-3")}>
       {children}
     </span>
   );

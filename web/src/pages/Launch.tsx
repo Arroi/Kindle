@@ -22,7 +22,7 @@ import { FitGauge } from "../components/meters";
 import { ModelBrowser } from "../components/ModelBrowser";
 import { ModelDetail, type ModelChoice } from "../components/ModelDetail";
 import { AccessForm, ApiForm, ExposurePicker, OptionCard, StreamingNote, type ApiState } from "../components/settings";
-import { Button, Drawer, Toggle, useToast } from "../components/ui";
+import { Button, Drawer, SectionTitle, Toggle, useToast } from "../components/ui";
 import { api } from "../lib/api";
 import { bytes, cx, MODALITY_LABEL } from "../lib/format";
 import { useLive } from "../lib/live";
@@ -182,13 +182,10 @@ export default function Launch() {
 
   return (
     <div>
-      <div className="mb-8 max-w-3xl">
-        <div className="readout mb-2">Workspace / Launch</div>
-        <h1 className="display text-[28px] sm:text-[34px]">New deployment</h1>
-        <p className="mt-2 max-w-[58ch] text-[14px] text-fg-2">
-          Choose a model and how you want to use it. We’ll check the hardware requirements and handle setup.
-        </p>
-      </div>
+      <SectionTitle
+        title="New deployment"
+        description="Pick a model and how you want to reach it. KaggleUI checks it against this machine, then installs, downloads and starts it."
+      />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_288px]">
         <div className="space-y-3">
@@ -256,7 +253,7 @@ export default function Launch() {
                   onClick={() => setIface(o.value)}
                   icon={o.icon}
                   title={o.title}
-                  badge={o.badge ? <span className="rounded bg-panel-3 px-1.5 py-px font-mono text-[9.5px] uppercase text-fg-3">{o.badge}</span> : undefined}
+                  badge={o.badge ? <span className="rounded-[5px] bg-panel-3 px-1.5 py-px text-[11px] font-medium text-fg-3">{o.badge}</span> : undefined}
                 >
                   {o.desc}
                 </OptionCard>

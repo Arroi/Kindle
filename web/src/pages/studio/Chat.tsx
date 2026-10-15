@@ -201,7 +201,7 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
     <div className="panel studio-chat flex h-[calc(100dvh-320px)] min-h-[520px] flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2.5">
         <div className="flex items-center gap-2 text-[12.5px] text-fg-2">
-          <span className={cx("size-2 rounded-full", ready ? "bg-signal" : "bg-tight animate-blink")} />
+          <span className={cx("dot", ready ? "dot-live" : "dot-warn")} />
           {ready ? "Live replies" : "HTTP mode · replies appear when complete"}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1">
@@ -256,7 +256,7 @@ export default function ChatStudio({ model }: { model: StudioModel }) {
               {m.content ? (
                 <div className="prose-chat text-[14.5px] leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />
               ) : m.pending && !m.reasoning ? (
-                <span className="inline-block h-4 w-2 bg-signal animate-blink" />
+                <span className="inline-block h-4 w-1.5 rounded-sm bg-fg animate-blink" />
               ) : null}
               {m.error && <div className="mt-2 rounded-lg border border-worst/40 bg-worst-soft px-3 py-2 text-[13px] text-worst">{m.error}</div>}
               {m.stats && (
