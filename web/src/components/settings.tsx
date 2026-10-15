@@ -62,7 +62,7 @@ export function ExposurePicker({ value, onChange }: { value: TunnelProvider; onC
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <OptionCard active={value === "cloudflare"} onClick={() => onChange("cloudflare")} icon={<Cloud className="size-4" />} title="Cloudflare quick tunnel" badge={<Tag>default</Tag>}>
-        No account needed. The URL changes each session, and API streaming arrives in one chunk.
+        No account needed. App updates keep your link. A fresh notebook session or tunnel reconnect changes it. API streaming arrives in one chunk.
       </OptionCard>
       <OptionCard
         active={value === "cloudflare_named"}

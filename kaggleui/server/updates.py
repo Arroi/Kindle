@@ -187,10 +187,10 @@ def _install(path: Path) -> None:
         preset = folder / "restart.json"
         preset.write_text(json.dumps(config["preset"]))
         preset.chmod(0o600)
-        progress("restarting", "Restarting. Re-run kaggleui.launch() in the notebook to get the new temporary link.")
+        progress("restarting", "Restarting the app. The existing public tunnel is kept when supported; this page reconnects automatically.")
         from ..launcher import stop
 
-        stop(config["home"], _preserve_pid=os.getpid())
+        stop(config["home"], _preserve_pid=os.getpid(), _keep_tunnel=True)
         cmd = [sys.executable, "-m", "kaggleui", "serve", "--home", config["home"], "--port", str(config["port"]),
                "--host", config["host"], "--preset", str(preset)]
         if config["mock"]:

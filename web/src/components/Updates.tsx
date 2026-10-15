@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpRight, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "../lib/api";
 import { Button, useToast } from "./ui";
@@ -13,6 +13,9 @@ export function UpdateNotice({ full = false }: { full?: boolean }) {
   const query = useQuery({ queryKey: ["updates"], queryFn: () => api.updates(), staleTime: 60_000,
     refetchInterval: q => ["installing", "restarting"].includes(q.state.data?.progress?.status ?? "") ? 1500 : 600_000 });
   const update = query.data;
+  useEffect(() => {
+    if (update?.progress?.status === "complete" && update.current.localeCompare(__APP_VERSION__, undefined, { numeric: true }) > 0) window.location.reload();
+  }, [update?.progress?.status, update?.current]);
   const running = ["installing", "restarting"].includes(update?.progress?.status ?? "");
   if (!full && !update?.available && !update?.blocked && !running) return null;
   return <section className={full ? "panel mb-6 p-5" : "update-notice mb-6"} aria-label="KaggleUI updates">
@@ -34,7 +37,7 @@ export function UpdateNotice({ full = false }: { full?: boolean }) {
       }}><RefreshCw className="size-3.5" /> Check</Button>}
       {update?.release_url && <a href={update.release_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] text-fg-2 hover:text-fg">Release notes <ArrowUpRight className="size-3.5" /></a>}
     </div>
-    {(full || running || update?.available) && <p className="mt-3 text-[12px] text-fg-3">Updating interrupts active requests and relaunches your deployments. With a temporary tunnel, re-run <code>kaggleui.launch()</code> in the notebook to get the new link. Credentials and downloaded models are kept.</p>}
+    {(full || running || update?.available) && <p className="mt-3 text-[12px] text-fg-3">Updating interrupts active requests and relaunches your deployments. Your link, credentials and downloaded models are kept, and this page reconnects. A fresh notebook session, full stop or tunnel failure can change a temporary URL.</p>}
     {update?.progress?.status === "error" && <p role="alert" className="mt-2 text-[13px] text-worst">{update.progress.message}</p>}
     {full && query.error && <p role="alert" className="mt-2 text-[12px] text-tight">{query.error.message}</p>}
     {full && update?.error && <p className="mt-2 text-[12px] text-tight">{update.error}</p>}

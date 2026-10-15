@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from ..config import Paths
 from ..proc import ManagedProcess
 from .binaries import ensure_cloudflared, ensure_ngrok
+from .persistent import PersistentProcess, binding, read_record, stop_saved_tunnel
 
 QUICK_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
@@ -40,8 +41,9 @@ class Tunnel:
     started_at: float = field(default_factory=time.time)
     restarts: int = 0
     supports_sse: bool = True
-    proc: ManagedProcess | None = None
+    proc: ManagedProcess | PersistentProcess | None = None
     task: asyncio.Task | None = None
+    persistent: bool = False
 
     def info(self) -> dict:
         return {
@@ -58,6 +60,8 @@ class TunnelManager:
         self.tunnels: dict[str, Tunnel] = {}
 
     def _changed(self, t: Tunnel) -> None:
+        if isinstance(t.proc, PersistentProcess):
+            t.proc.save(t.info())
         if self.on_change:
             self.on_change(t)
 
@@ -73,7 +77,11 @@ class TunnelManager:
             provider = "cloudflare"  # a named tunnel's hostname maps to one fixed port
         if provider == "ngrok" and name != "main":
             provider = "cloudflare"  # free ngrok accounts get one agent session
-        t = Tunnel(name=name, provider=provider, port=port)
+        if name == "main":
+            record = read_record(self.paths)
+            if record and (provider == "none" or record.get("binding") != binding(provider, port)):
+                await asyncio.to_thread(stop_saved_tunnel, self.paths)
+        t = Tunnel(name=name, provider=provider, port=port, persistent=name == "main")
         t.supports_sse = provider != "cloudflare"
         self.tunnels[name] = t
         if provider == "none":
@@ -85,20 +93,51 @@ class TunnelManager:
         self._changed(t)
         return t
 
-    async def close(self, name: str) -> None:
+    async def close(self, name: str, *, preserve: bool = False) -> None:
         t = self.tunnels.pop(name, None)
         if not t:
             return
+        # Keep the last connected state on disk for the replacement server.
+        keep = preserve and isinstance(t.proc, PersistentProcess) and t.proc.running
+        if keep:
+            t.proc.save(t.info())
         t.status = "stopped"
         if t.task:
             t.task.cancel()
             await asyncio.gather(t.task, return_exceptions=True)
-        if t.proc:
+        if t.proc and not keep:
             await t.proc.stop(timeout=5)
-        self._changed(t)
+        elif name == "main" and not preserve:
+            await asyncio.to_thread(stop_saved_tunnel, self.paths)
+        if self.on_change:
+            self.on_change(t)
 
-    async def close_all(self) -> None:
-        await asyncio.gather(*(self.close(name) for name in list(self.tunnels)))
+    async def close_all(self, *, preserve_main: bool = False) -> None:
+        await asyncio.gather(*(self.close(name, preserve=preserve_main and name == "main")
+                               for name in list(self.tunnels)))
+
+    async def _start_process(self, t: Tunnel, cmd: list[str], on_line: Callable[[str], None],
+                             env: dict[str, str] | None = None) -> None:
+        if t.persistent:
+            proc = PersistentProcess(self.paths, cmd, signature=binding(t.provider, t.port),
+                                     env=env, on_line=on_line)
+            record = proc.adopt()
+            if record:
+                t.url = record.get("url")
+                t.status = record.get("status", "starting")
+                t.error = record.get("error")
+                t.restarts = record.get("restarts", 0)
+                print("[kaggleui] Reusing the existing public tunnel and URL.", flush=True)
+            else:
+                t.status, t.error = "starting", None
+                if t.provider != "cloudflare_named":
+                    t.url = None
+            t.proc = proc
+        else:
+            t.proc = ManagedProcess(f"tunnel-{t.name}", cmd, env=env,
+                                    log_path=self.paths.logs / f"tunnel-{t.name}.log", on_line=on_line)
+        await t.proc.start()
+        self._changed(t)
 
     async def wait_url(self, name: str, timeout: float = 60) -> str | None:
         deadline = time.monotonic() + timeout
@@ -166,9 +205,7 @@ class TunnelManager:
                 t.status = "up"
                 self._changed(t)
 
-        t.proc = ManagedProcess(f"tunnel-{t.name}", cmd, env={"HOME": str(home)},
-                                log_path=self.paths.logs / f"tunnel-{t.name}.log", on_line=on_line)
-        await t.proc.start()
+        await self._start_process(t, cmd, on_line, env={"HOME": str(home)})
         rc = await t.proc.wait()
         if t.status != "stopped":
             t.error = f"cloudflared exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
@@ -188,9 +225,7 @@ class TunnelManager:
                 t.error = None
                 self._changed(t)
 
-        t.proc = ManagedProcess(f"tunnel-{t.name}", [exe, "tunnel", "--no-autoupdate", "run", "--token", token],
-                                log_path=self.paths.logs / f"tunnel-{t.name}.log", on_line=on_line)
-        await t.proc.start()
+        await self._start_process(t, [exe, "tunnel", "--no-autoupdate", "run", "--token", token], on_line)
         rc = await t.proc.wait()
         if t.status != "stopped":
             t.error = f"cloudflared exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
@@ -219,9 +254,7 @@ class TunnelManager:
             elif data.get("lvl") in ("eror", "crit") and data.get("err"):
                 t.error = str(data.get("err"))[:300]
 
-        t.proc = ManagedProcess(f"tunnel-{t.name}", cmd, log_path=self.paths.logs / f"tunnel-{t.name}.log",
-                                on_line=on_line)
-        await t.proc.start()
+        await self._start_process(t, cmd, on_line)
         rc = await t.proc.wait()
         if t.status != "stopped":
             t.error = t.error or f"ngrok exited ({rc})"

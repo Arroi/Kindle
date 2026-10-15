@@ -15,6 +15,7 @@ from . import __version__
 from .config import DEFAULT_PORT, Paths, default_tunnel, load_preset
 from .notify import card_html, card_text
 from .secretstore import kaggle_sourced, load_kaggle_secrets
+from .tunnels.persistent import read_record, request_handoff, saved_processes, stop_saved_tunnel
 
 STOP_TIMEOUT = 20
 
@@ -70,17 +71,25 @@ def installed_version() -> str:
 def _show(state: dict) -> None:
     note = ""
     if state.get("tunnel", {}) and state["tunnel"].get("provider") == "cloudflare":
-        note = "Quick-tunnel URLs change if the tunnel restarts; the new link is printed here."
+        note = "App updates keep this link. A fresh notebook session, full stop or tunnel reconnect creates a new one."
     _display(card_html(state["url"], state["admin_token"], state.get("password"), state.get("api_key"), note),
              card_text(state["url"], state["admin_token"], state.get("password"), state.get("api_key")))
 
 
-def stop(home: str | None = None, *, _preserve_pid: int | None = None) -> bool:
+def stop(home: str | None = None, *, _preserve_pid: int | None = None, _keep_tunnel: bool = False) -> bool:
     paths = Paths(home)
     st = _read_state(paths)
-    if not _running(st):
-        print("KaggleUI isn't running.")
+
+    def no_server(message: str) -> bool:
+        # The app may have crashed while its retained tunnel is still running.
+        if not _keep_tunnel and stop_saved_tunnel(paths):
+            print("KaggleUI's remaining public tunnel stopped.", flush=True)
+            return True
+        print(message, flush=True)
         return False
+
+    if not _running(st):
+        return no_server("KaggleUI isn't running.")
     try:
         server = psutil.Process(st["pid"])
         started = st.get("process_started_at")
@@ -90,21 +99,29 @@ def stop(home: str | None = None, *, _preserve_pid: int | None = None) -> bool:
             cmd = server.cmdline()
             matches = "kaggleui" in cmd and "serve" in cmd
         if not matches:
-            print("The recorded KaggleUI process has already exited.", flush=True)
-            return False
+            return no_server("The recorded KaggleUI process has already exited.")
     except psutil.NoSuchProcess:
-        print("KaggleUI isn't running.", flush=True)
-        return False
+        return no_server("KaggleUI isn't running.")
 
     print("Stopping KaggleUI and its model processes…", flush=True)
+    if _keep_tunnel:
+        request_handoff(paths, server)
     children: dict[tuple[int, float], psutil.Process] = {}
+    preserved = {(proc.pid, proc.create_time()) for proc in saved_processes(paths)} if _keep_tunnel else set()
+    if _preserve_pid is not None:
+        try:
+            updater = psutil.Process(_preserve_pid)
+            preserved.update((proc.pid, proc.create_time()) for proc in [updater, *updater.children(recursive=True)])
+        except psutil.NoSuchProcess:
+            pass
 
     def remember_children() -> None:
         try:
             for child in server.children(recursive=True):
-                if child.pid == _preserve_pid:
+                identity = (child.pid, child.create_time())
+                if identity in preserved:
                     continue
-                children[(child.pid, child.create_time())] = child
+                children[identity] = child
         except psutil.NoSuchProcess:
             pass
 
@@ -135,6 +152,8 @@ def stop(home: str | None = None, *, _preserve_pid: int | None = None) -> bool:
     remaining = [p.pid for p in processes if _alive(p.pid) and p.is_running()]
     if remaining:
         raise RuntimeError(f"KaggleUI could not stop processes {remaining}. See {paths.logs / 'server.log'}.")
+    if not _keep_tunnel:
+        stop_saved_tunnel(paths)
     latest = _read_state(paths)
     if latest and latest.get("pid") == server.pid:
         latest["status"] = "stopped"
@@ -179,6 +198,7 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
     load_kaggle_secrets()  # Kaggle secrets are readable from the kernel process; pass them down via env.
     paths = Paths(home).ensure()
     existing = _read_state(paths)
+    retained = existing if existing and saved_processes(paths) else {}
     current = installed_version()
     if current != __version__:
         print(f"Note: this notebook has KaggleUI {__version__} imported but {current} is installed. The server will "
@@ -189,7 +209,7 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         old = existing.get("version") or "an older version"
         print(f"KaggleUI was updated ({old} → {current}). Restarting the server; relaunch your models "
               "afterwards.", flush=True)
-        stop(home)
+        stop(home, _keep_tunnel=True)
         existing = None
     if _running(existing) and existing.get("url"):
         print("KaggleUI is already running (kaggleui.stop() to stop it).", flush=True)
@@ -203,8 +223,10 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
                            "to reconnect, or kaggleui.stop() before launching again.")
 
     p = load_preset(preset)
-    cmd = [sys.executable, "-m", "kaggleui", "serve", "--port", str(port or DEFAULT_PORT),
-           "--tunnel", tunnel or (p.settings.exposure.provider if p else default_tunnel())]
+    cmd = [sys.executable, "-m", "kaggleui", "serve", "--port", str(port or retained.get("port") or DEFAULT_PORT),
+           "--tunnel", tunnel or (p.settings.exposure.provider if p else
+                                   (retained.get("tunnel") or {}).get("provider") or
+                                   (read_record(paths).get("provider") if retained else None) or default_tunnel())]
     if p:
         preset_file = paths.home / "preset.json"
         preset_file.write_text(p.model_dump_json())
@@ -217,10 +239,14 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         cmd += ["--home", home]
     if paths.state_file.exists():
         paths.state_file.unlink()
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "KAGGLEUI_KAGGLE_SECRETS": ",".join(kaggle_sourced())}
+    for key, field in (("KAGGLEUI_ADMIN_TOKEN", "admin_token"), ("KAGGLEUI_PASSWORD", "password"),
+                       ("KAGGLEUI_API_KEY", "api_key")):
+        if retained.get(field):
+            env.setdefault(key, retained[field])
     with open(paths.logs / "server.log", "a") as log:
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-                                env={**os.environ, "PYTHONUNBUFFERED": "1",
-                                     "KAGGLEUI_KAGGLE_SECRETS": ",".join(kaggle_sourced())})
+                                env=env)
     print("Starting KaggleUI…", flush=True)
     deadline = time.time() + 180
     state = None

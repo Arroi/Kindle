@@ -19,7 +19,9 @@ from pathlib import Path
 from starlette.requests import HTTPConnection as Request
 from starlette.responses import Response
 
+from ..config import Paths
 from ..schemas import Settings
+from ..tunnels.persistent import read_record, recorded_process
 from ..util import generate_api_key, generate_password
 
 ADMIN_COOKIE = "kui_admin"
@@ -31,9 +33,15 @@ FAILURE_WINDOW = 300
 
 class Auth:
     def __init__(self, secret_path: Path | None = None) -> None:
-        self.admin_token = os.environ.get("KAGGLEUI_ADMIN_TOKEN") or secrets.token_urlsafe(18)
-        self.password = os.environ.get("KAGGLEUI_PASSWORD") or generate_password()
-        self.api_key = os.environ.get("KAGGLEUI_API_KEY") or generate_api_key()
+        previous = {}
+        if secret_path is not None:
+            record = read_record(Paths(secret_path.parent))
+            if recorded_process(record) is not None and isinstance(record.get("credentials"), dict):
+                previous = {key: value for key, value in record["credentials"].items()
+                            if isinstance(value, str) and value}
+        self.admin_token = os.environ.get("KAGGLEUI_ADMIN_TOKEN") or previous.get("admin_token") or secrets.token_urlsafe(18)
+        self.password = os.environ.get("KAGGLEUI_PASSWORD") or previous.get("password") or generate_password()
+        self.api_key = os.environ.get("KAGGLEUI_API_KEY") or previous.get("api_key") or generate_api_key()
         self.internal_key = secrets.token_urlsafe(32)
         self._secret = secrets.token_bytes(32)
         if secret_path is not None:

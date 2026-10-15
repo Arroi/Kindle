@@ -10,7 +10,8 @@ NEW_VERSION=$(echo "$WHEEL" | cut -d- -f2)
 echo "Installing ${WHEEL}"
 pip install -q --disable-pip-version-check "${URL}"
 
-# If an older KaggleUI server is still running in this session, stop it. Otherwise the notebook's
+# If an older KaggleUI server is still running in this session, stop the app but retain its tunnel.
+# Otherwise the notebook's
 # already-imported (old) kaggleui.launch() would keep reusing it while it serves the new web UI.
 python3 - "$NEW_VERSION" <<'EOF'
 import sys
@@ -24,6 +25,6 @@ st = _read_state(paths)
 if _running(st) and st.get("version") != new:
     print(f"Stopping the running KaggleUI ({st.get('version') or 'older version'}) so {new} starts fresh. "
           "Relaunch your models afterwards.")
-    stop(str(paths.home))
+    stop(str(paths.home), _keep_tunnel=True)
 EOF
 echo "Done. Next: import kaggleui; kaggleui.launch()"

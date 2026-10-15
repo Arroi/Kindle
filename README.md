@@ -90,7 +90,11 @@ The cell keeps running so the session stays alive. Interrupt it to get the noteb
 
 ### If the link won't open
 
-Cloudflare quick tunnels get a new hostname whenever they restart. Use the most recent link printed by the running cell. If Safari says it can't find the server but Brave opens the same link, give Safari a moment to retry its DNS lookup and open the link in a new tab.
+From v0.2.3, the main public tunnel survives app server restarts and in-app updates within the same Kaggle session. This happens automatically, with no account or domain setup. Keep your current link bookmarked. `kaggleui.stop()` deliberately stops both the app and its tunnel, including a retained tunnel whose server has crashed.
+
+A fresh Kaggle session, full stop, tunnel provider/port change, or a tunnel failure that requires a new Cloudflare process still creates a new hostname. Anonymous Cloudflare URLs cannot be reserved permanently. The first upgrade from v0.2.2 or earlier also creates a new link; subsequent updates can reuse it. Use the latest card printed by the notebook if the address changes.
+
+If Safari says it can't find the server but Brave opens the same link, give Safari a moment to retry its DNS lookup and open the link in a new tab.
 
 If the link fails in every browser, reconnect the tunnel from another notebook cell:
 
@@ -103,7 +107,7 @@ This prints a fresh link and keeps your model deployments running. Startup waits
 
 ### Updates and compatibility
 
-From v0.2.0, the host sees an **Update to …** button when a newer GitHub release has an installable wheel. **System** also offers a manual check and release notes. Installing an update restarts the server and relaunches active deployments; requests in flight are interrupted. Credentials, imported checkpoints and model caches are preserved. Temporary Cloudflare URLs change: re-run `kaggleui.launch()` to display the new link after the update. If installation fails, check `logs/update.log` under the KaggleUI home directory or re-run the install cell.
+From v0.2.0, the host sees an **Update to …** button when a newer GitHub release has an installable wheel. **System** also offers a manual check and release notes. Installing an update restarts the server and relaunches active deployments; requests in flight are interrupted. Credentials, imported checkpoints and model caches are preserved. From v0.2.3, the existing main tunnel stays running through the update, and the page reconnects at the same address. Updating from older releases may still change the URL: re-run `kaggleui.launch()` to display the latest link. If installation fails, check `logs/update.log` under the KaggleUI home directory or re-run the install cell.
 
 `release-policy.json` controls the minimum supported version and explicit `revoked_versions`. Compatible releases check this policy periodically, retain the last valid policy across restarts, stop model deployments, and return HTTP 426 for inference when blocked. Host sign-in and updating remain available. A temporary check failure keeps the last known policy; it does not disable a previously supported server. **Versions released before v0.2.0 have no compatibility checker or update button and cannot be retroactively disabled.** Self-hosted installations can also modify the checker.
 

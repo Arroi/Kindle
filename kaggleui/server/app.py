@@ -25,6 +25,7 @@ from ..gateway import openai as openai_gw
 from ..schemas import MODALITIES, DeploymentSpec, Preset, SettingsPatch
 from ..secretstore import secret_status
 from ..tunnels.manager import PROVIDER_LABELS
+from ..tunnels.persistent import PersistentProcess, take_handoff
 from .auth import ACCESS_COOKIE, ADMIN_COOKIE
 from .proxy import proxy_http, proxy_ws
 from .state import AppState
@@ -52,7 +53,9 @@ def create_app(state: AppState) -> FastAPI:
             from ..engines.ollama import OllamaServer
 
             await OllamaServer.get().stop()  # only stops an Ollama we started ourselves
-            await state.tunnels.close_all()
+            # Update restarts explicitly request a handoff. A regular shutdown
+            # closes every tunnel, including calls from older notebook helpers.
+            await state.tunnels.close_all(preserve_main=take_handoff(state.paths))
             await state.catalog.close()
             try:
                 _write_state(state, "stopped")
@@ -573,6 +576,12 @@ async def _metrics_loop(state: AppState) -> None:
 
 
 def _write_state(state: AppState, status: str = "running") -> None:
+    tunnel = state.tunnels.get("main")
+    if tunnel and isinstance(tunnel.proc, PersistentProcess):
+        # Keep bookmark tokens and sign-in cookies valid even when an older
+        # notebook helper clears state.json before starting the updated server.
+        tunnel.proc.save({"credentials": {"admin_token": state.auth.admin_token,
+                                          "password": state.auth.password, "api_key": state.auth.api_key}})
     data = {
         "pid": os.getpid(), "version": __version__, "port": state.port, "status": status,
         "url": state.main_url() if status == "running" else None,
