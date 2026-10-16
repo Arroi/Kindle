@@ -25,6 +25,9 @@ from .resolve import ENGINE_LABELS, MODALITY_PIPELINES, resolve_hf
 
 CURATED_PATH = Path(__file__).with_name("curated.yaml")
 VERDICT_ORDER = {"best": 0, "good": 1, "tight": 2, "worst": 3}
+DIFFUSERS_ENGINES = ("diffusers", "diffusers_video", "diffusers_world")
+SINGLE_FILE_NOTE = ("Single-file or original-format checkpoint (ComfyUI style), not a diffusers pipeline. "
+                    "Look for a diffusers version of it, usually a repo ending in -Diffusers.")
 
 
 class CatalogService:
@@ -153,7 +156,9 @@ class CatalogService:
             it["fit"] = f.to_dict()
             it["brand"] = brands.describe(it["id"], it["name"], it["source"])
 
+        hidden: list[dict] = []
         if not show_unsupported:
+            hidden = [it for it in all_items if not it.get("engine") and filters.matches(it)]
             all_items = [it for it in all_items if it.get("engine")]
         filter_facets = {"brands": brands.facets(all_items),
                          "engines": [{"id": engine, "label": ENGINE_LABELS.get(engine, engine),
@@ -168,18 +173,19 @@ class CatalogService:
         total = len(all_items)
         if fit == "fits":
             all_items = [it for it in all_items if it["fit"]["verdict"] != "worst"]
-        all_items = self._sort(all_items, sort)
+        all_items = self._sort(all_items, sort, searching=bool(q))
         discover_more = more["v"]
         if modality == "world" and (not show_unsupported or fit == "fits"):
             discover_more = False  # all configured World runtimes are already seeded
         has_more = len(all_items) > limit or discover_more
         return {"modality": modality, "items": all_items[:limit], "sources": statuses, "hardware": _hw_summary(hw),
                 "counts": {"total": total, "fits": fitting, "launchable": launchable, "shown": min(len(all_items), limit),
-                           "discovered": discovered}, "facets": filter_facets, "filters_active": filters.active,
+                           "discovered": discovered, "hidden_unsupported": len(hidden)},
+                "hidden_examples": [it["id"] for it in sorted(hidden, key=lambda i: -(i.get("downloads") or 0))[:3]] if q else [], "facets": filter_facets, "filters_active": filters.active,
                 "has_more": has_more}
 
     @staticmethod
-    def _sort(items: list[dict], sort: str) -> list[dict]:
+    def _sort(items: list[dict], sort: str, searching: bool = False) -> list[dict]:
         if sort in ("params_asc", "params_desc"):
             direction = 1 if sort == "params_asc" else -1
             # Missing counts belong at the end in both directions. Sort the selected
@@ -193,6 +199,11 @@ class CatalogService:
             return sorted(items, key=lambda i: -(i.get("updated") or 0))
         if sort == "trending":
             return sorted(items, key=lambda i: i.get("_order", 1e9))
+        if searching:
+            # A search names what the user wants: the popular original that runs tight here should come
+            # before an obscure copy that happens to fit. Score already discounts tight and offloaded fits.
+            return sorted(items, key=lambda i: (i["fit"]["verdict"] == "worst", i["fit"]["verdict"] != "best",
+                                                -i["fit"]["score"]))
         return sorted(items, key=lambda i: (VERDICT_ORDER.get(i["fit"]["verdict"], 9), -i["fit"]["score"]))
 
     # -- item builders ------------------------------------------------------------------------
@@ -271,6 +282,8 @@ class CatalogService:
         rid = raw["id"]
         res = resolve_hf(modality, rid, raw.get("library_name"), raw.get("tags"), hw.min_sm,
                          accelerator=hw.accelerator)
+        single_file = res.engine in DIFFUSERS_ENGINES and "siblings" in raw and not hf.is_pipeline(raw["siblings"])
+        engine, note = (None, SINGLE_FILE_NOTE) if single_file else (res.engine, res.note or "")
         st = raw.get("safetensors") or {}
         gg = raw.get("gguf") or {}
         params = gg.get("total") or st.get("total")
@@ -284,7 +297,7 @@ class CatalogService:
                    if isinstance(ctx, int) and ctx > 0]
         return {
             "key": f"hf:{rid}", "source": "hf", "id": rid, "name": rid.split("/")[-1], "modality": modality,
-            "engine": res.engine, "description": res.note or "", "params": params, "size": size,
+            "engine": engine, "description": note, "params": params, "size": size,
             "variant": None, "variants": [], "downloads": raw.get("downloads") or 0,
             "likes": raw.get("likes") or 0, "updated": hf.parse_time(raw.get("lastModified")),
             "gated": hf.is_gated(raw.get("gated")), "library": raw.get("library_name"),
@@ -292,6 +305,7 @@ class CatalogService:
             "curated": False, "options": {}, "url": f"https://huggingface.co/{rid}",
             "bf16_only": dtypes == {"BF16"} and modality in ("image", "video"),
             "context_length": max(windows) if windows else None, "_order": order,
+            **({"_single_file": True} if single_file else {}),
             **(profile(rid, tags=raw.get("tags", []), config=raw.get("config"), pipeline=raw.get("pipeline_tag")) if modality == "text" else {}),
         }
 
@@ -331,7 +345,8 @@ class CatalogService:
             if filters and "vision" in filters.capabilities and (filters.capability_match == "all" or len(filters.capabilities) == 1):
                 queries = [entry for entry in queries if entry["pipeline_tag"] == "image-text-to-text"]
         elif modality in ("image", "video"):
-            queries = [{"pipeline_tag": p, "library": "diffusers", "limit": n(30)} for p in MODALITY_PIPELINES[modality]]
+            queries = [{"pipeline_tag": p, "library": "diffusers", "limit": n(50 if q else 30), "siblings": True}
+                       for p in MODALITY_PIPELINES[modality]]
         else:
             queries = [{"pipeline_tag": p, "limit": n(40)} for p in MODALITY_PIPELINES[modality]]
 
@@ -356,15 +371,68 @@ class CatalogService:
             more["v"] = True
         out, seen = [], set()
         order = 0
-        for batch in batches:
-            for raw in batch:
-                if modality in ("tts", "audio") and audio_category(raw) != modality:
-                    continue
-                if raw["id"] in seen:
-                    continue
-                seen.add(raw["id"])
-                out.append(self._from_hf(raw, modality, hw, order))
-                order += 1
+        merged = [raw for batch in batches for raw in batch]
+        if modality in ("image", "video") and sort in ("trending", "recommended") and len(batches) > 1:
+            # Interleave the per-task lists (text-to-video, image-to-video) so the popular match comes
+            # first instead of the whole first list; the stable sort keeps the Hub's order within ties.
+            merged.sort(key=lambda raw: -(raw.get("trendingScore") or 0))
+        for raw in merged:
+            if modality in ("tts", "audio") and audio_category(raw) != modality:
+                continue
+            if raw["id"] in seen:
+                continue
+            seen.add(raw["id"])
+            out.append(self._from_hf(raw, modality, hw, order))
+            order += 1
+        return await self._resolve_twins(out, modality, hw)
+
+    async def _resolve_twins(self, items: list[dict], modality: str, hw: HardwareProfile) -> list[dict]:
+        """Swap original-format releases for the diffusers version their publisher ships alongside.
+
+        ``Wan-AI/Wan2.1-VACE-14B`` can't be loaded by diffusers but ``Wan-AI/Wan2.1-VACE-14B-diffusers``
+        can. When both are listed the original is dropped; otherwise one cached lookup finds the twin.
+        Releases without one stay listed (unlaunchable) so searching for them still explains why.
+        """
+        listed = {it["id"].lower() for it in items}
+        lookups = []
+        drop = set()
+        for it in items:
+            if not it.pop("_single_file", False):
+                continue
+            if any(t.lower() in listed for t in hf.twin_ids(it["id"])):
+                drop.add(it["key"])
+            elif hf.twin_ids(it["id"]):
+                lookups.append(it)
+        found: dict[str, dict] = {}
+
+        async def look(it: dict) -> None:
+            async def fetch():
+                async with self._sem:
+                    return await hf.diffusers_twin(self.client, it["id"])
+            info = await self._cached(f"hf-twin:{it['id']}", 86400, fetch)
+            if info:
+                found[it["key"]] = info
+
+        if lookups:
+            try:
+                await asyncio.wait_for(asyncio.gather(*(look(it) for it in lookups[:16]), return_exceptions=True), timeout=6)
+            except asyncio.TimeoutError:
+                pass  # unresolved ones stay unlaunchable this time; finished lookups are cached
+        out = []
+        for it in items:
+            if it["key"] in drop:
+                continue
+            info = found.get(it["key"])
+            if info and info["id"].lower() not in listed:
+                twin = self._from_hf(info, modality, hw, it["_order"])
+                sel = hf.diffusers_files(info.get("siblings") or [])
+                twin.update(size=sel["size"], largest=sel["largest"], variant=sel["variant"],
+                            description=twin["description"] or f"Diffusers version of {it['id']}")
+                listed.add(info["id"].lower())
+                it = twin
+            elif info:
+                continue
+            out.append(it)
         return out
 
     async def _ollama_items(self, q: str, sort: str = "recommended", want: int = 40,
@@ -493,12 +561,11 @@ class CatalogService:
         revision = (it.get("options") or {}).get("revision")
         info = await self._cached(f"hf-info:{it['id']}:{revision or 'main'}", 6 * 3600, fetch)
         sib = info.get("siblings") or []
-        if it["engine"] in ("diffusers", "diffusers_video", "diffusers_world"):
+        if it["engine"] in DIFFUSERS_ENGINES:
             sel = hf.diffusers_files(sib)
-            has_index = any(s.get("rfilename") == "model_index.json" for s in sib)
-            if not has_index or sel["size"] == 0:
+            if not hf.is_pipeline(sib) or sel["size"] == 0:
                 it["engine"] = None
-                it["description"] = "Not a full diffusers pipeline (single-file checkpoint, LoRA or adapter)"
+                it["description"] = SINGLE_FILE_NOTE
                 return
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
         elif it["engine"] in ("transformers_asr", "transformers_tts", "transformers_audio", "transformers"):
@@ -676,7 +743,17 @@ class CatalogService:
             pick = max(ok, key=lambda v: v["size"]) if ok else (variants[0] if variants else None)
             if pick:
                 it["variant"], it["size"] = pick["id"], pick["size"]
-        elif it.get("engine") in ("diffusers", "diffusers_video", "diffusers_world"):
+        elif it.pop("_single_file", False) or (it.get("engine") in DIFFUSERS_ENGINES and not hf.is_pipeline(sib)):
+            twin = await self._cached(f"hf-twin:{repo}", 86400, lambda: hf.diffusers_twin(self.client, repo))
+            if twin and twin["id"].lower() != repo.lower():
+                detail = await self._hf_detail(twin["id"], hw)
+                detail["original"] = repo
+                detail["description"] = (f"{repo} is the original-format release, which diffusers can't load. "
+                                         f"This is its diffusers version, which is what KaggleUI runs.")
+                return detail
+            it["engine"], it["description"] = None, SINGLE_FILE_NOTE
+            it["size"] = hf.repo_size(sib) or it.get("size")
+        elif it.get("engine") in DIFFUSERS_ENGINES:
             sel = hf.diffusers_files(sib)
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
         elif it.get("engine") in ("vllm", "transformers", "transformers_asr", "transformers_tts", "transformers_audio"):

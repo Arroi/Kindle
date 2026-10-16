@@ -189,7 +189,9 @@ export interface SearchResult {
   items: CatalogItem[];
   sources: Record<string, string>;
   hardware: { accelerator: string; gpus: number; tpus: number; vram_free: number; hbm_free: number; ram_available: number; disk_free: number | null; fake: string | null };
-  counts?: { total: number; fits: number; shown: number; launchable?: number };
+  counts?: { total: number; fits: number; shown: number; launchable?: number; hidden_unsupported?: number };
+  /** Most-downloaded matches hidden because nothing here can run them (searches only). */
+  hidden_examples?: string[];
   has_more?: boolean;
 }
 

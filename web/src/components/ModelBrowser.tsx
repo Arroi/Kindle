@@ -104,7 +104,7 @@ export function ModelCard({
       <div className="mt-auto">
         {unsupported ? <p className="text-[12px] text-fg-3">View the published model and its requirements.</p> : <FitGauge fit={f} devices={devices} />}
         <div className="mt-2 flex items-start justify-between gap-2">
-          <p className="line-clamp-2 text-[12px] text-fg-2">{unsupported ? "This architecture needs a model-specific runner." : f.reasons[0]}</p>
+          <p className="line-clamp-2 text-[12px] text-fg-2">{unsupported ? (singleFile(item) ? "Single-file checkpoint. Look for its -Diffusers version." : "This architecture needs a model-specific runner.") : f.reasons[0]}</p>
           {f.warnings.length > 0 && (
             <span title={f.warnings.join("\n")} className="mt-0.5 shrink-0 text-tight">
               <AlertTriangle className="size-3.5" />
@@ -130,6 +130,11 @@ export function ModelCard({
       </div>
     </button>
   );
+}
+
+/** Original-format and single-file checkpoints: findable, but diffusers can't load them as a pipeline. */
+function singleFile(item: CatalogItem): boolean {
+  return !item.engine && item.description.startsWith("Single-file");
 }
 
 function ModelRow({ item, selected, onOpen, showContext }: { item: CatalogItem; selected: boolean; onOpen: () => void; showContext: boolean }) {
@@ -180,7 +185,7 @@ function ModelRow({ item, selected, onOpen, showContext }: { item: CatalogItem; 
             </>
           ) : (
             <>
-              <span className="text-[12px] font-medium text-fg-3">No runner yet</span>
+              <span className="text-[12px] font-medium text-fg-3">{singleFile(item) ? "Not a diffusers pipeline" : "No runner yet"}</span>
               <span className="mt-0.5 block text-[11.5px] text-fg-3">View model details</span>
             </>
           )}
@@ -320,6 +325,9 @@ export function ModelBrowser({
   const query = { ...liveQuery, data: liveQuery.data ?? preview.data,
     isLoading: liveQuery.isLoading && preview.isLoading, error: liveQuery.data || preview.data ? null : liveQuery.error };
   const loadingMore = query.isFetching && query.isPlaceholderData && (query.data?.items.length ?? 0) < limit;
+  // A search can match the model the user means (LTX-2.3) even when only conversions of it can launch.
+  const hiddenCount = !broaderCatalog && !unsupported && dq.trim() ? query.data?.counts?.hidden_unsupported ?? 0 : 0;
+  const hiddenExamples = query.data?.hidden_examples ?? [];
   const chips = activeFilters({ value: filters, onChange: setFilters, modality, facets: query.data?.facets });
 
   const sources = useMemo(() => {
@@ -406,6 +414,14 @@ export function ModelBrowser({
           <button type="button" onClick={resetFilters} className="flex items-center gap-1 text-fg-2 hover:text-fg"><X className="size-3" /> Reset filters</button>
         )}
       </div>
+      {hiddenCount > 0 && (
+        <p role="status" className="mb-4 max-w-[75ch] text-[12.5px] leading-relaxed text-fg-3">
+          {hiddenCount} more {hiddenCount === 1 ? "match" : "matches"} can't run here
+          {hiddenExamples.length > 0 && <>, including <span className="font-mono text-[11.5px] text-fg-2">{hiddenExamples.join(", ")}</span></>}.
+          {(modality === "image" || modality === "video") && " Single-file, GGUF and ComfyUI checkpoints need a diffusers version to launch."}{" "}
+          <button type="button" className="font-medium text-fg-2 underline underline-offset-2 hover:text-fg" onClick={() => setUnsupported(true)}>Show them</button>
+        </p>
+      )}
       {liveQuery.error && preview.data && <p role="status" className="mb-4 text-[12px] text-tight">Live catalog unavailable. Showing bundled results. <button className="underline" onClick={() => liveQuery.refetch()}>Retry</button></p>}
       {(sort === "params_asc" || sort === "params_desc") && (
         <p className="mb-4 text-[12px] text-fg-3">Sorted by the shown variant's parameter count. Unknown counts appear last. Load more to include more catalog results.</p>

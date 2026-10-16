@@ -50,7 +50,9 @@ def run_job(pipe, payload: dict, defaults: dict, outputs: str, report) -> str:
 
         img = Image.open(io.BytesIO(base64.b64decode(payload["image_b64"]))).convert("RGB")
         call["image"] = img.resize((call["width"], call["height"]))
-        if "video" in params and "image" not in params:
+        if "reference_images" in params and "image" not in params:
+            call["reference_images"] = [call.pop("image")]  # Wan VACE: subject/style reference
+        elif "video" in params and "image" not in params:
             call["video"] = [call.pop("image")]
     elif defaults.get("require_image"):
         raise ValueError("This world model requires a starting image. Upload one before generating.")

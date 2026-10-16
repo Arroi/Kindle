@@ -5,18 +5,19 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from pathlib import Path
 
 import httpx
 
 from ..capabilities import local_profile
 from ..catalog import hf
-from ..proc import ManagedProcess
+from ..proc import ManagedProcess, run_cmd
 from ..schemas import DeploymentSpec
 from ..util import free_port
 from .base import Backend, OpenAIUpstream, WorkerBackend
 from .context import DeployError, EngineContext
 from .download import hf_download, repo_files
-from .install import apt_install, ensure_venv, nvidia_lib_path, pip_install, worker_pythonpath
+from .install import apt_install, ensure_venv, nvidia_lib_path, pip_install, pip_upgrade, worker_pythonpath
 from .model_support import audio_adapter, audio_environment, model_config
 
 WORKER_BASE_REQS = ["fastapi", "uvicorn", "python-multipart", "pydantic", "pyyaml", "httpx"]
@@ -64,6 +65,15 @@ async def download_model(spec: DeploymentSpec, ctx: EngineContext, mode: str,
     revision = spec.options.get("revision")
     siblings = await repo_files(repo, revision=revision)
     if mode == "diffusers":
+        if not hf.is_pipeline(siblings):
+            async with httpx.AsyncClient() as client:
+                twin = await hf.diffusers_twin(client, repo)
+            if not twin:
+                raise DeployError(f"{repo} is a single-file or original-format checkpoint, not a diffusers pipeline "
+                                  "(it has no model_index.json). Deploy its diffusers version instead, usually a "
+                                  "repo ending in -Diffusers.")
+            ctx.log(f"{repo} isn't in diffusers format; using its diffusers version {twin['id']}")
+            repo, siblings, revision = twin["id"], twin.get("siblings") or [], None
         sel = hf.diffusers_files(siblings)
         if not sel["files"]:
             raise DeployError(f"{repo} isn't a diffusers pipeline repo")
@@ -77,6 +87,41 @@ async def download_model(spec: DeploymentSpec, ctx: EngineContext, mode: str,
     expected = sum(int(s.get("size") or 0) for s in siblings
                    if not allow or any(fnmatch.fnmatch(s["rfilename"], p) for p in allow))
     return await hf_download(ctx, repo, allow, expected or None, revision=revision), None
+
+
+def pipeline_class(model_path: str) -> str | None:
+    """The diffusers pipeline class a checkpoint names in its model_index.json."""
+    try:
+        name = json.loads((Path(model_path) / "model_index.json").read_text()).get("_class_name")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return name if isinstance(name, str) and name.isidentifier() else None
+
+
+async def ensure_pipeline_class(ctx: EngineContext, python: str, model_path: str) -> None:
+    """Upgrade diffusers when the checkpoint needs a pipeline newer than the installed version.
+
+    ``diffusers>=0.35`` is satisfied by whatever Kaggle preinstalled, but new families
+    (``QwenImage21Pipeline``, ``LTX2Pipeline``) only exist in recent releases or on GitHub main.
+    """
+    name = pipeline_class(model_path)
+    if not name:
+        return
+
+    async def available() -> bool:
+        # dir() lists lazily exported names without importing torch-heavy pipeline modules.
+        probe = f"import diffusers, sys; sys.exit(0 if {name!r} in dir(diffusers) else 3)"
+        return await run_cmd([python, "-c", probe], on_line=ctx.log) == 0
+
+    if await available():
+        return
+    for label, requirement in (("the latest diffusers release", "diffusers"),
+                               ("diffusers from GitHub", "diffusers @ git+https://github.com/huggingface/diffusers")):
+        ctx.log(f"{name} isn't in the installed diffusers; installing {label}")
+        await pip_upgrade(ctx, [requirement], python=python, label=f"{label} for {name}")
+        if await available():
+            return
+    raise DeployError(f"This checkpoint needs diffusers' {name}, which isn't in any diffusers version yet.")
 
 
 async def start_worker(ctx: EngineContext, *, python: str, module: str, model: str, engine: str,
@@ -144,6 +189,8 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
         extra_env["PYTHONPATH"] = worker_pythonpath(ctx)
     else:
         await pip_install(ctx, cfg["reqs"], label=cfg["label"])
+    if cfg["download"] == "diffusers":
+        await ensure_pipeline_class(ctx, python, model_path)
     if cfg.get("apt"):
         await apt_install(ctx, cfg["apt"])
     if cfg.get("nvidia_libs"):

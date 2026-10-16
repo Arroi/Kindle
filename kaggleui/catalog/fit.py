@@ -78,6 +78,7 @@ class Fit:
     score: float = 0.0
     suggest: dict = field(default_factory=dict)
     unproven: bool = False
+    obscure: bool = False
     """Engine options that make this fit work, e.g. ``{"offload": "model"}`` or ``{"quantize": "nf4"}``."""
 
     def to_dict(self) -> dict:
@@ -144,7 +145,7 @@ def assess(c: Candidate, hw: HardwareProfile) -> Fit:
     def done(verdict: str, placement: str, reasons: list[str], capacity: int | None = None,
              suggest: dict | None = None) -> Fit:
         f = Fit(verdict, need, capacity, placement, reasons, warnings, disk_needed, suggest=suggest or {},
-                unproven=c.experimental and not c.curated)
+                unproven=c.experimental and not c.curated, obscure=is_obscure(c))
         f.score = score(c, f)
         return f
 
@@ -234,6 +235,11 @@ def assess(c: Candidate, hw: HardwareProfile) -> Fit:
                 + busy_note, total)
 
 
+def is_obscure(c: Candidate) -> bool:
+    """Barely-used re-uploads and forks (a 33-download copy of LTX-Video) shouldn't outrank the original."""
+    return not (c.curated or c.attached) and c.downloads < 500 and c.likes < 5
+
+
 def score(c: Candidate, f: Fit) -> float:
     if f.verdict == "worst":
         return -1.0
@@ -256,12 +262,15 @@ def score(c: Candidate, f: Fit) -> float:
         s *= 0.7
     if c.experimental:
         s *= 0.85
+    if f.obscure:
+        s *= 0.5
     return round(s, 4)
 
 
 def rank(fits: list[Fit], top_n: int = 3) -> None:
-    """Promote the top-scoring comfortable fits to ``best``, in place (never unproven experimental ones)."""
-    good = sorted((f for f in fits if f.verdict == "good" and not f.unproven), key=lambda f: f.score, reverse=True)
+    """Promote the top-scoring comfortable fits to ``best``, in place (never unproven or obscure ones)."""
+    good = sorted((f for f in fits if f.verdict == "good" and not f.unproven and not f.obscure),
+                  key=lambda f: f.score, reverse=True)
     for f in good[:top_n]:
         f.verdict = "best"
 

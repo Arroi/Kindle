@@ -77,6 +77,23 @@ async def pip_install(ctx: EngineContext, requirements: list[str], *, python: st
         _done.add(key)
 
 
+async def pip_upgrade(ctx: EngineContext, requirements: list[str], *, python: str | None = None,
+                      label: str = "dependencies") -> None:
+    """Install the newest available version even when an older one already satisfies the engine."""
+    py = python or sys.executable
+    async with _lock(f"pip-upgrade:{py}"):
+        ctx.progress("installing", None, f"Installing {label}")
+        uv = shutil.which("uv")
+        if uv:
+            cmd = [uv, "pip", "install", "--upgrade", "--python", py, *requirements]
+        else:
+            cmd = [py, "-m", "pip", "install", "-q", "--upgrade", "--disable-pip-version-check", *requirements]
+        rc = await run_cmd(cmd, on_line=ctx.log)
+        if rc != 0:
+            raise DeployError(f"Installing {label} failed (exit {rc}). See the logs for details.")
+        importlib.invalidate_caches()
+
+
 async def ensure_uv(ctx: EngineContext) -> str:
     uv = shutil.which("uv") or (str(ctx.paths.bin / "uv") if (ctx.paths.bin / "uv").exists() else None)
     if uv:

@@ -34,7 +34,8 @@ def _headers() -> dict[str, str]:
 
 async def search(client: httpx.AsyncClient, *, pipeline_tag: str | None = None, query: str = "",
                  sort: str = "trending", limit: int = 30, library: str | None = None,
-                 tag_filter: str | None = None) -> list[dict]:
+                 tag_filter: str | None = None, siblings: bool = False) -> list[dict]:
+    """``siblings`` adds each repo's file names, enough to tell a diffusers pipeline from a single file."""
     params: list[tuple[str, str]] = [("limit", str(limit)), ("sort", SORTS.get(sort, "trendingScore"))]
     if pipeline_tag:
         params.append(("pipeline_tag", pipeline_tag))
@@ -44,7 +45,7 @@ async def search(client: httpx.AsyncClient, *, pipeline_tag: str | None = None, 
         params.append(("library", library))
     if tag_filter:
         params.append(("filter", tag_filter))
-    params += [("expand[]", e) for e in EXPAND]
+    params += [("expand[]", e) for e in EXPAND + (["siblings"] if siblings else [])]
     r = await client.get(f"{API}/models", params=params, headers=_headers(), timeout=20)
     r.raise_for_status()
     items = r.json()
@@ -60,7 +61,8 @@ async def model_info(client: httpx.AsyncClient, repo_id: str, revision: str | No
     path = f"{API}/models/{repo_id}"
     if revision:
         path += f"/revision/{quote(revision, safe='')}"
-    r = await client.get(path, params={"blobs": "true"}, headers=_headers(), timeout=20)
+    # Repo ids are case-insensitive on the Hub: a differently-cased id answers with a redirect.
+    r = await client.get(path, params={"blobs": "true"}, headers=_headers(), timeout=20, follow_redirects=True)
     r.raise_for_status()
     info = r.json()
     gg = info.get("gguf")
@@ -158,6 +160,34 @@ def gguf_variants(siblings: list[dict]) -> list[dict]:
         g["files"].append(name)
         g["size"] += int(s.get("size") or 0)
     return sorted(groups.values(), key=lambda g: g["size"])
+
+
+def is_pipeline(siblings: list[dict]) -> bool:
+    """A loadable diffusers pipeline has model_index.json at the root.
+
+    The Hub's ``diffusers`` library tag alone isn't enough: original releases (Wan-AI's ``Wan2.1-*``) and
+    single-file checkpoints (``Lightricks/LTX-2.3``) carry it too.
+    """
+    return any(s.get("rfilename") == "model_index.json" for s in siblings)
+
+
+def twin_ids(repo_id: str) -> list[str]:
+    """Where publishers put the diffusers conversion of an original-format release."""
+    if repo_id.lower().endswith("diffusers"):
+        return []
+    return [f"{repo_id}-Diffusers"]  # the Hub redirects other casings (Wan-AI uses both)
+
+
+async def diffusers_twin(client: httpx.AsyncClient, repo_id: str) -> dict | None:
+    """Model info for the publisher's diffusers version of ``repo_id``, if one exists."""
+    for candidate in twin_ids(repo_id):
+        try:
+            info = await model_info(client, candidate)
+        except httpx.HTTPError:
+            continue
+        if is_pipeline(info.get("siblings") or []):
+            return info
+    return None
 
 
 def diffusers_files(siblings: list[dict]) -> dict:
