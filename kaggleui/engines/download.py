@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -30,19 +31,26 @@ async def repo_files(repo_id: str, revision: str | None = None) -> list[dict]:
 
 
 async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str] | None = None,
-                      expected_size: int | None = None, revision: str | None = None) -> str:
-    """Download (part of) a repo into the shared HF cache and return the local snapshot path."""
-    cache = repo_cache_dir(repo_id)
+                      expected_size: int | None = None, revision: str | None = None,
+                      convert: list[str] | None = None, out_dir: Path | None = None) -> str:
+    """Download (part of) a repo into the shared HF cache and return the local snapshot path.
+
+    With ``convert``/``out_dir`` the files go to ``out_dir`` instead, and the listed .safetensors files
+    are stored as BF16 one at a time (see :func:`_convert_worker`), so disk never holds the fp32 copy.
+    """
+    cache = out_dir if convert else repo_cache_dir(repo_id)
     start_size = dir_size(cache)
     ctx.progress("downloading", 0.0 if expected_size else None,
                  f"Downloading {repo_id}" + (f" ({human_bytes(expected_size)})" if expected_size else ""))
-    ctx.log(f"Downloading {repo_id} → {cache}")
+    ctx.log(f"Downloading {repo_id} → {cache}" + (" (fp32 weights stored as BF16)" if convert else ""))
 
     # A thread keeps downloading after its asyncio task is cancelled and blocks
     # Python's executor shutdown. A supervised child can be stopped immediately.
     with tempfile.TemporaryDirectory(prefix=f"kui-download-{ctx.dep_id}-") as work:
         result_file = Path(work) / "result.json"
         spec = {"repo_id": repo_id, "allow_patterns": allow_patterns, "revision": revision}
+        if convert:
+            spec.update(convert=convert, out=str(out_dir))
         proc = ManagedProcess(f"download-{ctx.dep_id}", [
             sys.executable, "-m", "kaggleui.engines.download", json.dumps(spec), str(result_file),
         ], env=ctx.env(), on_line=ctx.log)
@@ -50,10 +58,12 @@ async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str
         try:
             await proc.start()
             last_report = 0.0
+            got = 0
             while proc.running:
                 await asyncio.sleep(0.5)
                 if expected_size and time.monotonic() - last_report > 1.0:
-                    got = max(dir_size(cache) - start_size, 0)
+                    # Converted files shrink as they land, so report the high-water mark.
+                    got = max(dir_size(cache) - start_size, got)
                     frac = min(got / expected_size, 0.99)
                     ctx.progress("downloading", frac,
                                  f"Downloading {repo_id}: {human_bytes(got)} / {human_bytes(expected_size)}")
@@ -79,8 +89,68 @@ async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str
     return path
 
 
+def to_bf16(src: Path, dst: Path) -> None:
+    """Rewrite one .safetensors file with float32 tensors as bfloat16, a tensor at a time."""
+    import torch
+    from safetensors import safe_open
+    from safetensors.torch import save_file
+
+    tensors = {}
+    with safe_open(str(src), framework="pt") as f:
+        metadata = f.metadata()
+        for key in f.keys():
+            tensor = f.get_tensor(key)
+            tensors[key] = tensor.to(torch.bfloat16) if tensor.dtype == torch.float32 else tensor
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    partial = dst.with_name(dst.name + ".partial")
+    save_file(tensors, str(partial), metadata=metadata)
+    partial.replace(dst)
+
+
+def _convert_worker(spec: dict) -> str:
+    """Download a pipeline into ``out``, storing the ``convert`` files as BF16.
+
+    Each fp32 file is fetched, rewritten and deleted before the next one starts (two at a time), so peak
+    disk is the BF16 pipeline plus two fp32 shards. A finished folder is reused on restart.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from huggingface_hub import hf_hub_download, snapshot_download
+
+    out = Path(spec["out"])
+    done = out / ".kaggleui-complete"
+    if done.exists():
+        return str(out)
+    token = os.environ.get("HF_TOKEN") or None
+    convert = set(spec["convert"])
+    rest = [f for f in spec.get("allow_patterns") or [] if f not in convert]
+    if rest:
+        snapshot_download(repo_id=spec["repo_id"], revision=spec.get("revision"), allow_patterns=rest,
+                          local_dir=str(out), max_workers=8, token=token)
+    incoming = out / ".incoming"
+
+    def one(name: str) -> None:
+        target = out / name
+        if target.exists():
+            return
+        src = Path(hf_hub_download(spec["repo_id"], name, revision=spec.get("revision"), local_dir=str(incoming),
+                                   token=token))
+        to_bf16(src, target)
+        src.unlink(missing_ok=True)
+        print(f"Stored {name} as BF16", flush=True)
+
+    with ThreadPoolExecutor(2) as pool:
+        list(pool.map(one, sorted(convert)))
+    shutil.rmtree(incoming, ignore_errors=True)
+    done.touch()
+    return str(out)
+
+
 def _worker(spec: dict, result_file: Path) -> None:
     try:
+        if spec.get("convert"):
+            result_file.write_text(json.dumps({"path": _convert_worker(spec)}))
+            return
         from huggingface_hub import snapshot_download
 
         kwargs = {"repo_id": spec["repo_id"], "max_workers": 8}

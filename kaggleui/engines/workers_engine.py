@@ -13,7 +13,7 @@ from ..capabilities import local_profile
 from ..catalog import hf
 from ..proc import ManagedProcess, run_cmd
 from ..schemas import DeploymentSpec
-from ..util import free_port
+from ..util import free_port, human_bytes
 from .base import Backend, OpenAIUpstream, WorkerBackend
 from .context import DeployError, EngineContext
 from .download import hf_download, repo_files
@@ -85,6 +85,19 @@ async def download_model(spec: DeploymentSpec, ctx: EngineContext, mode: str,
         sel = hf.diffusers_files(siblings)
         if not sel["files"]:
             raise DeployError(f"{repo} isn't a diffusers pipeline repo")
+        plan = None
+        if spec.options.get("weights") != "original":
+            try:
+                async with httpx.AsyncClient() as client:
+                    plan = await hf.bf16_plan(client, repo, siblings, revision)
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                ctx.log(f"Couldn't read weight precision ({exc}); downloading the weights as published")
+        if plan:
+            ctx.log(f"Storing fp32 weights as BF16 saves {human_bytes(plan['saved'])} of disk")
+            out = ctx.paths.models / "bf16" / ((repo + (f"@{revision}" if revision else "")).replace("/", "--"))
+            path = await hf_download(ctx, repo, sel["files"], plan["size"], revision=revision,
+                                     convert=plan["files"], out_dir=out)
+            return path, spec.model.variant or sel["variant"]
         path = await hf_download(ctx, repo, sel["files"], sel["size"], revision=revision)
         return path, spec.model.variant or sel["variant"]
     if mode == "transformers":

@@ -99,6 +99,7 @@ export function ModelCard({
           </Chip>
         ) : null}
         <CapabilityTags capabilities={item.capabilities} />
+        {item.bf16_saved ? <Chip>BF16 · saves {bytes(item.bf16_saved)}</Chip> : null}
         {item.experimental && <Chip tone="warn">experimental</Chip>}
       </div>
       <div className="mt-auto">
@@ -164,6 +165,7 @@ function ModelRow({ item, selected, onOpen, showContext }: { item: CatalogItem; 
         </div>
         <div>
           <span className="block font-mono text-[13px] text-fg-2">{bytes(item.size)}</span>
+          {item.bf16_saved ? <span className="block font-mono text-[10.5px] text-fg-3" title={`Published as fp32. KaggleUI stores it as BF16, saving ${bytes(item.bf16_saved)}.`}>as BF16</span> : null}
           <span className="text-[11.5px] text-fg-3 @[760px]:hidden">Download</span>
         </div>
         {showContext && (

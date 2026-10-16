@@ -163,6 +163,8 @@ export interface CatalogItem {
   description: string;
   params: number | null;
   size: number | null;
+  /** Bytes saved by storing the published fp32 weights as BF16 (already subtracted from size). */
+  bf16_saved?: number;
   variant: string | null;
   variants: Variant[];
   downloads: number;

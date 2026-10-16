@@ -426,9 +426,7 @@ class CatalogService:
             info = found.get(it["key"])
             if info and info["id"].lower() not in listed:
                 twin = self._from_hf(info, modality, hw, it["_order"])
-                sel = hf.diffusers_files(info.get("siblings") or [])
-                twin.update(size=sel["size"], largest=sel["largest"], variant=sel["variant"],
-                            description=twin["description"] or f"Diffusers version of {it['id']}")
+                twin["description"] = twin["description"] or f"Diffusers version of {it['id']}"  # sized by _enrich
                 listed.add(info["id"].lower())
                 it = twin
             elif info:
@@ -569,6 +567,7 @@ class CatalogService:
                 it["description"] = SINGLE_FILE_NOTE
                 return
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
+            await self._apply_bf16(it, sib, revision)
         elif it["engine"] == "kokoro" and hf.legacy_kokoro(sib):
             it["engine"], it["description"] = None, LEGACY_KOKORO_NOTE
         elif it["engine"] in ("transformers_asr", "transformers_tts", "transformers_audio", "transformers"):
@@ -608,6 +607,22 @@ class CatalogService:
                 it["size"] = primary_size + extra
         else:
             it["size"] = hf.repo_size(sib) or None
+
+    async def _apply_bf16(self, it: dict, siblings: list[dict], revision: str | None) -> None:
+        """Size fp32 pipelines as the BF16 copy KaggleUI downloads (half the disk, the VRAM loaders use)."""
+        if (it.get("options") or {}).get("weights") == "original":
+            return
+
+        async def fetch():
+            async with self._sem:
+                try:
+                    return await hf.bf16_plan(self.client, it["id"], siblings, revision)
+                except (httpx.HTTPError, ValueError, KeyError):
+                    return None
+
+        plan = await self._cached(f"hf-bf16:{it['id']}:{revision or 'main'}", 86400, fetch)
+        if plan:
+            it["size"], it["largest"], it["bf16_saved"] = plan["size"], plan["largest"], plan["saved"]
 
     # -- fit ----------------------------------------------------------------------------------
     def _planned_ctx(self, it: dict) -> int:
@@ -762,6 +777,7 @@ class CatalogService:
         elif it.get("engine") in DIFFUSERS_ENGINES:
             sel = hf.diffusers_files(sib)
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
+            await self._apply_bf16(it, sib, revision)
         elif it.get("engine") in ("vllm", "transformers", "transformers_asr", "transformers_tts", "transformers_audio"):
             it["size"] = hf.transformers_files(sib)["weights"] or it.get("size")
         else:

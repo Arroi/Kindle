@@ -295,6 +295,11 @@ export function ModelDetail({
               </li>
             ))}
           </ul>
+          {item.bf16_saved ? (
+            <p className="mt-3 text-[12.5px] text-fg-2">
+              Published in fp32. KaggleUI stores the weights as BF16 while downloading, which saves {bytes(item.bf16_saved)} of disk. Generation quality is unchanged: the runner loads 16-bit weights either way.
+            </p>
+          ) : null}
           {Object.keys(item.fit.suggest ?? {}).length > 0 && (
             <div className="mt-3 font-mono text-[11px] text-fg-3">auto-applied: {Object.entries(item.fit.suggest).map(([k, v]) => `${k}=${v}`).join(", ")}</div>
           )}

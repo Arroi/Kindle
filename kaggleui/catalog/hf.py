@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
+import struct
 from datetime import datetime
 from urllib.parse import quote
 
@@ -236,8 +238,65 @@ def diffusers_files(siblings: list[dict]) -> dict:
         "files": [f["rfilename"] for f in chosen],
         "size": total,
         "largest": max(comp_sizes.values()) if comp_sizes else total,
+        "components": comp_sizes,
         "variant": "fp16" if any_fp16 else None,
     }
+
+
+def bf16_files(sel: dict) -> list[str]:
+    """Pipeline weights worth storing as BF16: everything but the VAE (small, and best kept at full precision)
+    and files that already come as an fp16 variant."""
+    return [f for f in sel["files"] if f.endswith(".safetensors") and not f.split("/", 1)[0].startswith("vae")
+            and ".fp16." not in f]
+
+
+async def safetensors_dtypes(client: httpx.AsyncClient, repo_id: str, filename: str,
+                             revision: str | None = None) -> dict[str, int]:
+    """Bytes per dtype in one .safetensors file, read from its header with two small range requests."""
+    url = f"https://huggingface.co/{repo_id}/resolve/{quote(revision or 'main', safe='')}/{quote(filename)}"
+    r = await client.get(url, headers={**_headers(), "Range": "bytes=0-7"}, follow_redirects=True, timeout=15)
+    r.raise_for_status()
+    length = struct.unpack("<Q", r.content[:8])[0]
+    if not 0 < length <= 64 * 1024**2:
+        raise ValueError(f"unexpected safetensors header size {length}")
+    r = await client.get(url, headers={**_headers(), "Range": f"bytes=8-{7 + length}"}, follow_redirects=True, timeout=30)
+    r.raise_for_status()
+    out: dict[str, int] = {}
+    for name, entry in json.loads(r.content).items():
+        if name != "__metadata__":
+            start, end = entry["data_offsets"]
+            out[entry["dtype"]] = out.get(entry["dtype"], 0) + end - start
+    return out
+
+
+async def bf16_plan(client: httpx.AsyncClient, repo_id: str, siblings: list[dict],
+                    revision: str | None = None) -> dict | None:
+    """What storing a diffusers pipeline's fp32 weights as BF16 saves.
+
+    Official Wan and LTX repos ship 32-bit weights (the 14B transformers are 57-63 GB) although every loader
+    casts them to 16 bits, so they download and are sized at twice what they occupy in memory. One header per
+    component tells its precision; ``size``/``largest`` are what the pipeline takes after conversion.
+    """
+    sel = diffusers_files(siblings)
+    convert = set(bf16_files(sel))
+    if not convert:
+        return None
+    sizes = {s["rfilename"]: int(s.get("size") or 0) for s in siblings}
+    by_comp: dict[str, list[str]] = {}
+    for f in sorted(convert):
+        by_comp.setdefault(f.split("/", 1)[0], []).append(f)
+    shares = await asyncio.gather(*(safetensors_dtypes(client, repo_id, files[0], revision)
+                                    for files in by_comp.values()))
+    saved = 0
+    comp_saved: dict[str, int] = {}
+    for (comp, files), dtypes in zip(by_comp.items(), shares):
+        fp32 = dtypes.get("F32", 0) / max(sum(dtypes.values()), 1)
+        comp_saved[comp] = int(sum(sizes.get(f, 0) for f in files) * fp32 / 2)
+        saved += comp_saved[comp]
+    if saved < 256 * 1024**2:
+        return None
+    largest = max(size - comp_saved.get(comp, 0) for comp, size in sel["components"].items())
+    return {"files": sorted(convert), "size": sel["size"] - saved, "largest": largest, "saved": saved}
 
 
 def transformers_files(siblings: list[dict]) -> dict:

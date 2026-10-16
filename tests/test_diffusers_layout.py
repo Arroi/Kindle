@@ -60,7 +60,7 @@ async def test_unlisted_twin_is_found_and_swapped_in(catalog, monkeypatch):
     monkeypatch.setattr(hf, "search", AsyncMock(return_value=[listing("Wan-AI/Wan2.1-VACE-1.3B", ORIGINAL_FILES)]))
 
     async def info(client, repo, revision=None):
-        assert repo == "Wan-AI/Wan2.1-VACE-1.3B-Diffusers"
+        assert repo.lower() == "wan-ai/wan2.1-vace-1.3b-diffusers"  # twin probe, then sizing by canonical id
         return {**listing("Wan-AI/Wan2.1-VACE-1.3B-diffusers", PIPELINE_FILES), "siblings": PIPELINE_FILES}
 
     monkeypatch.setattr(hf, "model_info", info)
