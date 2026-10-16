@@ -94,6 +94,16 @@ async def pip_upgrade(ctx: EngineContext, requirements: list[str], *, python: st
         importlib.invalidate_caches()
 
 
+async def pip_uninstall(ctx: EngineContext, packages: list[str], *, python: str | None = None) -> None:
+    py = python or sys.executable
+    uv = shutil.which("uv")
+    cmd = [uv, "pip", "uninstall", "--python", py, *packages] if uv else [py, "-m", "pip", "uninstall", "-y", *packages]
+    ctx.progress("installing", None, f"Removing {', '.join(packages)}")
+    if await run_cmd(cmd, on_line=ctx.log) != 0:
+        raise DeployError(f"Removing {', '.join(packages)} failed. See the logs for details.")
+    importlib.invalidate_caches()
+
+
 async def ensure_uv(ctx: EngineContext) -> str:
     uv = shutil.which("uv") or (str(ctx.paths.bin / "uv") if (ctx.paths.bin / "uv").exists() else None)
     if uv:

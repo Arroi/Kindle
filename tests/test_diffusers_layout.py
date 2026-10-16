@@ -147,29 +147,67 @@ def test_pipeline_class_is_read_from_model_index(tmp_path):
     assert pipeline_class(str(tmp_path / "missing")) is None
 
 
+def fake_python(outcomes: list[str]):
+    """run_cmd stand-in: each import check prints the next outcome ('' = success)."""
+    calls: list = []
+
+    async def run_cmd(cmd, on_line=None, **_):
+        calls.append(cmd)
+        out = outcomes.pop(0)
+        for line in out.splitlines():
+            on_line(line)
+        return 1 if out else 0
+
+    return run_cmd, calls
+
+
 async def test_missing_pipeline_class_upgrades_diffusers(tmp_path, paths, hw, monkeypatch):
     (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "QwenImage21Pipeline"}))
-    checks = iter([3, 0])  # missing before the upgrade, present after
-    probes: list = []
-
-    async def run_cmd(cmd, **_):
-        probes.append(cmd)
-        return next(checks)
-
+    run_cmd, calls = fake_python(["ImportError: cannot import name 'QwenImage21Pipeline' from 'diffusers'", ""])
     upgrade = AsyncMock()
     monkeypatch.setattr(workers_engine, "run_cmd", run_cmd)
     monkeypatch.setattr(workers_engine, "pip_upgrade", upgrade)
     await ensure_pipeline_class(context(paths, hw, []), "/py", str(tmp_path))
     assert upgrade.await_args.args[1] == ["diffusers"]
-    assert "QwenImage21Pipeline" in probes[0][-1]
+    assert calls[0][-1] == "from diffusers import QwenImage21Pipeline"
+
+
+async def test_old_torchao_is_upgraded_then_removed(tmp_path, paths, hw, monkeypatch):
+    """Kaggle's torchao lacks FqnToConfig, which recent diffusers imports whenever torchao is present."""
+    (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "WanPipeline"}))
+    broken = ("RuntimeError: Failed to import diffusers.pipelines.pipeline_utils ... cannot import name "
+              "'FqnToConfig' from 'torchao.quantization'")
+    run_cmd, _ = fake_python([broken, broken, ""])
+    upgrade, uninstall = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(workers_engine, "run_cmd", run_cmd)
+    monkeypatch.setattr(workers_engine, "pip_upgrade", upgrade)
+    monkeypatch.setattr(workers_engine, "pip_uninstall", uninstall)
+    await ensure_pipeline_class(context(paths, hw, []), "/py", str(tmp_path))
+    assert upgrade.await_args.args[1] == ["torchao"]
+    assert uninstall.await_args.args[1] == ["torchao"]
 
 
 async def test_pipeline_class_falls_back_to_github_then_explains(tmp_path, paths, hw, monkeypatch):
     (tmp_path / "model_index.json").write_text(json.dumps({"_class_name": "FuturePipeline"}))
-    monkeypatch.setattr(workers_engine, "run_cmd", AsyncMock(return_value=3))
+    missing = "ImportError: cannot import name 'FuturePipeline' from 'diffusers'"
+    run_cmd, _ = fake_python([missing] * 3)
+    monkeypatch.setattr(workers_engine, "run_cmd", run_cmd)
     upgrade = AsyncMock()
     monkeypatch.setattr(workers_engine, "pip_upgrade", upgrade)
     with pytest.raises(DeployError, match="FuturePipeline"):
         await ensure_pipeline_class(context(paths, hw, []), "/py", str(tmp_path))
     assert [c.args[1][0] for c in upgrade.await_args_list] == [
         "diffusers", "diffusers @ git+https://github.com/huggingface/diffusers"]
+
+
+def test_legacy_kokoro_uploads_are_detected():
+    assert hf.legacy_kokoro([{"rfilename": "kokoro-v0_19.pth"}, {"rfilename": "config.json"}])
+    assert not hf.legacy_kokoro([{"rfilename": "kokoro-v1_0.pth"}, {"rfilename": "voices/af_heart.pt"}])
+
+
+async def test_legacy_kokoro_deploy_explains(paths, hw, tmp_path, monkeypatch):
+    (tmp_path / "config.json").write_text(json.dumps({"decoder": {"type": "istftnet"}}))
+    monkeypatch.setattr(workers_engine, "download_model", AsyncMock(return_value=(str(tmp_path), None)))
+    spec = DeploymentSpec(modality="tts", model={"source": "hf", "id": "MaziyarPanahi/Kokoro-82M", "engine": "kokoro"})
+    with pytest.raises(DeployError, match="hexgrad/Kokoro-82M"):
+        await workers_engine.deploy(spec, context(paths, hw, []))

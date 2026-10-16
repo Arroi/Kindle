@@ -171,6 +171,12 @@ def is_pipeline(siblings: list[dict]) -> bool:
     return any(s.get("rfilename") == "model_index.json" for s in siblings)
 
 
+def legacy_kokoro(siblings: list[dict]) -> bool:
+    """Re-uploads of Kokoro v0.19 (``kokoro-v0_19.pth``) can't be loaded by the kokoro library, which reads v1.0."""
+    names = [s.get("rfilename", "") for s in siblings]
+    return any("v0_19" in n for n in names) and not any("v1_" in n for n in names)
+
+
 def twin_ids(repo_id: str) -> list[str]:
     """Where publishers put the diffusers conversion of an original-format release."""
     if repo_id.lower().endswith("diffusers"):

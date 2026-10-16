@@ -26,6 +26,7 @@ from .resolve import ENGINE_LABELS, MODALITY_PIPELINES, resolve_hf
 CURATED_PATH = Path(__file__).with_name("curated.yaml")
 VERDICT_ORDER = {"best": 0, "good": 1, "tight": 2, "worst": 3}
 DIFFUSERS_ENGINES = ("diffusers", "diffusers_video", "diffusers_world")
+LEGACY_KOKORO_NOTE = "Old Kokoro v0.19 weights. The kokoro library loads v1.0: use hexgrad/Kokoro-82M."
 SINGLE_FILE_NOTE = ("Single-file or original-format checkpoint (ComfyUI style), not a diffusers pipeline. "
                     "Look for a diffusers version of it, usually a repo ending in -Diffusers.")
 
@@ -568,6 +569,8 @@ class CatalogService:
                 it["description"] = SINGLE_FILE_NOTE
                 return
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
+        elif it["engine"] == "kokoro" and hf.legacy_kokoro(sib):
+            it["engine"], it["description"] = None, LEGACY_KOKORO_NOTE
         elif it["engine"] in ("transformers_asr", "transformers_tts", "transformers_audio", "transformers"):
             it["size"] = hf.transformers_files(sib)["weights"] or None
         elif it["engine"] == "world_recipe" and it.get("recipe"):
@@ -752,6 +755,9 @@ class CatalogService:
                                          f"This is its diffusers version, which is what KaggleUI runs.")
                 return detail
             it["engine"], it["description"] = None, SINGLE_FILE_NOTE
+            it["size"] = hf.repo_size(sib) or it.get("size")
+        elif it.get("engine") == "kokoro" and hf.legacy_kokoro(sib):
+            it["engine"], it["description"] = None, LEGACY_KOKORO_NOTE
             it["size"] = hf.repo_size(sib) or it.get("size")
         elif it.get("engine") in DIFFUSERS_ENGINES:
             sel = hf.diffusers_files(sib)

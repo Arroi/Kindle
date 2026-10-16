@@ -17,7 +17,15 @@ from ..util import free_port
 from .base import Backend, OpenAIUpstream, WorkerBackend
 from .context import DeployError, EngineContext
 from .download import hf_download, repo_files
-from .install import apt_install, ensure_venv, nvidia_lib_path, pip_install, pip_upgrade, worker_pythonpath
+from .install import (
+    apt_install,
+    ensure_venv,
+    nvidia_lib_path,
+    pip_install,
+    pip_uninstall,
+    pip_upgrade,
+    worker_pythonpath,
+)
 from .model_support import audio_adapter, audio_environment, model_config
 
 WORKER_BASE_REQS = ["fastapi", "uvicorn", "python-multipart", "pydantic", "pyyaml", "httpx"]
@@ -98,30 +106,53 @@ def pipeline_class(model_path: str) -> str | None:
     return name if isinstance(name, str) and name.isidentifier() else None
 
 
+DIFFUSERS_SOURCES = [("the latest diffusers release", "diffusers"),
+                     ("diffusers from GitHub", "diffusers @ git+https://github.com/huggingface/diffusers")]
+
+
+async def import_check(python: str, module: str, name: str) -> tuple[bool, str]:
+    """Import ``name`` from ``module`` in a fresh interpreter; returns (ok, output)."""
+    lines: list[str] = []
+    rc = await run_cmd([python, "-c", f"from {module} import {name}"], on_line=lines.append)
+    return rc == 0, "\n".join(lines)
+
+
 async def ensure_pipeline_class(ctx: EngineContext, python: str, model_path: str) -> None:
-    """Upgrade diffusers when the checkpoint needs a pipeline newer than the installed version.
+    """Make sure diffusers can import the checkpoint's pipeline before a worker tries to load it.
 
-    ``diffusers>=0.35`` is satisfied by whatever Kaggle preinstalled, but new families
-    (``QwenImage21Pipeline``, ``LTX2Pipeline``) only exist in recent releases or on GitHub main.
+    Repairs the two ways a Kaggle environment breaks: a diffusers older than the pipeline
+    (``QwenImage21Pipeline``), and a recent diffusers next to Kaggle's older torchao, which makes every
+    pipeline fail with ``cannot import name 'FqnToConfig' from 'torchao.quantization'``.
     """
-    name = pipeline_class(model_path)
-    if not name:
-        return
-
-    async def available() -> bool:
-        # dir() lists lazily exported names without importing torch-heavy pipeline modules.
-        probe = f"import diffusers, sys; sys.exit(0 if {name!r} in dir(diffusers) else 3)"
-        return await run_cmd([python, "-c", probe], on_line=ctx.log) == 0
-
-    if await available():
-        return
-    for label, requirement in (("the latest diffusers release", "diffusers"),
-                               ("diffusers from GitHub", "diffusers @ git+https://github.com/huggingface/diffusers")):
-        ctx.log(f"{name} isn't in the installed diffusers; installing {label}")
-        await pip_upgrade(ctx, [requirement], python=python, label=f"{label} for {name}")
-        if await available():
+    name = pipeline_class(model_path) or "DiffusionPipeline"
+    sources = list(DIFFUSERS_SOURCES)
+    torchao_steps = ["upgrade", "remove"]
+    output = ""
+    for _ in range(len(sources) + len(torchao_steps) + 1):
+        ok, output = await import_check(python, "diffusers", name)
+        if ok:
             return
-    raise DeployError(f"This checkpoint needs diffusers' {name}, which isn't in any diffusers version yet.")
+        if "torchao" in output and torchao_steps:
+            step = torchao_steps.pop(0)
+            ctx.log(f"diffusers can't import with the installed torchao; {step} torchao")
+            if step == "upgrade":
+                try:
+                    await pip_upgrade(ctx, ["torchao"], python=python, label="a torchao that matches diffusers")
+                except DeployError as exc:
+                    ctx.log(str(exc))
+            else:
+                # KaggleUI never uses torchao; diffusers only imports it when it's installed.
+                await pip_uninstall(ctx, ["torchao"], python=python)
+        elif f"cannot import name '{name}'" in output and sources:
+            label, requirement = sources.pop(0)
+            ctx.log(f"{name} isn't in the installed diffusers; installing {label}")
+            await pip_upgrade(ctx, [requirement], python=python, label=f"{label} for {name}")
+        else:
+            break
+    if f"cannot import name '{name}'" in output:
+        raise DeployError(f"This checkpoint needs diffusers' {name}, which isn't in any diffusers version yet.")
+    last = next((line for line in reversed(output.splitlines()) if line.strip()), "unknown error")
+    raise DeployError(f"diffusers can't load {name}: {last}")
 
 
 async def start_worker(ctx: EngineContext, *, python: str, module: str, model: str, engine: str,
@@ -177,6 +208,9 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
         raise DeployError("This Cosmos runtime requires an Ampere or newer GPU with bf16 support. "
                           "Kaggle T4 and P100 GPUs aren't supported by this checkpoint.")
     model_path, variant = await download_model(spec, ctx, cfg["download"], cfg.get("allow"))
+    if engine == "kokoro" and "vocab" not in model_config(model_path):
+        raise DeployError(f"{spec.model.id} holds the old Kokoro v0.19 weights, which the kokoro library no longer "
+                          "loads. Deploy hexgrad/Kokoro-82M (v1.0) instead.")
     adapter = audio_adapter(model_config(model_path)) if engine in ("transformers_tts", "transformers_audio") else None
     if adapter == "midasheng" and spec.options.get("trust_remote_code") is not True:
         raise DeployError("MiDashengLM-Gen requires its repository's Python code. In Customize → Settings, "
