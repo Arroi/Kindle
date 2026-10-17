@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import sys
 import time
@@ -15,7 +16,8 @@ from ..proc import ManagedProcess
 from ..util import dir_size
 
 PREFIX = "KUI_IMPORT "
-ACTIVE = {"queued", "downloading", "extracting", "scanning"}
+ACTIVE = {"queued", "downloading", "extracting", "scanning", "abliterating"}
+REPO_ID = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")
 
 
 def parse_source(url: str, kind: str = "auto", revision: str | None = None) -> dict:
@@ -56,8 +58,10 @@ def saved_models(root: Path | None) -> list[dict]:
 
 
 class ModelImports:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, envs: Path | None = None):
         self.root = root
+        self.envs = envs or root.parent.parent / "envs"
+        self._gpu = asyncio.Semaphore(1)  # one abliteration at a time: it needs the GPUs
         root.mkdir(parents=True, exist_ok=True)
         self.jobs: dict[str, dict] = {}
         self.tasks: dict[str, asyncio.Task] = {}
@@ -92,14 +96,35 @@ class ModelImports:
         self.tasks[ident] = asyncio.create_task(self._run(job))
         return job
 
+    def abliterate(self, repo: str, method: str = "quick", trials: int = 40, quantize: bool = False,
+                   name: str = "", revision: str | None = None) -> dict:
+        """Queue a job that removes a text model's refusal direction and imports the result."""
+        repo = repo.strip().removeprefix("https://huggingface.co/").strip("/")
+        if not REPO_ID.match(repo):
+            raise ValueError("Enter a Hugging Face model id like Qwen/Qwen3-4B-Instruct-2507")
+        if method not in ("quick", "heretic"):
+            raise ValueError("Method must be quick or heretic")
+        ident = uuid.uuid4().hex[:16]
+        job = {"id": ident, "kind": "abliterate", "url": f"https://huggingface.co/{repo}", "repo": repo,
+               "revision": revision, "method": method, "trials": max(10, min(int(trials), 300)),
+               "quantize": bool(quantize), "name": name.strip()[:120] or f"{repo.split('/')[-1]}-abliterated",
+               "created": time.time(), "status": "queued", "progress": None, "bytes": 0,
+               "message": "Waiting for the GPUs", "models": []}
+        (self.root / ident).mkdir()
+        self.jobs[ident] = job
+        self._save(job)
+        self.tasks[ident] = asyncio.create_task(self._run(job))
+        return job
+
     async def _run(self, job: dict) -> None:
         folder = self.root / job["id"]
         data = folder / "files"
         result = folder / "result.json"
         proc = None
         try:
-            async with self._sem:
-                job.update(status="downloading", message="Starting download")
+            abliterate = job.get("kind") == "abliterate"
+            async with (self._gpu if abliterate else self._sem):
+                job.update(status="downloading", message="Starting download" if not abliterate else "Starting")
                 self._save(job)
 
                 def on_line(line: str) -> None:
@@ -110,8 +135,10 @@ class ModelImports:
                         except ValueError:
                             pass
 
-                proc = ManagedProcess("import-" + job["id"], [sys.executable, "-m", "kaggleui.catalog.import_worker",
-                                      json.dumps(job), str(data), str(result)], env={"PYTHONUNBUFFERED": "1"}, on_line=on_line)
+                worker = "kaggleui.catalog.abliterate_worker" if abliterate else "kaggleui.catalog.import_worker"
+                spec = {**job, "envs": str(self.envs)} if abliterate else job
+                proc = ManagedProcess("import-" + job["id"], [sys.executable, "-m", worker,
+                                      json.dumps(spec), str(data), str(result)], env={"PYTHONUNBUFFERED": "1"}, on_line=on_line)
                 await proc.start()
                 while proc.running:
                     await asyncio.sleep(2)
@@ -122,7 +149,7 @@ class ModelImports:
                     raise ValueError(answer["error"])
                 job.update(status="complete", progress=1, models=answer["models"], message=answer["message"])
         except asyncio.CancelledError:
-            job.update(status="cancelled", progress=None, message="Download cancelled")
+            job.update(status="cancelled", progress=None, message="Cancelled")
         except Exception as exc:
             job.update(status="error", progress=None, message=str(exc))
         finally:

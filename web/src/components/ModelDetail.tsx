@@ -391,6 +391,11 @@ export function ModelDetail({
           <span className="mr-auto text-[13px] text-fg-3">This architecture needs a model-specific runner.</span>
         ) : (
           <>
+            {item.source === "hf" && item.modality === "text" && item.engine !== "ollama" && (
+              <Link to="/imports" state={{ abliterate: item.id }} className="mr-auto text-[13px] text-fg-2 underline-offset-4 hover:text-fg hover:underline">
+                Abliterate…
+              </Link>
+            )}
             {choice && secondary?.(choice)}
             <button
               disabled={!choice || busy}

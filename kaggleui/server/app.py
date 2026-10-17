@@ -358,6 +358,16 @@ def create_app(state: AppState) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @app.post("/_kui/api/catalog/abliterate")
+    async def abliterate_model(request: Request, body: dict = Body(...)):
+        require_admin(request)
+        try:
+            return state.imports.abliterate(str(body.get("repo") or ""), str(body.get("method") or "quick"),
+                                            int(body.get("trials") or 40), bool(body.get("quantize")),
+                                            str(body.get("name") or ""), str(body.get("revision") or "") or None)
+        except (ValueError, TypeError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+
     @app.get("/_kui/api/catalog/imports/{ident}/models/{index}")
     async def customize_import(request: Request, ident: str, index: int):
         require_admin(request)

@@ -46,7 +46,7 @@ class AppState:
         self.auth = Auth(self.paths.home / "session.key")
         self.bus = EventBus()
         self.probe = Probe(self.paths, fake=self.fake_hw)
-        self.imports = ModelImports(self.paths.models / "imports")
+        self.imports = ModelImports(self.paths.models / "imports", self.paths.envs)
         self.catalog = CatalogService(self.probe.snapshot, imports_root=self.imports.root)
         self.tunnels = TunnelManager(self.paths, on_change=lambda t: self.bus.publish("tunnel", t.info()))
         self.manager = DeploymentManager(self)
