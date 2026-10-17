@@ -11,7 +11,7 @@ const ACTIVE = ["queued", "downloading", "extracting", "scanning", "abliterating
 const KIND_LABEL: Record<string, string> = { hf: "Hugging Face", git: "Git", file: "File", abliterate: "Abliteration" };
 
 /** Remove a text model's refusal behaviour and save the result as an import. */
-export function Abliterator({ initialRepo = "" }: { initialRepo?: string }) {
+export function Abliterator({ initialRepo = "", from }: { initialRepo?: string; from?: string }) {
   const [repo, setRepo] = useState(initialRepo);
   const [method, setMethod] = useState<"quick" | "heretic">("quick");
   const [trials, setTrials] = useState(40);
@@ -33,7 +33,11 @@ export function Abliterator({ initialRepo = "" }: { initialRepo?: string }) {
       <h3 className="text-[16px] font-semibold">Abliterate a model</h3>
       <p className="mt-1 max-w-[65ch] text-[13px] text-fg-2">Removes a text model's refusal behaviour by projecting its refusal direction out of the weights, then saves the result here so you can deploy it. Works on Hugging Face chat models in safetensors format, not GGUF/Ollama, image or video models. It uses the GPUs, so stop other deployments first.</p>
     </div>
-    <Field label="Hugging Face model"><Input required value={repo} onChange={e => setRepo(e.target.value)} placeholder="Qwen/Qwen3-4B-Instruct-2507" /></Field>
+    <Field label="Hugging Face model" hint={from ? (initialRepo
+      ? `${from} is a quantized build that can't be edited, so this is its original full-precision repo. It's a best guess: check it matches before starting.`
+      : `${from} is a quantized build that can't be edited, and its original repo couldn't be found. Enter the full-precision Hugging Face repo.`) : undefined}>
+      <Input required value={repo} onChange={e => setRepo(e.target.value)} placeholder="Qwen/Qwen3-4B-Instruct-2507" />
+    </Field>
     {/* Not a <Field>: a <label> around buttons forwards clicks to the first one. */}
     <div role="group" aria-labelledby="abliterate-method">
       <span id="abliterate-method" className="mb-1.5 block text-[13px] font-medium">Method</span>

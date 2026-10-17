@@ -25,6 +25,7 @@ from .resolve import ENGINE_LABELS, MODALITY_PIPELINES, resolve_hf
 
 CURATED_PATH = Path(__file__).with_name("curated.yaml")
 VERDICT_ORDER = {"best": 0, "good": 1, "tight": 2, "worst": 3}
+VARIANT_WORDS = ("mini", "vl", "vision", "multimodal", "coder", "math", "audio", "omni", "flash", "base", "pt")
 ENRICH_BUDGET = 1.2  # seconds a search waits for exact sizes before answering with what it has
 DIFFUSERS_ENGINES = ("diffusers", "diffusers_video", "diffusers_world")
 LEGACY_KOKORO_NOTE = "Old Kokoro v0.19 weights. The kokoro library loads v1.0: use hexgrad/Kokoro-82M."
@@ -747,6 +748,53 @@ class CatalogService:
         return {"key": key, "variant": it.get("variant"), "engine": it.get("engine"), "size": it.get("size"),
                 "fit": f.to_dict()}
 
+    async def _hf_original(self, name: str, tag: str = "") -> str | None:
+        """The publisher's full-precision Hugging Face repo for an Ollama model (``gemma3:4b`` → google/gemma-3-4b-it).
+
+        A best guess for prefilling the abliteration form: search "<name> <size>", keep repos from the
+        model's publisher that aren't quantized re-uploads, prefer instruct/chat models, then downloads.
+        """
+        size = (re.match(r"e?\d+(?:\.\d+)?[bm]", tag.lower()) or [""])[0]
+        brand = brands.describe(name, name, "ollama")
+        owners = next((e["owners"] for e in brands.BRANDS if e["id"] == brand["id"]), [])
+        quantized = re.compile(r"gguf|gptq|awq|fp8|nvfp4|mxfp4|bnb|[-_]\d+bit|mlx|exl2|int[48]|embedding|reward|guard",
+                               re.I)
+
+        def fetch(term: str):
+            async def run():
+                async with self._search_sem:
+                    return await hf.search(self.client, query=term, sort="downloads", limit=40)
+            return run
+
+        def usable(results: list[dict]) -> list[dict]:
+            return [r for r in results if (not owners or r["id"].split("/")[0].lower() in owners)
+                    and not quantized.search(r["id"]) and r.get("library_name") in (None, "transformers", "vllm")]
+
+        clean: list[dict] = []
+        for term in dict.fromkeys([f"{name} {size}".strip(), name]):  # the size narrows; the name alone finds phi-4
+            try:
+                clean = usable(await self._cached(f"hf-original:{term}", 86400, fetch(term)))
+            except httpx.HTTPError:
+                return None
+            if clean:
+                break
+        if not clean:
+            return None
+        squash = lambda text: re.sub(r"[^a-z0-9]", "", text.lower())  # noqa: E731
+        stem = squash(name + size.lstrip("e"))
+
+        def rank(r: dict) -> tuple:
+            repo = squash(r["id"].split("/")[-1])
+            extra = [w for w in VARIANT_WORDS if re.search(rf"(?<![a-z]){w}(?![a-z])", r["id"].lower())
+                     and w not in name.lower()]
+            return (repo.startswith(stem),  # Qwen3-8B over Qwen3-VL-8B-Instruct for qwen3:8b
+                    not extra,  # phi-4 over Phi-4-mini-instruct for phi4:14b
+                    bool(size) and size.lstrip("e") in r["id"].lower(),
+                    bool(re.search(r"(?:-it\b|instruct|chat|-it-)", r["id"], re.I)),
+                    r.get("downloads") or 0)
+
+        return max(clean, key=rank)["id"]
+
     async def _ollama_detail(self, name: str, hw: HardwareProfile) -> dict:
         tags = await self._cached(f"ollama-tags:{name}", 3600, lambda: ollama.tags(self.client, name))
         curated = next((self._from_curated(e, "text") for e in self.curated.get("text", [])
@@ -766,6 +814,9 @@ class CatalogService:
         windows = [v["context_length"] for v in it["variants"] if v.get("context_length")]
         if windows:
             it["context_length"] = max(windows)
+        tag = it.get("variant") or next((v["id"] for v in it["variants"] if v["id"] != "latest"), "")
+        it["abliterate_source"] = await self._hf_original(name, tag)
+        it["abliterate_guessed"] = True
         return self._finish_detail(it, hw)
 
     async def _hf_detail(self, repo: str, hw: HardwareProfile) -> dict:
@@ -827,6 +878,12 @@ class CatalogService:
         else:
             it["size"] = hf.repo_size(sib) or it.get("size")
         it["files"] = len(sib)
+        if modality == "text":
+            base = (info.get("cardData") or {}).get("base_model")
+            base = base[0] if isinstance(base, list) and base else base
+            gguf = it.get("engine") == "ollama" or any(n["rfilename"].endswith(".gguf") for n in sib)
+            has_st = any(n["rfilename"].endswith(".safetensors") for n in sib)
+            it["abliterate_source"] = base if (gguf or not has_st) and isinstance(base, str) else (repo if has_st else None)
         if modality == "text" or it.get("engine") in ("transformers_tts", "transformers_audio", "transformers_asr"):
             data = await self._cached(f"hf-capabilities:{repo}:{revision or 'main'}", 6 * 3600,
                                       lambda: hf.capability_files(self.client, repo, revision))

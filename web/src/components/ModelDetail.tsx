@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ExternalLink, Loader } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { api } from "../lib/api";
 import { bytes, cx, ENGINE_LABEL, memoryPool, params, tokens } from "../lib/format";
@@ -198,6 +198,7 @@ export function ModelDetail({
   onImport?: (url: string) => void;
 }) {
   const { overview } = useLive();
+  const nav = useNavigate();
   const pool = overview ? memoryPool(overview.system) : null;
   const devices = pool?.devices ?? [];
   const canDetail = base.source === "hf" || base.source === "ollama";
@@ -391,10 +392,23 @@ export function ModelDetail({
           <span className="mr-auto text-[13px] text-fg-3">This architecture needs a model-specific runner.</span>
         ) : (
           <>
-            {item.source === "hf" && item.modality === "text" && item.engine !== "ollama" && (
-              <Link to="/imports" state={{ abliterate: item.id }} className="mr-auto text-[13px] text-fg-2 underline-offset-4 hover:text-fg hover:underline">
+            {item.modality === "text" && (item.source === "hf" || item.source === "ollama") && (
+              <button
+                type="button"
+                className="mr-auto text-[13px] text-fg-2 underline-offset-4 hover:text-fg hover:underline"
+                onClick={async () => {
+                  // Ollama/GGUF can't be edited: start from the original full-precision repo.
+                  let repo = item.abliterate_source ?? "";
+                  let guessed = Boolean(item.abliterate_guessed);
+                  if (item.source === "ollama") {
+                    repo = (await api.original(item.id, variant ?? item.variant ?? "").catch(() => ({ repo: null }))).repo ?? "";
+                    guessed = true;
+                  }
+                  nav("/imports", { state: { abliterate: repo, abliterateFrom: guessed || repo !== item.id ? item.name : undefined } });
+                }}
+              >
                 Abliterate…
-              </Link>
+              </button>
             )}
             {choice && secondary?.(choice)}
             <button

@@ -96,3 +96,30 @@ def test_heretic_command_is_unattended(tmp_path, monkeypatch):
         assert cmd[cmd.index(flag) + 1] == value
     assert seen["stdin"] == worker.subprocess.DEVNULL
     assert json.loads((out / "abliteration.json").read_text())["method"] == "heretic"
+
+
+async def test_ollama_models_map_to_their_original_repo(hw, monkeypatch):
+    """gemma3:4b and friends can't be edited (GGUF); the form is prefilled with the full-precision original."""
+    from unittest.mock import AsyncMock
+
+    from kaggleui.catalog import hf
+    from kaggleui.catalog.service import CatalogService
+
+    rows = {
+        "qwen3 8b": ["Qwen/Qwen3-VL-8B-Instruct", "Qwen/Qwen3-8B", "Qwen/Qwen3-8B-AWQ", "unsloth/Qwen3-8B"],
+        "phi4 14b": [],
+        "phi4": ["microsoft/Phi-4-mini-instruct", "microsoft/phi-4", "MaziyarPanahi/phi-4-GGUF"],
+        "gemma3 4b": ["google/gemma-3-4b-it", "google/gemma-3-4b-pt", "mlx-community/gemma-3-4b-it-4bit"],
+    }
+
+    async def search(client, query="", **_):
+        return [{"id": r, "library_name": "transformers", "downloads": 100 - i} for i, r in enumerate(rows.get(query, []))]
+
+    monkeypatch.setattr(hf, "search", AsyncMock(side_effect=search))
+    service = CatalogService(hw)
+    try:
+        assert await service._hf_original("qwen3", "8b") == "Qwen/Qwen3-8B"
+        assert await service._hf_original("phi4", "14b") == "microsoft/phi-4"
+        assert await service._hf_original("gemma3", "4b") == "google/gemma-3-4b-it"
+    finally:
+        await service.close()

@@ -67,6 +67,8 @@ export const api = {
   modelImports: () => request<ModelImport[]>("/_kui/api/catalog/imports"),
   importModel: (body: { url: string; kind?: string; name?: string; revision?: string }) =>
     request<ModelImport>("/_kui/api/catalog/imports", { method: "POST", body: json(body) }),
+  original: (name: string, tag: string) =>
+    request<{ repo: string | null }>(`/_kui/api/catalog/original?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`),
   abliterate: (body: { repo: string; method: "quick" | "heretic"; trials?: number; quantize?: boolean; name?: string }) =>
     request<ModelImport>("/_kui/api/catalog/abliterate", { method: "POST", body: json(body) }),
   cancelImport: (id: string) => request<ModelImport>(`/_kui/api/catalog/imports/${id}`, { method: "DELETE" }),

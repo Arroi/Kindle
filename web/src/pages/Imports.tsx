@@ -10,10 +10,11 @@ export default function Imports() {
   const location = useLocation();
   const nav = useNavigate();
   const [open, setOpen] = useState<CatalogItem | null>(null);
+  const state = location.state as { abliterate?: string; abliterateFrom?: string } | null;
   return <div>
     <SectionTitle title="Imports" description="Your own checkpoints, kept separate from the public catalog." />
     <div className="max-w-3xl space-y-8">
-      <Abliterator key={(location.state as { abliterate?: string } | null)?.abliterate} initialRepo={(location.state as { abliterate?: string } | null)?.abliterate} />
+      <Abliterator key={state?.abliterate} initialRepo={state?.abliterate} from={state?.abliterateFrom} />
       <ModelImporter initialUrl={(location.state as { url?: string } | null)?.url} onCustomize={setOpen} />
     </div>
     <Drawer open={!!open} onClose={() => setOpen(null)} title="Customize import">

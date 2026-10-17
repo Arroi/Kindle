@@ -368,6 +368,12 @@ def create_app(state: AppState) -> FastAPI:
         except (ValueError, TypeError) as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    @app.get("/_kui/api/catalog/original")
+    async def catalog_original(request: Request, name: str, tag: str = ""):
+        """Best guess at the full-precision Hugging Face repo behind an Ollama model (for abliteration)."""
+        require_admin(request)
+        return {"repo": await state.catalog._hf_original(name, tag)}
+
     @app.get("/_kui/api/catalog/imports/{ident}/models/{index}")
     async def customize_import(request: Request, ident: str, index: int):
         require_admin(request)

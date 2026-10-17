@@ -174,6 +174,9 @@ export interface CatalogItem {
   size: number | null;
   /** Bytes saved by storing the published fp32 weights as BF16 (already subtracted from size). */
   bf16_saved?: number;
+  /** Full-precision Hugging Face repo to abliterate for this model (guessed for Ollama). */
+  abliterate_source?: string | null;
+  abliterate_guessed?: boolean;
   variant: string | null;
   variants: Variant[];
   downloads: number;
