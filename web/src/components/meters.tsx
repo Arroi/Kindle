@@ -76,9 +76,12 @@ export function FitGauge({ fit, devices, className }: { fit: Fit; devices: Gpu[]
       </div>
     );
   }
-  const usable = fit.placement === "split" || fit.placement === "none" ? devices : devices.slice(0, 1);
   const total = devices.reduce((s, g) => s + g.vram_total, 0);
-  const overflow = Math.max(0, need - total);
+  // Engines that can't split (diffusers, most audio) are judged against one GPU even when they don't fit.
+  const oneDevice = fit.placement !== "split" && (fit.placement !== "none" || (fit.capacity != null && fit.capacity < total * 0.75));
+  const usable = oneDevice ? devices.slice(0, 1) : devices;
+  const room = usable.reduce((s, g) => s + g.vram_total, 0);
+  const overflow = Math.max(0, need - room);
   const scale = total + overflow;
   let remaining = need;
   return (
@@ -132,7 +135,9 @@ export function FitGauge({ fit, devices, className }: { fit: Fit; devices: Gpu[]
                   ? tpu
                     ? "1 chip"
                     : "1 GPU"
-                  : `${bytes(total)} total`}
+                  : oneDevice && devices.length > 1
+                    ? `${bytes(room)} on one ${tpu ? "chip" : "GPU"}`
+                    : `${bytes(total)} total`}
         </span>
       </div>
     </div>

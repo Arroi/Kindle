@@ -83,3 +83,26 @@ def test_to_bf16_rewrites_only_float32(tmp_path: Path):
     to_bf16(src, tmp_path / "out" / "a.safetensors")
     out = load_file(str(tmp_path / "out" / "a.safetensors"))
     assert out["w"].dtype == torch.bfloat16 and out["i"].dtype == torch.int64
+
+
+async def test_assess_choice_follows_settings(hw, monkeypatch):
+    """The drawer re-checks fit as settings change: memory mode, 4-bit and download precision."""
+    service = CatalogService(hw)
+    monkeypatch.setattr(hf, "model_info", AsyncMock(return_value={
+        "id": "Wan-AI/x", "pipeline_tag": "text-to-video", "library_name": "diffusers", "tags": ["diffusers"],
+        "siblings": FILES}))
+    comps = {"transformer": 3 * GB, "text_encoder": 10 * GB, "vae": GB}
+    monkeypatch.setattr(hf, "bf16_plan", AsyncMock(return_value={"files": [], "size": sum(comps.values()),
+                                                                  "largest": comps["text_encoder"], "saved": 10 * GB,
+                                                                  "components": comps}))
+    try:
+        auto = await service.assess_choice("hf:Wan-AI/x")
+        all_gpu = await service.assess_choice("hf:Wan-AI/x", options={"offload": "none"})
+        nf4 = await service.assess_choice("hf:Wan-AI/x", options={"offload": "model", "quantize": "nf4"})
+        fp32 = await service.assess_choice("hf:Wan-AI/x", options={"offload": "model", "weights": "original"})
+    finally:
+        await service.close()
+    assert auto["fit"]["suggest"] == {"offload": "model"} and auto["fit"]["verdict"] == "good"
+    assert all_gpu["fit"]["verdict"] == "worst"
+    assert nf4["fit"]["vram_needed"] < auto["fit"]["vram_needed"]
+    assert fp32["size"] == auto["size"] + 10 * GB and fp32["fit"]["vram_needed"] == auto["fit"]["vram_needed"]

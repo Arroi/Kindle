@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ExternalLink, Loader } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { api } from "../lib/api";
 import { bytes, cx, ENGINE_LABEL, memoryPool, params, tokens } from "../lib/format";
+import { useDebounced } from "../lib/hooks";
 import { useLive } from "../lib/live";
 import type { CatalogItem, DeploymentSpec, Variant } from "../lib/types";
 import { FitGauge } from "./meters";
@@ -17,6 +18,9 @@ export interface ModelChoice {
   item: CatalogItem;
   spec: DeploymentSpec;
 }
+
+/** Settings that change a model's size or fit, re-checked by the server as they change. */
+const FIT_OPTIONS = ["ctx", "offload", "quantize", "weights"];
 
 const CTX = [2048, 4096, 8192, 16384, 32768, 65536];
 
@@ -32,7 +36,7 @@ function EngineOptions({
   options,
   onChange,
 }: {
-  item: Pick<CatalogItem, "modality" | "engine" | "source" | "custom_code" | "context_length">;
+  item: Pick<CatalogItem, "modality" | "engine" | "source" | "custom_code" | "context_length" | "bf16_saved">;
   options: Record<string, any>;
   onChange: (o: Record<string, any>) => void;
 }) {
@@ -87,18 +91,26 @@ function EngineOptions({
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Memory mode" hint="Offload keeps idle parts in RAM: slower, fits bigger models.">
-          <Select value={String(options.offload ?? (m === "video" ? "model" : ""))} onChange={(e) => set("offload", e.target.value)}>
-            <option value="">All on GPU (fastest)</option>
+          <Select value={String(options.offload ?? (m === "video" ? "model" : "none"))} onChange={(e) => set("offload", e.target.value)}>
+            <option value="none">All on GPU (fastest)</option>
             <option value="model">Model offload (balanced)</option>
             <option value="sequential">Sequential offload (smallest, slowest)</option>
           </Select>
         </Field>
-        <Field label="Weights" hint="4-bit shrinks big models like FLUX to fit a T4.">
+        <Field label="Weights" hint="4-bit shrinks big models like FLUX and Wan 14B to fit a T4.">
           <Select value={String(options.quantize ?? "")} onChange={(e) => set("quantize", e.target.value)}>
-            <option value="">fp16 (full quality)</option>
+            <option value="">16-bit (full quality)</option>
             <option value="nf4">4-bit nf4 (bitsandbytes)</option>
           </Select>
         </Field>
+        {item.bf16_saved ? (
+          <Field label="Download as" hint="The repo is published in fp32; the runner uses 16 bits either way.">
+            <Select value={String(options.weights ?? "bf16")} onChange={(e) => set("weights", e.target.value === "bf16" ? "" : e.target.value)}>
+              <option value="bf16">BF16 (saves {bytes(item.bf16_saved)})</option>
+              <option value="original">Original fp32 files</option>
+            </Select>
+          </Field>
+        ) : null}
         <Field label="Default steps">
           <Input type="number" min={1} max={100} value={options.steps ?? ""} placeholder="model default" onChange={(e) => set("steps", e.target.value ? Number(e.target.value) : "")} />
         </Field>
@@ -218,9 +230,28 @@ export function ModelDetail({
   }, [item, pool?.tpu]);
 
   const picked = item.variants.find((v) => v.id === variant);
+  // Re-check size and fit whenever a setting that changes them does (variant, engine, context, memory mode).
+  const current = JSON.stringify({
+    variant: variant ?? item.variant,
+    engine: engine ?? item.engine,
+    options: Object.fromEntries(FIT_OPTIONS.map((k) => [k, options[k]]).filter(([, v]) => v !== undefined && v !== "")),
+  });
+  const request = useDebounced(current, 200);
+  const assessed = useQuery({
+    queryKey: ["assess", base.key, request],
+    queryFn: () => api.assess({ key: base.key, ...JSON.parse(request) }),
+    enabled: canDetail && !!item.engine && detail.isSuccess,
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const assessedFit = assessed.data?.fit;
+  const fit = assessedFit ? { ...assessedFit, verdict: assessedFit.verdict === "good" && item.fit.verdict === "best" ? ("best" as const) : assessedFit.verdict } : item.fit;
+  const size = assessed.data?.size ?? picked?.size ?? item.size;
+  const updating = assessed.isFetching || request !== current;
   const choice: ModelChoice | null = item.spec
     ? {
-        item,
+        item: { ...item, size, fit, variant: variant ?? item.variant },
         spec: {
           ...item.spec,
           model: { ...item.spec.model, variant: variant ?? item.spec.model.variant, engine: engine ?? item.spec.model.engine },
@@ -229,8 +260,7 @@ export function ModelDetail({
             Object.entries<unknown>({
               ...options,
               // Placement hint for the GPU scheduler; a different variant than the default changes it.
-              vram_estimate:
-                picked?.size && picked.id !== item.variant ? Math.round(picked.size * 1.12 + 0.8e9) : (item.fit.vram_needed ?? undefined),
+              vram_estimate: fit.vram_needed ?? undefined,
             }).filter(([, v]) => v !== undefined && v !== ""),
           ),
         },
@@ -242,7 +272,7 @@ export function ModelDetail({
       <div className="space-y-6 p-5 sm:p-6">
         <div>
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            {item.engine ? <VerdictTag verdict={item.fit.verdict} /> : <span className="text-[12px] text-fg-2">Runner unavailable</span>}
+            {item.engine ? <VerdictTag verdict={fit.verdict} /> : <span className="text-[12px] text-fg-2">Runner unavailable</span>}
             {item.experimental && <span className="rounded-[5px] bg-tight-soft px-1.5 py-px text-[11px] font-medium text-tight">Experimental</span>}
             {detail.isFetching && <Loader className="size-3.5 animate-spin text-fg-3" />}
           </div>
@@ -260,7 +290,7 @@ export function ModelDetail({
             )}
           </div>
           {item.description && <p className="mt-3 text-[14px] text-fg-2">{item.description}</p>}
-          <div className="mt-4"><CapabilityTags capabilities={item.capabilities} /></div>
+          {item.capabilities.length > 0 && <div className="mt-4"><CapabilityTags capabilities={item.capabilities} /></div>}
           {item.reasoning?.supported && <p className="mt-2 text-[12px] text-fg-3">Reasoning: {item.reasoning.efforts.length ? ["Auto", ...item.reasoning.efforts.map(effortLabel)].join(" · ") : "Model default"}. {item.reasoning.source === "family" ? "Estimated from the model family; verified by the runner when loaded." : "Detected from model metadata or its chat template."}</p>}
           {!!item.runtime_repos?.length && <div className="mt-3 text-[12px] text-fg-3"><p>The download estimate includes these base checkpoints:</p><div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">{item.runtime_repos.map(repo => <a key={repo} href={`https://huggingface.co/${repo}`} target="_blank" rel="noreferrer" className="text-fg-2 hover:text-signal hover:underline">{repo}</a>)}</div></div>}
         </div>
@@ -273,15 +303,22 @@ export function ModelDetail({
             {item.url && onImport && <div className="mt-3"><Button onClick={() => onImport(item.url!)}>Download model files</Button></div>}
           </div>
         ) : <div className="rounded-xl border border-line bg-bg-2 p-4">
-          <div className="readout mb-3">Fit on this machine</div>
-          <FitGauge fit={item.fit} devices={devices} />
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <span className="readout">Fit with these settings</span>
+            <span className={cx("font-mono text-[11.5px] text-fg-2 transition-opacity", updating && "opacity-50")}>
+              {size ? `${bytes(size)} download` : "size unknown"}
+              {updating && <Loader className="ml-1.5 inline size-3 animate-spin align-[-2px]" />}
+            </span>
+          </div>
+          <div className={cx("transition-opacity", updating && "opacity-60")}>
+          <FitGauge fit={fit} devices={devices} />
           <ul className="mt-3 space-y-1 text-[13px]">
-            {item.fit.reasons.map((r) => (
+            {fit.reasons.map((r) => (
               <li key={r} className="text-fg-2">
                 {r}
               </li>
             ))}
-            {item.fit.warnings.map((w) => (
+            {fit.warnings.map((w) => (
               <li key={w} className="flex items-start gap-1.5 text-tight">
                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
                 <span>
@@ -295,13 +332,15 @@ export function ModelDetail({
               </li>
             ))}
           </ul>
-          {item.bf16_saved ? (
+          </div>
+          {assessed.error && <p className="mt-2 text-[12px] text-tight">Couldn't re-check this configuration: {(assessed.error as Error).message}</p>}
+          {item.bf16_saved && options.weights !== "original" ? (
             <p className="mt-3 text-[12.5px] text-fg-2">
               Published in fp32. KaggleUI stores the weights as BF16 while downloading, which saves {bytes(item.bf16_saved)} of disk. Generation quality is unchanged: the runner loads 16-bit weights either way.
             </p>
           ) : null}
-          {Object.keys(item.fit.suggest ?? {}).length > 0 && (
-            <div className="mt-3 font-mono text-[11px] text-fg-3">auto-applied: {Object.entries(item.fit.suggest).map(([k, v]) => `${k}=${v}`).join(", ")}</div>
+          {Object.keys(fit.suggest ?? {}).length > 0 && (
+            <div className="mt-3 font-mono text-[11px] text-fg-3">auto-applied: {Object.entries(fit.suggest).map(([k, v]) => `${k}=${v}`).join(", ")}</div>
           )}
         </div>}
 

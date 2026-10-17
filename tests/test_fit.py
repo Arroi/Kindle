@@ -78,8 +78,39 @@ def test_sd35_uses_offload(hw):
     c = Candidate(modality="image", engine="diffusers", weights_bytes=int(16.3 * GB),
                   largest_component_bytes=int(9.8 * GB))
     f = assess(c, hw("t4x2"))
-    assert f.verdict == "tight"
+    assert f.verdict == "good"  # model offload is the normal way to run it on a T4
     assert f.suggest == {"offload": "model"}
+    assert f.placement == "offload"
+
+
+WAN_13B = {"text_encoder": int(11.4 * GB), "transformer": int(2.8 * GB), "vae": int(0.5 * GB)}
+
+
+def wan(**kw):
+    return Candidate(modality="video", engine="diffusers_video", weights_bytes=sum(WAN_13B.values()),
+                     largest_component_bytes=WAN_13B["text_encoder"], components=WAN_13B, **kw)
+
+
+def test_video_auto_picks_model_offload_by_component(hw):
+    f = assess(wan(), hw("t4x2"))
+    assert f.verdict == "good" and f.suggest == {"offload": "model"}
+    assert f.vram_needed < 13 * GB  # peak is the text encoder alone, not the whole pipeline
+
+
+def test_chosen_memory_mode_is_assessed_as_chosen(hw):
+    all_gpu = assess(wan(offload="none"), hw("t4x2"))
+    assert all_gpu.verdict == "worst" and "all on GPU" in all_gpu.reasons[0]
+    sequential = assess(wan(offload="sequential"), hw("t4x2"))
+    assert sequential.verdict == "tight" and sequential.vram_needed < 5 * GB and sequential.suggest == {}
+    nf4 = assess(wan(offload="model", quantize="nf4"), hw("t4x2"))
+    assert nf4.vram_needed < assess(wan(offload="model"), hw("t4x2")).vram_needed
+
+
+def test_14b_video_needs_4bit(hw):
+    comps = {"text_encoder": int(11.4 * GB), "transformer": int(28.6 * GB), "vae": int(0.5 * GB)}
+    c = Candidate(modality="video", engine="diffusers_video", weights_bytes=sum(comps.values()), components=comps)
+    f = assess(c, hw("t4x2"))
+    assert f.suggest == {"offload": "model", "quantize": "nf4"}
 
 
 def test_non_split_engine_reports_single_gpu_limit(hw):

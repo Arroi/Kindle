@@ -330,6 +330,20 @@ def create_app(state: AppState) -> FastAPI:
         except Exception as e:  # noqa: BLE001
             raise HTTPException(502, f"Couldn't load model details: {e}") from e
 
+    @app.post("/_kui/api/catalog/assess")
+    async def catalog_assess(request: Request):
+        require_admin(request)
+        body = await request.json()
+        if not isinstance(body, dict) or not isinstance(body.get("key"), str):
+            raise HTTPException(400, "key is required")
+        options = body.get("options") if isinstance(body.get("options"), dict) else {}
+        try:
+            return await state.catalog.assess_choice(body["key"], body.get("variant"), body.get("engine"), options)
+        except KeyError as exc:
+            raise HTTPException(404, f"unknown model {exc}") from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, f"Couldn't assess this configuration: {exc}") from exc
+
     @app.get("/_kui/api/catalog/imports")
     async def model_imports(request: Request):
         require_admin(request)

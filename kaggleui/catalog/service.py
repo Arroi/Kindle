@@ -25,6 +25,7 @@ from .resolve import ENGINE_LABELS, MODALITY_PIPELINES, resolve_hf
 
 CURATED_PATH = Path(__file__).with_name("curated.yaml")
 VERDICT_ORDER = {"best": 0, "good": 1, "tight": 2, "worst": 3}
+ENRICH_BUDGET = 1.2  # seconds a search waits for exact sizes before answering with what it has
 DIFFUSERS_ENGINES = ("diffusers", "diffusers_video", "diffusers_world")
 LEGACY_KOKORO_NOTE = "Old Kokoro v0.19 weights. The kokoro library loads v1.0: use hexgrad/Kokoro-82M."
 SINGLE_FILE_NOTE = ("Single-file or original-format checkpoint (ComfyUI style), not a diffusers pipeline. "
@@ -39,7 +40,10 @@ class CatalogService:
         self.curated: dict[str, list[dict]] = yaml.safe_load(CURATED_PATH.read_text()) or {}
         self._cache: dict[str, tuple[float, Any]] = {}
         self._pending: dict[str, asyncio.Task] = {}
-        self._sem = asyncio.Semaphore(8)
+        self._sem = asyncio.Semaphore(12)
+        self._header_sem = asyncio.Semaphore(24)
+        # Searches and twin lookups (what the user is waiting on) never queue behind background sizing.
+        self._search_sem = asyncio.Semaphore(8)  # safetensors header reads hit the CDN, not the Hub API
 
     async def close(self) -> None:
         for task in self._pending.values():
@@ -149,8 +153,9 @@ class CatalogService:
                 add(it)
 
         all_items = list(items.values())
+        enriching = False
         if live:
-            await self._enrich(all_items)
+            enriching = await self._enrich(all_items)
         fits = [self._apply_fit(it, hw) for it in all_items]
         rank(fits)
         for it, f in zip(all_items, fits):
@@ -169,7 +174,8 @@ class CatalogService:
                                           for cap in ("vision", "tools", "reasoning", "embedding")}}
         discovered = len(all_items)
         all_items = [it for it in all_items if filters.matches(it)]
-        fitting = sum(1 for it in all_items if it["fit"]["verdict"] != "worst")
+        # A model whose size is still being looked up isn't known to fit yet.
+        fitting = sum(1 for it in all_items if it["fit"]["verdict"] != "worst" and it["fit"]["vram_needed"] is not None)
         launchable = sum(1 for it in all_items if it.get("engine"))
         total = len(all_items)
         if fit == "fits":
@@ -183,7 +189,7 @@ class CatalogService:
                 "counts": {"total": total, "fits": fitting, "launchable": launchable, "shown": min(len(all_items), limit),
                            "discovered": discovered, "hidden_unsupported": len(hidden)},
                 "hidden_examples": [it["id"] for it in sorted(hidden, key=lambda i: -(i.get("downloads") or 0))[:3]] if q else [], "facets": filter_facets, "filters_active": filters.active,
-                "has_more": has_more}
+                "has_more": has_more, "pending": bool(enriching or more.get("pending"))}
 
     @staticmethod
     def _sort(items: list[dict], sort: str, searching: bool = False) -> list[dict]:
@@ -226,7 +232,7 @@ class CatalogService:
         searches = world.queries(q, want)
 
         async def run(params: dict) -> list[dict]:
-            async with self._sem:
+            async with self._search_sem:
                 return await self._cached(f"world-search:{params}:{sort}", 900,
                                           lambda: hf.search(self.client, sort=sort, **params))
 
@@ -357,7 +363,7 @@ class CatalogService:
         async def run(params: dict, term: str) -> list[dict]:
             key = f"hf-search:{params}:{term}:{sort}"
             async def fetch():
-                async with self._sem:
+                async with self._search_sem:
                     return await hf.search(self.client, query=term, sort=sort, **params)
             return await self._cached(key, 900, fetch)
 
@@ -385,9 +391,9 @@ class CatalogService:
             seen.add(raw["id"])
             out.append(self._from_hf(raw, modality, hw, order))
             order += 1
-        return await self._resolve_twins(out, modality, hw)
+        return await self._resolve_twins(out, modality, hw, more if more is not None else {})
 
-    async def _resolve_twins(self, items: list[dict], modality: str, hw: HardwareProfile) -> list[dict]:
+    async def _resolve_twins(self, items: list[dict], modality: str, hw: HardwareProfile, more: dict) -> list[dict]:
         """Swap original-format releases for the diffusers version their publisher ships alongside.
 
         ``Wan-AI/Wan2.1-VACE-14B`` can't be loaded by diffusers but ``Wan-AI/Wan2.1-VACE-14B-diffusers``
@@ -408,7 +414,7 @@ class CatalogService:
 
         async def look(it: dict) -> None:
             async def fetch():
-                async with self._sem:
+                async with self._search_sem:
                     return await hf.diffusers_twin(self.client, it["id"])
             info = await self._cached(f"hf-twin:{it['id']}", 86400, fetch)
             if info:
@@ -416,9 +422,10 @@ class CatalogService:
 
         if lookups:
             try:
-                await asyncio.wait_for(asyncio.gather(*(look(it) for it in lookups[:16]), return_exceptions=True), timeout=6)
+                await asyncio.wait_for(asyncio.gather(*(look(it) for it in lookups[:24]), return_exceptions=True),
+                                       timeout=ENRICH_BUDGET)
             except asyncio.TimeoutError:
-                pass  # unresolved ones stay unlaunchable this time; finished lookups are cached
+                more["pending"] = True  # unresolved ones stay unlaunchable this time; lookups finish in the cache
         out = []
         for it in items:
             if it["key"] in drop:
@@ -481,11 +488,13 @@ class CatalogService:
         return out
 
     # -- enrichment ---------------------------------------------------------------------------
-    async def _enrich(self, items: list[dict]) -> None:
+    async def _enrich(self, items: list[dict], budget: float = ENRICH_BUDGET) -> bool:
         """Fill in exact sizes (Ollama manifests, HF file listings) and context windows (HF config.json).
 
         Context reads are one tiny cached request per model, so catalog rows can show and filter by
-        the true maximum window without opening every model's detail page.
+        the true maximum window without opening every model's detail page. Waits at most ``budget``
+        seconds; lookups still running keep going in the background (their results are cached), and
+        the return value says so, so the page can ask again instead of waiting on the slowest repo.
         """
         jobs: list = []  # (callable, arg) so nothing beyond the cap is ever created
         ctx: list = []
@@ -502,18 +511,20 @@ class CatalogService:
             elif (it["source"] == "hf" and it.get("engine") and it["modality"] == "text"
                   and not it.get("context_length")):
                 ctx.append((self._hf_context, it))
-        for batch, cap in ((jobs, 16), (ctx, 64)):
-            if not batch:
-                continue
-            try:
-                await asyncio.wait_for(asyncio.gather(*(fn(arg) for fn, arg in batch[:cap]), return_exceptions=True),
-                                       timeout=6)
-            except asyncio.TimeoutError:
-                pass  # keep estimates; exact metadata remains cached for the next request
+        tasks = [asyncio.ensure_future(fn(arg)) for fn, arg in jobs[:80] + ctx[:120]]
+        pending: set = set()
+        if tasks:
+            done, pending = await asyncio.wait(tasks, timeout=budget)
+            for task in pending:
+                task.cancel()  # the shared cached fetches inside keep running
+            for task in done:
+                if not task.cancelled():
+                    task.exception()  # failures keep the estimate; mark them retrieved
         for it in items:
             if it["source"] == "ollama" and it["variants"]:
                 v = next((v for v in it["variants"] if v["id"] == it["variant"]), it["variants"][0])
                 it["size"], it["params"] = v.get("size"), v.get("params") or it.get("params")
+        return bool(pending)
 
     async def _hf_context(self, it: dict) -> None:
         revision = (it.get("options") or {}).get("revision")
@@ -566,8 +577,12 @@ class CatalogService:
                 it["engine"] = None
                 it["description"] = SINGLE_FILE_NOTE
                 return
-            it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
-            await self._apply_bf16(it, sib, revision)
+            # Size the row once, after the precision check: never show the fp32 size and then shrink it.
+            sized = {"size": sel["size"], "largest": sel["largest"], "components": sel["components"], "id": it["id"],
+                     "options": it.get("options")}
+            await self._apply_bf16(sized, sib, revision)
+            it.update(size=sized["size"], largest=sized["largest"], components=sized["components"],
+                      variant=sel["variant"], **({"bf16_saved": sized["bf16_saved"]} if sized.get("bf16_saved") else {}))
         elif it["engine"] == "kokoro" and hf.legacy_kokoro(sib):
             it["engine"], it["description"] = None, LEGACY_KOKORO_NOTE
         elif it["engine"] in ("transformers_asr", "transformers_tts", "transformers_audio", "transformers"):
@@ -614,7 +629,7 @@ class CatalogService:
             return
 
         async def fetch():
-            async with self._sem:
+            async with self._header_sem:
                 try:
                     return await hf.bf16_plan(self.client, it["id"], siblings, revision)
                 except (httpx.HTTPError, ValueError, KeyError):
@@ -623,6 +638,7 @@ class CatalogService:
         plan = await self._cached(f"hf-bf16:{it['id']}:{revision or 'main'}", 86400, fetch)
         if plan:
             it["size"], it["largest"], it["bf16_saved"] = plan["size"], plan["largest"], plan["saved"]
+            it["components"] = plan.get("components") or it.get("components")
 
     # -- fit ----------------------------------------------------------------------------------
     def _planned_ctx(self, it: dict) -> int:
@@ -640,7 +656,9 @@ class CatalogService:
             experimental=bool(it.get("experimental")), curated=bool(it.get("curated")),
             downloads=int(it.get("downloads") or 0), likes=int(it.get("likes") or 0), updated=it.get("updated"),
             attached=bool(it.get("attached")),
-            min_sm=it.get("min_sm"),
+            min_sm=it.get("min_sm"), components=it.get("components"),
+            offload=(it.get("options") or {}).get("offload") if it.get("chosen") else None,
+            quantize=(it.get("options") or {}).get("quantize") or None if it.get("chosen") else None,
         )
 
     def _apply_fit(self, it: dict, hw: HardwareProfile) -> Fit:
@@ -703,6 +721,31 @@ class CatalogService:
         if source == "hf":
             return await self._hf_detail(ident, hw)
         raise KeyError(key)
+
+    async def assess_choice(self, key: str, variant: str | None = None, engine: str | None = None,
+                            options: dict | None = None) -> dict:
+        """Size and fit for one exact configuration (variant, engine, context, memory mode, 4-bit)."""
+        hw = self.probe()
+        it = dict(await self.detail(key))
+        options = {k: v for k, v in (options or {}).items() if v not in (None, "")}
+        picked = next((v for v in it.get("variants") or [] if v["id"] == variant), None) if variant else None
+        if picked:
+            it["variant"] = picked["id"]
+            it["size"] = picked.get("size") or it.get("size")
+            it["params"] = picked.get("params") or it.get("params")
+            it["context_length"] = picked.get("context_length") or it.get("context_length")
+        if engine:
+            it["engine"] = engine
+        if options.get("weights") == "original" and it.get("bf16_saved"):
+            # Only the download grows: the runner still loads 16-bit weights, so VRAM and RAM stay put.
+            it["size"] = (it.get("size") or 0) + it["bf16_saved"]
+            if not it.get("components"):
+                it["components"] = {"transformer": it.get("largest") or 0}
+        it["options"] = {**(it.get("options") or {}), **options}
+        it["chosen"] = True
+        f = assess(self._candidate(it), hw)
+        return {"key": key, "variant": it.get("variant"), "engine": it.get("engine"), "size": it.get("size"),
+                "fit": f.to_dict()}
 
     async def _ollama_detail(self, name: str, hw: HardwareProfile) -> dict:
         tags = await self._cached(f"ollama-tags:{name}", 3600, lambda: ollama.tags(self.client, name))
@@ -777,6 +820,7 @@ class CatalogService:
         elif it.get("engine") in DIFFUSERS_ENGINES:
             sel = hf.diffusers_files(sib)
             it["size"], it["largest"], it["variant"] = sel["size"], sel["largest"], sel["variant"]
+            it["components"] = sel["components"]
             await self._apply_bf16(it, sib, revision)
         elif it.get("engine") in ("vllm", "transformers", "transformers_asr", "transformers_tts", "transformers_audio"):
             it["size"] = hf.transformers_files(sib)["weights"] or it.get("size")

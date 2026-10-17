@@ -1,4 +1,5 @@
 import type {
+  Assessment,
   CatalogItem,
   CatalogMeta,
   Deployment,
@@ -107,6 +108,8 @@ export const api = {
     return request<SearchResult>(`/_kui/api/catalog/search?${qs}`);
   },
   detail: (key: string) => request<CatalogItem>(`/_kui/api/catalog/detail?key=${encodeURIComponent(key)}`),
+  assess: (body: { key: string; variant?: string | null; engine?: string | null; options?: Record<string, unknown> }) =>
+    request<Assessment>("/_kui/api/catalog/assess", { method: "POST", body: JSON.stringify(body) }),
   deploy: (spec: DeploymentSpec) => request<Deployment>("/_kui/api/deployments", { method: "POST", body: json(spec) }),
   stop: (id: string) => request(`/_kui/api/deployments/${id}`, { method: "DELETE" }),
   restart: (id: string) => request<Deployment>(`/_kui/api/deployments/${id}/restart`, { method: "POST" }),

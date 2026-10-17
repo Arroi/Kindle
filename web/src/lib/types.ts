@@ -128,6 +128,15 @@ export interface Fit {
   suggest: Record<string, unknown>;
 }
 
+/** Size and fit for one exact configuration of a catalog model. */
+export interface Assessment {
+  key: string;
+  variant: string | null;
+  engine: string | null;
+  size: number | null;
+  fit: Fit;
+}
+
 export interface Variant {
   id: string;
   ref: string;
@@ -195,6 +204,8 @@ export interface SearchResult {
   /** Most-downloaded matches hidden because nothing here can run them (searches only). */
   hidden_examples?: string[];
   has_more?: boolean;
+  /** Exact sizes are still being looked up; the same search will return more detail shortly. */
+  pending?: boolean;
 }
 
 export interface CatalogMeta {

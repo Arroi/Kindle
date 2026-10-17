@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Download, HardDrive, Heart, LayoutGrid, List, Search, SlidersHorizontal, Star, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../lib/api";
+import { useDebounced } from "../lib/hooks";
 import { bytes, compact, cx, memoryPool, MODALITY_LABEL, params, tokens } from "../lib/format";
 import { useLive } from "../lib/live";
 import type { CatalogItem, Gpu, Modality } from "../lib/types";
@@ -14,15 +15,6 @@ import { emptyFilters, filterRequest, parameterError, saveFilters, storedFilters
 import { Button, Chip, Empty, Input, Segmented, Select, Toggle, VerdictTag } from "./ui";
 
 export const MODALITY_ORDER: Modality[] = ["text", "image", "video", "tts", "audio", "stt", "world", "mesh"];
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = window.setTimeout(() => setV(value), ms);
-    return () => window.clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
 
 function SourceBadge({ item }: { item: CatalogItem }) {
   const label = item.source === "hf" ? "HF" : item.source === "ollama" ? "Ollama" : item.capabilities.includes("imported") ? "Imported" : "Attached";
@@ -60,11 +52,13 @@ export function ModelCard({
   devices,
   selected,
   onOpen,
+  checking,
 }: {
   item: CatalogItem;
   devices: Gpu[];
   selected?: boolean;
   onOpen: () => void;
+  checking?: boolean;
 }) {
   const f = item.fit;
   const unsupported = !item.engine;
@@ -80,7 +74,7 @@ export function ModelCard({
     >
       <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
         <SourceBadge item={item} />
-        {unsupported ? <Chip>Runner unavailable</Chip> : <VerdictTag verdict={f.verdict} size="sm" />}
+        {unsupported ? <Chip>Runner unavailable</Chip> : checking ? <Chip>Checking size…</Chip> : <VerdictTag verdict={f.verdict} size="sm" />}
       </div>
       <div className="mb-1 flex items-baseline gap-2">
         <ModelLogo id={item.id} name={item.name} source={item.source} />
@@ -138,7 +132,7 @@ function singleFile(item: CatalogItem): boolean {
   return !item.engine && item.description.startsWith("Single-file");
 }
 
-function ModelRow({ item, selected, onOpen, showContext }: { item: CatalogItem; selected: boolean; onOpen: () => void; showContext: boolean }) {
+function ModelRow({ item, selected, onOpen, showContext, checking }: { item: CatalogItem; selected: boolean; onOpen: () => void; showContext: boolean; checking?: boolean }) {
   return (
     <button type="button" className={cx("model-row model-columns", showContext && "has-ctx")} onClick={onOpen} aria-pressed={selected}>
       <div className="flex min-w-0 items-start gap-3.5">
@@ -177,7 +171,12 @@ function ModelRow({ item, selected, onOpen, showContext }: { item: CatalogItem; 
           </div>
         )}
         <div className="model-fit min-w-[150px]">
-          {item.engine ? (
+          {checking ? (
+            <>
+              <span className="text-[12px] text-fg-3">Checking size…</span>
+              <span className="mt-2 block h-1 animate-pulse rounded-full bg-panel-3" />
+            </>
+          ) : item.engine ? (
             <>
               <div className="flex items-baseline justify-between gap-2">
                 <VerdictTag verdict={item.fit.verdict} size="sm" />
@@ -322,15 +321,31 @@ export function ModelBrowser({
     queryFn: () => api.search({ modality, q: dq, source, sort, show_unsupported: showUnsupported, fit: fitFilter, limit, ...requestedFilters }),
     enabled: !filterError,
     staleTime: 5 * 60_000,
-    placeholderData: (prev, previousQuery) => previousQuery?.queryKey[1] === criteriaKey ? prev : undefined,
+    // Keep the last results on screen (dimmed) while a new search runs instead of flashing a partial list.
+    placeholderData: keepPreviousData,
+    // The server answers fast and finishes exact sizes in the background; ask again until it's done.
+    refetchInterval: (q) => (q.state.data?.pending && q.state.dataUpdateCount < 12 ? 1500 : false),
   });
+  // The bundled preview only fills the very first paint; after that the previous live results stay up.
   const query = { ...liveQuery, data: liveQuery.data ?? preview.data,
     isLoading: liveQuery.isLoading && preview.isLoading, error: liveQuery.data || preview.data ? null : liveQuery.error };
   const loadingMore = query.isFetching && query.isPlaceholderData && (query.data?.items.length ?? 0) < limit;
+  const chips = activeFilters({ value: filters, onChange: setFilters, modality, facets: query.data?.facets });
+  // Searching = new criteria in flight (old results dimmed). Background size polls don't count.
+  const searching = !filterError && (liveQuery.isPlaceholderData || (!liveQuery.data && liveQuery.isFetching));
+  const counts = query.data?.counts;
+  // Rows whose exact size the server is still looking up: say so instead of guessing a verdict.
+  const checking = (it: CatalogItem) => Boolean(query.data?.pending && it.engine && !it.size && it.fit.vram_needed == null);
+  const statusText = filterError
+    ? "Check the parameter range."
+    : searching && !loadingMore
+      ? query.data ? "Searching live catalogs…" : "Loading models…"
+      : counts
+        ? `${query.data!.items.length} of ${counts.total}${query.data!.has_more ? "+" : ""}${chips.length ? " matching" : ""} models${broaderCatalog ? ` · ${counts.launchable ?? 0} with launch support` : ""} · ${counts.fits} fit this machine${query.data!.pending ? " · checking sizes…" : ""}`
+        : query.data ? `${query.data.items.length} models` : "";
   // A search can match the model the user means (LTX-2.3) even when only conversions of it can launch.
   const hiddenCount = !broaderCatalog && !unsupported && dq.trim() ? query.data?.counts?.hidden_unsupported ?? 0 : 0;
   const hiddenExamples = query.data?.hidden_examples ?? [];
-  const chips = activeFilters({ value: filters, onChange: setFilters, modality, facets: query.data?.facets });
 
   const sources = useMemo(() => {
     const base = [
@@ -410,7 +425,7 @@ export function ModelBrowser({
       <ActiveCatalogFilters chips={chips} />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-fg-3" role="status" aria-live="polite">
         <span>
-          {filterError ? "Check the parameter range." : query.isFetching && !loadingMore ? (query.data ? "Showing available models · refreshing live catalogs…" : "Loading models…") : query.data?.counts ? `${query.data.items.length} of ${query.data.counts.total}${query.data.has_more ? "+" : ""}${chips.length ? " matching" : ""} models${broaderCatalog ? ` · ${query.data.counts.launchable ?? 0} with launch support` : ""} · ${query.data.counts.fits} fit this machine` : query.data ? `${query.data.items.length} models` : ""}
+          {statusText}
         </span>
         {(q || chips.length > 0 || source !== "all" || (broaderCatalog ? launchableOnly : unsupported) || fitFilter !== "all" || sortChoice) && (
           <button type="button" onClick={resetFilters} className="flex items-center gap-1 text-fg-2 hover:text-fg"><X className="size-3" /> Reset filters</button>
@@ -446,11 +461,11 @@ export function ModelBrowser({
       ) : query.error ? (
         <Empty title="Couldn't load models">{String((query.error as Error).message)}</Empty>
       ) : query.data && query.data.items.length === 0 ? (
-        <Empty title={query.isFetching ? "Searching live catalogs…" : chips.length ? "No models match these filters" : "Nothing found"}>
+        <Empty title={searching || query.data?.pending ? "Searching live catalogs…" : chips.length ? "No models match these filters" : "Nothing found"}>
           {chips.length ? "Remove a filter or adjust the range. When available, Load more expands discovery. Capability filters use detected tags; unknown counts are excluded from ranges unless included." : "Try another search, or switch the source filter."}
         </Empty>
       ) : (
-        <div className={cx(view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden", query.isPlaceholderData && "opacity-60")} aria-busy={query.isFetching}>
+        <div className={cx(view === "grid" ? "grid gap-3 @xl:grid-cols-2 @5xl:grid-cols-3" : "panel overflow-hidden", searching && "opacity-60")} aria-busy={searching}>
           {view === "list" && (
             <div className={cx("model-header model-columns border-b border-line px-5 py-2.5 text-[12px] font-medium text-fg-3", modality === "text" && "has-ctx")} aria-hidden="true">
               <span>Model</span><span>Params</span><span>Download</span>{modality === "text" && <span>Context</span>}<span>{modality === "world" ? "Support / GPU fit" : pool?.tpu ? "Fit on this TPU · HBM" : "Fit on this GPU · VRAM"}</span>
@@ -458,14 +473,14 @@ export function ModelBrowser({
           )}
           {query.data?.items.map((it) => (
             view === "grid"
-              ? <ModelCard key={it.key} item={it} devices={devices} selected={selectedKey === it.key} onOpen={() => onOpen(it)} />
-              : <ModelRow key={it.key} item={it} selected={selectedKey === it.key} onOpen={() => onOpen(it)} showContext={modality === "text"} />
+              ? <ModelCard key={it.key} item={it} devices={devices} selected={selectedKey === it.key} onOpen={() => onOpen(it)} checking={checking(it)} />
+              : <ModelRow key={it.key} item={it} selected={selectedKey === it.key} onOpen={() => onOpen(it)} showContext={modality === "text"} checking={checking(it)} />
           ))}
         </div>
       )}
       {!filterError && query.data?.has_more && (
         <div className="mt-5 flex justify-center">
-          <Button busy={query.isFetching} onClick={() => setPage({ key: criteriaKey, limit: Math.min(limit + PAGE, 300) })} disabled={limit >= 300}>
+          <Button busy={loadingMore} onClick={() => setPage({ key: criteriaKey, limit: Math.min(limit + PAGE, 300) })} disabled={limit >= 300}>
             {limit >= 300 ? "Search to narrow it down" : "Load more"}
           </Button>
         </div>

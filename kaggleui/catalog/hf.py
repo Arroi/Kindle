@@ -252,17 +252,22 @@ def bf16_files(sel: dict) -> list[str]:
 
 async def safetensors_dtypes(client: httpx.AsyncClient, repo_id: str, filename: str,
                              revision: str | None = None) -> dict[str, int]:
-    """Bytes per dtype in one .safetensors file, read from its header with two small range requests."""
+    """Bytes per dtype in one .safetensors file, read from its header (usually one small range request)."""
     url = f"https://huggingface.co/{repo_id}/resolve/{quote(revision or 'main', safe='')}/{quote(filename)}"
-    r = await client.get(url, headers={**_headers(), "Range": "bytes=0-7"}, follow_redirects=True, timeout=15)
+    first = 128 * 1024  # covers most headers; bigger ones take a second request
+    r = await client.get(url, headers={**_headers(), "Range": f"bytes=0-{first - 1}"}, follow_redirects=True, timeout=15)
     r.raise_for_status()
     length = struct.unpack("<Q", r.content[:8])[0]
     if not 0 < length <= 64 * 1024**2:
         raise ValueError(f"unexpected safetensors header size {length}")
-    r = await client.get(url, headers={**_headers(), "Range": f"bytes=8-{7 + length}"}, follow_redirects=True, timeout=30)
-    r.raise_for_status()
+    header = r.content[8:8 + length]
+    if len(header) < length:
+        r = await client.get(url, headers={**_headers(), "Range": f"bytes={8 + len(header)}-{7 + length}"},
+                             follow_redirects=True, timeout=30)
+        r.raise_for_status()
+        header += r.content
     out: dict[str, int] = {}
-    for name, entry in json.loads(r.content).items():
+    for name, entry in json.loads(header).items():
         if name != "__metadata__":
             start, end = entry["data_offsets"]
             out[entry["dtype"]] = out.get(entry["dtype"], 0) + end - start
@@ -295,8 +300,9 @@ async def bf16_plan(client: httpx.AsyncClient, repo_id: str, siblings: list[dict
         saved += comp_saved[comp]
     if saved < 256 * 1024**2:
         return None
-    largest = max(size - comp_saved.get(comp, 0) for comp, size in sel["components"].items())
-    return {"files": sorted(convert), "size": sel["size"] - saved, "largest": largest, "saved": saved}
+    components = {comp: size - comp_saved.get(comp, 0) for comp, size in sel["components"].items()}
+    return {"files": sorted(convert), "size": sel["size"] - saved, "largest": max(components.values()),
+            "saved": saved, "components": components}
 
 
 def transformers_files(siblings: list[dict]) -> dict:

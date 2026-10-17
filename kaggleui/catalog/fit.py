@@ -64,6 +64,9 @@ class Candidate:
     updated: float | None = None  # unix time
     attached: bool = False  # already on disk under /kaggle/input
     min_sm: int | None = None
+    components: dict[str, int] | None = None  # diffusers: bytes per pipeline component (as stored)
+    offload: str | None = None  # diffusers memory mode the user chose: none | model | sequential; None = auto
+    quantize: str | None = None  # diffusers: "nf4"
 
 
 @dataclass
@@ -126,6 +129,38 @@ def runtime_vram(c: Candidate) -> int | None:
     if m == "world":
         return int(w * 1.3 + 3 * GB)
     return int(w * 1.2 + GB)
+
+
+DIFFUSION_ENGINES = {"diffusers", "diffusers_video", "diffusers_world"}
+NF4 = 0.3  # 4-bit weights plus quantization state, relative to 16-bit
+OFFLOAD_LABEL = {"none": "all on GPU", "model": "model offload", "sequential": "sequential offload"}
+
+
+def nf4_quantized(component: str, size: int) -> bool:
+    """Components the worker loads in 4-bit (mirrors image_diffusers.load_pipeline)."""
+    return component in ("transformer", "transformer_2", "unet", "text_encoder_2", "text_encoder_3") or (
+        component == "text_encoder" and size > 2 * GB)
+
+
+def diffusion_vram(c: Candidate, mode: str, weights: int) -> int:
+    """Peak VRAM of a diffusers pipeline under one memory mode.
+
+    ``model`` offload moves one component at a time onto the GPU, so the peak is the biggest component
+    plus activations; text encoders only run once per prompt and need little beyond their weights.
+    """
+    act = int({"video": 2.5, "world": 3.0}.get(c.modality, 1.2) * GB)
+    comps = dict(c.components or {})
+    if not comps:  # only the total (and maybe the biggest part) is known
+        largest = min(c.largest_component_bytes or int(weights * 0.6), weights)
+        comps = {"transformer": largest, "text_encoder": weights - largest}
+    if c.quantize == "nf4":
+        comps = {k: int(v * NF4) if nf4_quantized(k, v) else v for k, v in comps.items()}
+    if mode == "sequential":
+        return act + GB  # one block at a time
+    if mode == "model":
+        return max(int(v * 1.05 + 0.4 * GB) if k.startswith("text_encoder") else int(v * 1.1) + act
+                   for k, v in comps.items())
+    return int(sum(comps.values()) * 1.1) + act
 
 
 def _gpu_label(hw: HardwareProfile) -> str:
@@ -201,6 +236,9 @@ def assess(c: Candidate, hw: HardwareProfile) -> Fit:
     busy_note = [f"{human_bytes(in_use)} VRAM already in use"] if in_use > 1.5 * GB else []
     pct = lambda cap: f"≈{human_bytes(need)} of {human_bytes(cap)} VRAM"  # noqa: E731
 
+    if c.engine in DIFFUSION_ENGINES and w:
+        return _assess_diffusion(c, hw, w, single, busy_note, done)
+
     if need <= single * COMFORT:
         return done("good", "single", [pct(single)] + busy_note, single)
     if need <= single:
@@ -273,6 +311,51 @@ def rank(fits: list[Fit], top_n: int = 3) -> None:
                   key=lambda f: f.score, reverse=True)
     for f in good[:top_n]:
         f.verdict = "best"
+
+
+def _assess_diffusion(c: Candidate, hw: HardwareProfile, w: int, single: int, busy_note: list[str], done) -> Fit:
+    """Diffusers pipelines run on one GPU; pick (or check) the memory mode and 4-bit setting that fit."""
+    stored = sum((c.components or {}).values()) or w
+    if c.offload is not None or c.quantize:
+        tries = [(c.offload or ("model" if c.quantize else "none"), c.quantize)]
+        auto = False
+    else:
+        tries = [("none", None), ("model", None), ("sequential", None), ("model", "nf4")]
+        auto = True
+    for mode, quant in tries:
+        probe = Candidate(**{**asdict(c), "quantize": quant})
+        need = diffusion_vram(probe, mode, w)
+        ram = int(stored * (NF4 if quant else 1)) if mode != "none" else 0
+        if need > single or ram > hw.ram_available * 0.85:
+            continue
+        label = OFFLOAD_LABEL[mode] + (" with 4-bit weights" if quant else "")
+        reasons = [f"≈{human_bytes(need)} peak of {human_bytes(single)} VRAM ({label})"]
+        if mode == "sequential":
+            reasons.append("Sequential offload streams weights from RAM every step: very slow")
+        if quant:
+            reasons.append("4-bit weights: smaller and slower, slight quality loss")
+        verdict = "good" if mode in ("none", "model") and not quant and need <= single * COMFORT else "tight"
+        suggest = {"offload": mode} if auto else {}
+        if auto and quant:
+            suggest["quantize"] = quant
+        f = done(verdict, "single" if mode == "none" else "offload", reasons + busy_note, single, suggest)
+        f.vram_needed = need
+        return f
+    if not auto:
+        mode, quant = tries[0]
+        need = diffusion_vram(Candidate(**{**asdict(c), "quantize": quant}), mode, w)
+        ram = int(stored * (NF4 if quant else 1))
+        if need > single:
+            why = f"≈{human_bytes(need)} with {OFFLOAD_LABEL[mode]}; one GPU has {human_bytes(single)}"
+        else:
+            why = f"Offloaded weights need ≈{human_bytes(ram)} RAM; {human_bytes(hw.ram_available)} free"
+        f = done("worst", "none", [why, "Try a lighter memory mode or 4-bit weights"] + busy_note, single)
+        f.vram_needed = need
+        return f
+    need = diffusion_vram(Candidate(**{**asdict(c), "quantize": "nf4"}), "sequential", w)
+    f = done("worst", "none", [f"Too big for {_gpu_label(hw)} even with offload and 4-bit weights"] + busy_note, single)
+    f.vram_needed = need
+    return f
 
 
 def pick_quant(params: float, available: list[str] | None, c_template: Candidate, hw: HardwareProfile

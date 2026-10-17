@@ -12,6 +12,21 @@ from fastapi import Body
 from .common import WorkerState, create_app, device, parse_args, serve, start_loading, torch_dtype
 
 
+def quantized_components(model: str) -> list[str]:
+    """What nf4 quantizes; big T5-style text encoders (Wan's UMT5-XXL is 11 GB) too, small CLIPs not.
+
+    Mirrors ``kaggleui.catalog.fit.nf4_quantized`` so the fit estimate matches what loads.
+    """
+    from pathlib import Path
+
+    names = ["transformer", "transformer_2", "text_encoder_2", "text_encoder_3", "unet"]
+    folder = Path(model) / "text_encoder"
+    if folder.is_dir() and sum(f.stat().st_size for f in folder.rglob("*") if f.is_file()) > 2 * 1024**3:
+        names.append("text_encoder")
+    present = [n for n in names if (Path(model) / n).is_dir()]
+    return present or names
+
+
 def load_pipeline(model: str, variant: str | None, options: dict):
     from diffusers import DiffusionPipeline
 
@@ -31,7 +46,7 @@ def load_pipeline(model: str, variant: str | None, options: dict):
         kwargs["quantization_config"] = PipelineQuantizationConfig(
             quant_backend="bitsandbytes_4bit",
             quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": dtype},
-            components_to_quantize=["transformer", "text_encoder_2", "text_encoder_3", "unet"],
+            components_to_quantize=quantized_components(model),
         )
     try:
         pipe = DiffusionPipeline.from_pretrained(model, **kwargs)
@@ -50,7 +65,7 @@ def load_pipeline(model: str, variant: str | None, options: dict):
     offload = options.get("offload")
     if dev == "cuda" and offload == "sequential":
         pipe.enable_sequential_cpu_offload()
-    elif dev == "cuda" and (offload == "model" or options.get("quantize")):
+    elif dev == "cuda" and (offload == "model" or (options.get("quantize") and offload != "none")):
         pipe.enable_model_cpu_offload()
     else:
         pipe.to(dev)
