@@ -100,7 +100,8 @@ def to_bf16(src: Path, dst: Path) -> None:
         metadata = f.metadata()
         for key in f.keys():
             tensor = f.get_tensor(key)
-            tensors[key] = tensor.to(torch.bfloat16) if tensor.dtype == torch.float32 else tensor
+            keep = tensor.dtype != torch.float32 or hf.QUANT_STATE.search(key)
+            tensors[key] = tensor if keep else tensor.to(torch.bfloat16)
     dst.parent.mkdir(parents=True, exist_ok=True)
     partial = dst.with_name(dst.name + ".partial")
     save_file(tensors, str(partial), metadata=metadata)

@@ -65,7 +65,7 @@ async def test_deploy_converts_into_its_own_folder(paths, hw, monkeypatch):
     spec = DeploymentSpec(modality="video", model={"source": "hf", "id": "Wan-AI/x", "engine": "diffusers_video"})
     assert (await download_model(spec, ctx, "diffusers"))[0] == "/converted"
     kwargs = download.await_args.kwargs
-    assert kwargs["convert"] == plan["files"] and kwargs["out_dir"] == paths.models / "bf16" / "Wan-AI--x"
+    assert kwargs["convert"] == plan["files"] and kwargs["out_dir"] == paths.models / "bf16-v2" / "Wan-AI--x"
 
     spec.options["weights"] = "original"
     await download_model(spec, ctx, "diffusers")
@@ -106,3 +106,27 @@ async def test_assess_choice_follows_settings(hw, monkeypatch):
     assert all_gpu["fit"]["verdict"] == "worst"
     assert nf4["fit"]["vram_needed"] < auto["fit"]["vram_needed"]
     assert fp32["size"] == auto["size"] + 10 * GB and fp32["fit"]["vram_needed"] == auto["fit"]["vram_needed"]
+
+
+@pytest.mark.parametrize("key,state", [
+    ("transformer_blocks.0.attn.to_q.weight.absmax", True),
+    ("transformer_blocks.0.attn.to_q.weight.quant_map", True),
+    ("transformer_blocks.0.attn.to_q.weight.nested_absmax", True),
+    ("transformer_blocks.0.attn.to_q.weight.quant_state.bitsandbytes__nf4", True),
+    ("model.layers.0.mlp.down_proj.SCB", True),
+    ("transformer_blocks.0.attn.to_q.weight", False),
+    ("transformer_blocks.0.norm1.linear.bias", False),
+])
+def test_quantization_state_is_recognised(key, state):
+    assert bool(hf.QUANT_STATE.search(key)) is state
+
+
+async def test_plan_leaves_prequantized_components_alone(monkeypatch):
+    """A bitsandbytes nf4 transformer stores absmax in float32; converting it breaks loading."""
+    async def headers(client, repo, filename, revision=None):
+        return {"U8": 50, "F32": 50, "quantized": 1} if filename.startswith("transformer/") else {"F32": 100}
+
+    monkeypatch.setattr(hf, "safetensors_dtypes", headers)
+    plan = await REAL_PLAN(None, "AlekseyCalvin/x", FILES)
+    assert plan and not any(f.startswith("transformer/") for f in plan["files"])
+    assert plan["saved"] == 3 * GB  # only the fp32 text encoder is halved

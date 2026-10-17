@@ -243,6 +243,12 @@ def diffusers_files(siblings: list[dict]) -> dict:
     }
 
 
+# Tensors that belong to an already-quantized layer (bitsandbytes absmax/quant_map, LLM.int8 SCB, GPTQ/AWQ
+# scales, FP8 scales). They must keep their stored dtype: bitsandbytes rejects a BF16 absmax.
+QUANT_STATE = re.compile(r"(?:absmax|quant_map|quant_state|nested_|\.SCB$|weight_format|qweight|qzeros|\.scales?$|"
+                         r"_scale(?:_inv)?$|\.g_idx$)")
+
+
 def bf16_files(sel: dict) -> list[str]:
     """Pipeline weights worth storing as BF16: everything but the VAE (small, and best kept at full precision)
     and files that already come as an fp16 variant."""
@@ -268,7 +274,9 @@ async def safetensors_dtypes(client: httpx.AsyncClient, repo_id: str, filename: 
         header += r.content
     out: dict[str, int] = {}
     for name, entry in json.loads(header).items():
-        if name != "__metadata__":
+        if name != "__metadata__" and QUANT_STATE.search(name):
+            out["quantized"] = 1  # not a dtype: marks a pre-quantized component
+        elif name != "__metadata__":
             start, end = entry["data_offsets"]
             out[entry["dtype"]] = out.get(entry["dtype"], 0) + end - start
     return out
@@ -295,10 +303,13 @@ async def bf16_plan(client: httpx.AsyncClient, repo_id: str, siblings: list[dict
     saved = 0
     comp_saved: dict[str, int] = {}
     for (comp, files), dtypes in zip(by_comp.items(), shares):
+        if dtypes.pop("quantized", 0):
+            convert.difference_update(files)  # already 4/8-bit: its float32 tensors are quantization state
+            continue
         fp32 = dtypes.get("F32", 0) / max(sum(dtypes.values()), 1)
         comp_saved[comp] = int(sum(sizes.get(f, 0) for f in files) * fp32 / 2)
         saved += comp_saved[comp]
-    if saved < 256 * 1024**2:
+    if saved < 256 * 1024**2 or not convert:
         return None
     components = {comp: size - comp_saved.get(comp, 0) for comp, size in sel["components"].items()}
     return {"files": sorted(convert), "size": sel["size"] - saved, "largest": max(components.values()),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -94,7 +95,10 @@ async def download_model(spec: DeploymentSpec, ctx: EngineContext, mode: str,
                 ctx.log(f"Couldn't read weight precision ({exc}); downloading the weights as published")
         if plan:
             ctx.log(f"Storing fp32 weights as BF16 saves {human_bytes(plan['saved'])} of disk")
-            out = ctx.paths.models / "bf16" / ((repo + (f"@{revision}" if revision else "")).replace("/", "--"))
+            folder = (repo + (f"@{revision}" if revision else "")).replace("/", "--")
+            # v0.2.11-v0.2.15 also converted bitsandbytes quantization state; never reuse those copies.
+            shutil.rmtree(ctx.paths.models / "bf16" / folder, ignore_errors=True)
+            out = ctx.paths.models / "bf16-v2" / folder
             path = await hf_download(ctx, repo, sel["files"], plan["size"], revision=revision,
                                      convert=plan["files"], out_dir=out)
             return path, spec.model.variant or sel["variant"]
