@@ -110,6 +110,30 @@ async def download_model(spec: DeploymentSpec, ctx: EngineContext, mode: str,
     return await hf_download(ctx, repo, allow, expected or None, revision=revision), None
 
 
+QUANT_PACKAGES = {"bitsandbytes": "bitsandbytes>=0.45", "gguf": "gguf>=0.10", "torchao": "torchao",
+                  "quanto": "optimum-quanto", "gptq": "gptqmodel", "awq": "autoawq"}
+
+
+def quantization_requirements(model_path: str, options: dict) -> list[str]:
+    """Packages a checkpoint needs for weights it ships already quantized, or that the user asked to quantize.
+
+    Pre-quantized pipelines (e.g. ``*_nf4_*`` uploads) declare ``quantization_config`` in a component's
+    config.json; loading them without the backend fails deep inside diffusers/transformers.
+    """
+    methods = {"bitsandbytes"} if options.get("quantize") == "nf4" else set()
+    root = Path(model_path)
+    for config in [root / "config.json", *root.glob("*/config.json")]:
+        try:
+            if config.stat().st_size > 2 * 1024**2:
+                continue
+            quant = json.loads(config.read_text()).get("quantization_config")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(quant, dict) and quant.get("quant_method"):
+            methods.add(str(quant["quant_method"]).lower())
+    return [QUANT_PACKAGES[m] for m in sorted(methods) if m in QUANT_PACKAGES]
+
+
 def pipeline_class(model_path: str) -> str | None:
     """The diffusers pipeline class a checkpoint names in its model_index.json."""
     try:
@@ -236,6 +260,12 @@ async def deploy(spec: DeploymentSpec, ctx: EngineContext) -> tuple[Backend, dic
         extra_env["PYTHONPATH"] = worker_pythonpath(ctx)
     else:
         await pip_install(ctx, cfg["reqs"], label=cfg["label"])
+    quant_reqs = quantization_requirements(model_path, spec.options)
+    if quant_reqs:
+        if python == sys.executable:
+            await pip_install(ctx, quant_reqs, label="quantization support")
+        else:
+            await pip_install(ctx, quant_reqs, python=python, label="quantization support")
     if cfg["download"] == "diffusers":
         await ensure_pipeline_class(ctx, python, model_path)
     if cfg.get("apt"):

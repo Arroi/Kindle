@@ -211,3 +211,14 @@ async def test_legacy_kokoro_deploy_explains(paths, hw, tmp_path, monkeypatch):
     spec = DeploymentSpec(modality="tts", model={"source": "hf", "id": "MaziyarPanahi/Kokoro-82M", "engine": "kokoro"})
     with pytest.raises(DeployError, match="hexgrad/Kokoro-82M"):
         await workers_engine.deploy(spec, context(paths, hw, []))
+
+
+def test_prequantized_checkpoints_install_their_backend(tmp_path):
+    from kaggleui.engines.workers_engine import quantization_requirements
+
+    (tmp_path / "transformer").mkdir()
+    (tmp_path / "transformer" / "config.json").write_text(json.dumps(
+        {"quantization_config": {"quant_method": "bitsandbytes", "load_in_4bit": True}}))
+    assert quantization_requirements(str(tmp_path), {}) == ["bitsandbytes>=0.45"]
+    assert quantization_requirements(str(tmp_path / "missing"), {"quantize": "nf4"}) == ["bitsandbytes>=0.45"]
+    assert quantization_requirements(str(tmp_path / "missing"), {}) == []
