@@ -196,7 +196,7 @@ def restart_tunnel(home: str | None = None) -> dict:
     raise RuntimeError(f"The public tunnel didn't connect. Check {paths.logs / 'tunnel-main.log'}.")
 
 
-def launch(preset=None, *, block: bool = True, heartbeat: float | None = 60, tunnel: str | None = None,
+def launch(preset=None, *, block: bool = True, heartbeat: float | None = 20, tunnel: str | None = None,
            port: int | None = None, mock: bool = False, fake_hw: str | None = None, home: str | None = None):
     load_kaggle_secrets()  # Kaggle secrets are readable from the kernel process; pass them down via env.
     paths = Paths(home).ensure()
@@ -315,19 +315,20 @@ def _status_line(state: dict) -> str:
     return " · ".join(parts) or "serving, no models deployed"
 
 
-def _block(paths: Paths, state: dict, heartbeat: float | None = 60) -> None:
+def _block(paths: Paths, state: dict, heartbeat: float | None = 20) -> None:
     """Keep the cell alive (needed for batch runs); reprint the card if the public URL changes.
 
-    Hosted notebooks such as molab treat a silent cell as idle and may put the container to sleep,
-    even while a model is loading. A status line every ``heartbeat`` seconds counts as activity.
+    Hosted notebooks such as molab treat a cell without new output as idle and shut the server
+    down, even while a model is loading. A status line every ``heartbeat`` seconds, whether or not
+    anything changed, keeps them awake.
     """
     last_url = state.get("url")
-    last_beat = last_check = time.monotonic()
-    last_line = ""
+    last_beat = time.monotonic()
+    tick = min(5.0, heartbeat) if heartbeat else 5.0
     print("Serving. Interrupt this cell to get the notebook back; the server keeps running.", flush=True)
     try:
         while True:
-            time.sleep(5)
+            time.sleep(tick)
             st = _read_state(paths)
             if not _running(st):
                 print("KaggleUI stopped.")
@@ -337,12 +338,8 @@ def _block(paths: Paths, state: dict, heartbeat: float | None = 60) -> None:
                 last_url = st["url"]
                 print("Public URL changed:", flush=True)
                 _show(st)
-            if heartbeat and time.monotonic() - last_check >= min(heartbeat, 30):
-                last_check = time.monotonic()
-                line = _status_line(st)
-                # Report changes (like load progress) every 30 s, and at least once per heartbeat.
-                if line != last_line or last_check - last_beat >= heartbeat:
-                    print(f"[kaggleui {time.strftime('%H:%M')}] {line}", flush=True)
-                    last_beat, last_line = last_check, line
+            if heartbeat and time.monotonic() - last_beat >= heartbeat:
+                last_beat = time.monotonic()
+                print(f"[kaggleui {time.strftime('%H:%M:%S')}] {_status_line(st)}", flush=True)
     except KeyboardInterrupt:
         print("Cell released. KaggleUI is still running in the background.", flush=True)

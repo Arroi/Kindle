@@ -113,7 +113,7 @@ kaggleui.launch(tunnel="gradio")
 
 molab doesn't support `!` shell lines, so the install runs through `subprocess`. Paste the cell with no leading spaces: molab's editor can indent pasted lines, which Python rejects with `IndentationError`. If that happens, select all lines and press **Shift+Tab**. As on Kaggle, building from source needs Node.js 20 or newer.
 
-The cell keeps running and prints a short status line, such as `[kaggleui 14:02] qwen3:8b loading 42%`, at least once a minute, so molab sees activity while a model downloads or loads. Use `kaggleui.launch(heartbeat=30)` to print more often, or `heartbeat=None` to turn it off. Gradio share links expire after about 72 hours. KaggleUI then opens a new one and prints the new card in the cell. Interfaces such as Open WebUI get their own share links. You can also pick **Gradio share link** under exposure in the panel on any platform, or set `KAGGLEUI_TUNNEL=gradio`.
+The cell keeps running and prints a short status line every 20 seconds, such as `[kaggleui 14:02:20] qwen3:8b loading 42%`. molab shuts down a server whose cell shows no new output for a while, so this line keeps it awake, including while a model downloads or loads. If the server still stops, print more often with `kaggleui.launch(tunnel="gradio", heartbeat=10)`. `heartbeat=None` turns it off. Gradio share links expire after about 72 hours. KaggleUI then opens a new one and prints the new card in the cell. Interfaces such as Open WebUI get their own share links. You can also pick **Gradio share link** under exposure in the panel on any platform, or set `KAGGLEUI_TUNNEL=gradio`.
 
 ### If the link won't open
 

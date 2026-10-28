@@ -6,7 +6,7 @@ __version__ = "0.2.16"
 
 
 def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: int | None = None,
-           heartbeat: float | None = 60):
+           heartbeat: float | None = 20):
     """Start KaggleUI from a notebook cell.
 
     Starts the server in a background process, prints a link card with the admin token,
