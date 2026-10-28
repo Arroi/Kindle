@@ -148,7 +148,7 @@ Interactive sessions stop when idle. For long runs, set up a model once, then cl
 
 ### Linked sessions (pool two GPU sessions)
 
-Run KaggleUI in two sessions with the **same accelerator**, for example two `GPU T4 x2` sessions on different platforms. In one of them, open **Access & API → Linked sessions** and paste the other session's link and API key. The other session's running models then appear in this session's API, Studio and `/v1/models`. When both sessions run the same model, requests alternate between them, so two sessions can handle twice the requests.
+Run KaggleUI in two sessions with the **same accelerator**, for example two `GPU T4 x2` sessions on different platforms. In one of them, open the **Linked sessions** tab and paste the other session's link and API key. The other session's running models then appear in this session's API, Studio and `/v1/models`. When both sessions run the same model, requests alternate between them, so two sessions can handle twice the requests.
 
 - Linking is refused unless both sessions report the same GPU model and count. If the other session later changes hardware, the link pauses and shows why.
 - Text (chat, completions, embeddings), image, text-to-speech, audio generation and speech-to-text are pooled. Video and world jobs stay on the session that runs them.

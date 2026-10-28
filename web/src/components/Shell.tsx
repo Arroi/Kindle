@@ -1,4 +1,4 @@
-import { Boxes, Gauge, KeyRound, LayoutGrid, LogOut, MessageSquare, Moon, Plus, Search, Server, Sun, Download, CornerDownLeft } from "lucide-react";
+import { Boxes, Gauge, KeyRound, LayoutGrid, Link2, LogOut, MessageSquare, Moon, Plus, Search, Server, Sun, Download, CornerDownLeft } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 
@@ -16,6 +16,7 @@ const NAV = [
   { to: "/imports", label: "Imports", icon: Download },
   { to: "/deployments", label: "Deployments", icon: Server },
   { to: "/studio", label: "Studio", icon: MessageSquare },
+  { to: "/links", label: "Linked sessions", icon: Link2 },
   { to: "/access", label: "Access & API", icon: KeyRound },
   { to: "/system", label: "System", icon: Gauge },
 ];

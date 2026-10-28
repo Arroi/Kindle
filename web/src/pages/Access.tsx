@@ -1,7 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { LinkedSessions } from "../components/LinkedSessions";
 import { SecretsCard } from "../components/Secrets";
 import { AccessForm, ApiForm, ExposurePicker, StreamingNote, type ApiState } from "../components/settings";
 import { Button, CopyButton, CopyField, Segmented, SectionTitle, useToast } from "../components/ui";
@@ -173,10 +172,6 @@ export default function Access() {
           <div className="mt-4">
             <StreamingNote />
           </div>
-        </Card>
-
-        <Card kicker="Pool GPUs" title="Linked sessions">
-          <LinkedSessions />
         </Card>
 
         <Card kicker="Copy & paste" title="Use it from code">

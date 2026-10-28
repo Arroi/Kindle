@@ -20,6 +20,7 @@ const Models = lazy(() => import("./pages/Models"));
 const Deployments = lazy(() => import("./pages/Deployments"));
 const Studio = lazy(() => import("./pages/Studio"));
 const Access = lazy(() => import("./pages/Access"));
+const Links = lazy(() => import("./pages/Links"));
 const System = lazy(() => import("./pages/System"));
 
 function Loading() {
@@ -58,6 +59,7 @@ function AdminApp() {
           <Route path="/deployments" element={<Deployments />} />
           <Route path="/studio" element={<Studio admin />} />
           <Route path="/studio/:id" element={<Studio admin />} />
+          <Route path="/links" element={<Links />} />
           <Route path="/access" element={<Access />} />
           <Route path="/system" element={<System />} />
           <Route path="/login" element={<Navigate to="/studio" replace />} />
