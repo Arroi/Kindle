@@ -196,8 +196,8 @@ def restart_tunnel(home: str | None = None) -> dict:
     raise RuntimeError(f"The public tunnel didn't connect. Check {paths.logs / 'tunnel-main.log'}.")
 
 
-def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: int | None = None,
-           mock: bool = False, fake_hw: str | None = None, home: str | None = None):
+def launch(preset=None, *, block: bool = True, heartbeat: float | None = 60, tunnel: str | None = None,
+           port: int | None = None, mock: bool = False, fake_hw: str | None = None, home: str | None = None):
     load_kaggle_secrets()  # Kaggle secrets are readable from the kernel process; pass them down via env.
     paths = Paths(home).ensure()
     existing = _read_state(paths)
@@ -219,7 +219,7 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         _share_secrets(existing)
         _show(existing)
         if block:
-            _block(paths, existing)
+            _block(paths, existing, heartbeat)
         return existing
     if _running(existing):
         raise RuntimeError("KaggleUI is running but its tunnel isn't ready. Run kaggleui.restart_tunnel() "
@@ -270,7 +270,7 @@ def launch(preset=None, *, block: bool = True, tunnel: str | None = None, port: 
         raise RuntimeError("KaggleUI didn't start within 3 minutes.")
     _show(state)
     if block:
-        _block(paths, state)
+        _block(paths, state, heartbeat)
     return state
 
 
@@ -298,9 +298,32 @@ def _tail(path: Path, n: int = 40) -> str:
         return ""
 
 
-def _block(paths: Paths, state: dict) -> None:
-    """Keep the cell alive (needed for batch runs); reprint the card if the public URL changes."""
+def _status_line(state: dict) -> str:
+    """One line on what the server is doing, e.g. ``qwen3:8b ready · flux loading 42%``."""
+    import httpx
+
+    try:
+        deps = httpx.get(f"http://127.0.0.1:{state['port']}/_kui/api/deployments", timeout=5,
+                         headers={"Authorization": f"Bearer {state['admin_token']}"}).json()
+    except Exception:
+        return "serving"
+    parts = []
+    for d in deps:
+        progress = d.get("progress")
+        pct = f" {round(progress * 100)}%" if d["status"] not in ("ready", "error") and progress else ""
+        parts.append(f"{d['name']} {d['status']}{pct}")
+    return " · ".join(parts) or "serving, no models deployed"
+
+
+def _block(paths: Paths, state: dict, heartbeat: float | None = 60) -> None:
+    """Keep the cell alive (needed for batch runs); reprint the card if the public URL changes.
+
+    Hosted notebooks such as molab treat a silent cell as idle and may put the container to sleep,
+    even while a model is loading. A status line every ``heartbeat`` seconds counts as activity.
+    """
     last_url = state.get("url")
+    last_beat = last_check = time.monotonic()
+    last_line = ""
     print("Serving. Interrupt this cell to get the notebook back; the server keeps running.", flush=True)
     try:
         while True:
@@ -314,5 +337,12 @@ def _block(paths: Paths, state: dict) -> None:
                 last_url = st["url"]
                 print("Public URL changed:", flush=True)
                 _show(st)
+            if heartbeat and time.monotonic() - last_check >= min(heartbeat, 30):
+                last_check = time.monotonic()
+                line = _status_line(st)
+                # Report changes (like load progress) every 30 s, and at least once per heartbeat.
+                if line != last_line or last_check - last_beat >= heartbeat:
+                    print(f"[kaggleui {time.strftime('%H:%M')}] {line}", flush=True)
+                    last_beat, last_line = last_check, line
     except KeyboardInterrupt:
         print("Cell released. KaggleUI is still running in the background.", flush=True)

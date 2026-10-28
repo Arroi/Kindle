@@ -79,12 +79,14 @@ These new audio adapters are **experimental and have not been verified with real
 3. Paste this into a cell and run it:
 
    ```python
-   !curl -fsSL https://raw.githubusercontent.com/UltraFEmotes/KaggleUI/main/install.sh | bash
+   !curl -fsSL https://raw.githubusercontent.com/ryyReid/KaggleUI/main/install.sh | bash
    import kaggleui
    kaggleui.launch()
    ```
 
-4. After 20–60 seconds the cell prints a card with a `https://….trycloudflare.com/?token=…` link, your admin token, the access password and the API key. Open the link on your computer. The token in the link signs you in.
+   The installer uses the latest release's wheel when one is published. Otherwise it builds the current `main` branch from source, which needs Node.js 20 or newer for the control panel and takes a minute or two. If `kaggleui` was already imported in this session, restart the kernel first.
+
+4. After the install, the cell prints a card within 20–60 seconds with a `https://….trycloudflare.com/?token=…` link, your admin token, the access password and the API key. Open the link on your computer. The token in the link signs you in.
 5. In the panel: **Deploy model → pick a type → pick a model → choose interface/password/API → Launch**. Install, download and load progress appear live under **Deployments**. When it shows **Ready**, open **Studio** or call the API.
 
 The cell keeps running so the session stays alive. Interrupt it to get the notebook back; the server keeps running in the background. `kaggleui.stop()` shuts it down.
@@ -103,13 +105,15 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
 Cloudflare quick tunnels don't connect from [molab](https://molab.marimo.io), so KaggleUI uses a **Gradio share link** (`https://….gradio.live`) there instead. That's the same relay `gradio share=True` uses, with no account and no Gradio install. Paste this into a cell:
 
 ```python
-import subprocess, sys
-subprocess.run("curl -fsSL https://raw.githubusercontent.com/UltraFEmotes/KaggleUI/main/install.sh | bash", shell=True, check=True)
+import subprocess
+subprocess.run("curl -fsSL https://raw.githubusercontent.com/ryyReid/KaggleUI/main/install.sh | bash", shell=True, check=True)
 import kaggleui
 kaggleui.launch(tunnel="gradio")
 ```
 
-The cell keeps running, which also keeps the molab container awake. Gradio share links expire after about 72 hours. KaggleUI then opens a new one and prints the new card in the cell. Interfaces such as Open WebUI get their own share links. You can also pick **Gradio share link** under exposure in the panel on any platform, or set `KAGGLEUI_TUNNEL=gradio`.
+molab doesn't support `!` shell lines, so the install runs through `subprocess`. Paste the cell with no leading spaces: molab's editor can indent pasted lines, which Python rejects with `IndentationError`. If that happens, select all lines and press **Shift+Tab**. As on Kaggle, building from source needs Node.js 20 or newer.
+
+The cell keeps running and prints a short status line, such as `[kaggleui 14:02] qwen3:8b loading 42%`, at least once a minute, so molab sees activity while a model downloads or loads. Use `kaggleui.launch(heartbeat=30)` to print more often, or `heartbeat=None` to turn it off. Gradio share links expire after about 72 hours. KaggleUI then opens a new one and prints the new card in the cell. Interfaces such as Open WebUI get their own share links. You can also pick **Gradio share link** under exposure in the panel on any platform, or set `KAGGLEUI_TUNNEL=gradio`.
 
 ### If the link won't open
 

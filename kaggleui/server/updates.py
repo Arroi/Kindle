@@ -20,7 +20,7 @@ import psutil
 from .. import __version__
 from ..schemas import Preset
 
-REPO = "UltraFEmotes/KaggleUI"
+REPO = "ryyReid/KaggleUI"
 POLICY_URL = f"https://raw.githubusercontent.com/{REPO}/main/release-policy.json"
 RELEASE_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
 
@@ -94,6 +94,9 @@ class Updates:
                 try:
                     if isinstance(response, BaseException):
                         raise response
+                    if kind == "release" and response.status_code == 404:
+                        self.latest = None  # no releases published yet: nothing to update to
+                        continue
                     response.raise_for_status()
                     data = response.json()
                     if kind == "policy":

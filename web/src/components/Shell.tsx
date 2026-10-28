@@ -218,7 +218,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <footer className="app-footer">
         <span className="font-mono">KaggleUI {__APP_VERSION__}</span>
         {overview?.mock && <span className="text-tight">Demo engines: nothing runs on a GPU</span>}
-        <a href="https://github.com/UltraFEmotes/KaggleUI" target="_blank" rel="noreferrer">
+        <a href="https://github.com/ryyReid/KaggleUI" target="_blank" rel="noreferrer">
           Source & help ↗
         </a>
         <button type="button" className="sm:hidden" onClick={() => api.logout().then(() => window.location.assign("/login"))}>

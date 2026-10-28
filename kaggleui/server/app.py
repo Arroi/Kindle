@@ -34,7 +34,7 @@ from .studio import studio_ws
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 RESERVED = ("/v1/", "/api/", "/_kui/", "/gradio/")
-INSTALL_LINE = "!curl -fsSL https://raw.githubusercontent.com/UltraFEmotes/KaggleUI/main/install.sh | bash"
+INSTALL_LINE = "!curl -fsSL https://raw.githubusercontent.com/ryyReid/KaggleUI/main/install.sh | bash"
 
 
 def create_app(state: AppState) -> FastAPI:
