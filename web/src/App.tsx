@@ -35,7 +35,7 @@ function VersionBanner({ server }: { server: string }) {
   if (server === __APP_VERSION__) return null;
   return (
     <div className="mb-5 rounded-lg border border-tight/40 bg-tight-soft px-4 py-3 text-[13.5px] text-tight">
-      The page is KaggleUI {__APP_VERSION__} but the server is still {server}. In the notebook, re-run the KaggleUI cell. It
+      The page is Kindle {__APP_VERSION__} but the server is still {server}. In the notebook, re-run the Kindle cell. It
       restarts the server.
     </div>
   );
@@ -96,11 +96,11 @@ function GuestStudio() {
 export default function App() {
   const session = useQuery({ queryKey: ["session"], queryFn: api.session, retry: 1 });
   if (session.isLoading) return <Loading />;
-  if (session.error) return <div className="mx-auto max-w-lg px-6 py-24"><Empty title="Can't reach KaggleUI">The server may be restarting, or the notebook session may have ended.<p className="mt-2 break-words text-worst">{session.error.message}</p><Button className="mt-5" onClick={() => session.refetch()}>Try again</Button></Empty></div>;
+  if (session.error) return <div className="mx-auto max-w-lg px-6 py-24"><Empty title="Can't reach Kindle">The server may be restarting, or the notebook session may have ended.<p className="mt-2 break-words text-worst">{session.error.message}</p><Button className="mt-5" onClick={() => session.refetch()}>Try again</Button></Empty></div>;
   const s = session.data;
   const path = location.pathname;
 
-  if (s?.compatibility?.blocked && !s.admin && path !== "/host") return <div className="mx-auto max-w-lg p-10"><Empty title="This server needs an update">{s.compatibility.message}<p className="mt-3">Ask the host to update KaggleUI.</p><a href="/host" className="mt-4 inline-block underline">Host sign-in</a></Empty></div>;
+  if (s?.compatibility?.blocked && !s.admin && path !== "/host") return <div className="mx-auto max-w-lg p-10"><Empty title="This server needs an update">{s.compatibility.message}<p className="mt-3">Ask the host to update Kindle.</p><a href="/host" className="mt-4 inline-block underline">Host sign-in</a></Empty></div>;
 
   if (s?.admin) {
     return (

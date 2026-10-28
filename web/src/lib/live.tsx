@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useReducer, useRef, type
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./api";
-import type { Deployment, Links, Overview, Settings, System, Tunnel } from "./types";
+import type { Deployment, Links, Overview, PoolInfo, Settings, System, Tunnel } from "./types";
 
 interface LiveState {
   overview: Overview | null;
@@ -23,6 +23,7 @@ type Action =
   | { type: "credentials"; data: Overview["credentials"] }
   | { type: "secrets"; data: Record<string, boolean> }
   | { type: "links"; data: Links }
+  | { type: "pool"; data: PoolInfo }
   | { type: "connected"; value: boolean };
 
 const MAX_LOG = 2000;
@@ -82,6 +83,8 @@ function reducer(state: LiveState, a: Action): LiveState {
       return { ...state, overview: { ...ov, secrets: a.data } };
     case "links":
       return { ...state, overview: { ...ov, links: a.data } };
+    case "pool":
+      return { ...state, overview: { ...ov, pool: a.data } };
   }
   return state;
 }

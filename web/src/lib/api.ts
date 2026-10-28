@@ -2,6 +2,7 @@ import type {
   Assessment,
   CatalogItem,
   CatalogMeta,
+  ChatSummary,
   Deployment,
   Links,
   DeploymentSpec,
@@ -41,7 +42,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     if (res.status === 405 || (res.status === 404 && path.startsWith("/_kui/api/") && msg === "Not Found")) {
       // An endpoint this page knows about but the running server doesn't: the server is outdated.
-      msg = "The KaggleUI server is older than this page. In the notebook, re-run the KaggleUI cell (it restarts the server).";
+      msg = "The Kindle server is older than this page. In the notebook, re-run the Kindle cell (it restarts the server).";
     }
     throw new ApiError(res.status, msg);
   }
@@ -122,6 +123,11 @@ export const api = {
   restartTunnel: () => request("/_kui/api/tunnels/main/restart", { method: "POST" }),
   preset: () => request<{ preset: unknown; cell: string }>("/_kui/api/preset"),
   studioModels: () => request<StudioModel[]>("/_kui/api/studio/models"),
+  chats: () => request<ChatSummary[]>("/_kui/api/studio/chats"),
+  chat: <T,>(id: string) => request<T>(`/_kui/api/studio/chats/${encodeURIComponent(id)}`),
+  saveChat: (id: string, chat: unknown) =>
+    request<{ id: string; updated: number }>(`/_kui/api/studio/chats/${encodeURIComponent(id)}`, { method: "PUT", body: json(chat) }),
+  deleteChat: (id: string) => request(`/_kui/api/studio/chats/${encodeURIComponent(id)}`, { method: "DELETE" }),
   secrets: () => request<SecretDetails>("/_kui/api/secrets"),
   setSecret: (name: string, value: string) =>
     request<SecretDetails>(`/_kui/api/secrets/${name}`, { method: "PUT", body: json({ value }) }),

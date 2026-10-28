@@ -18,10 +18,10 @@ const INFO: Record<string, { label: string; help: string; link?: string; placeho
   NGROK_DOMAIN: { label: "ngrok static domain", help: "Optional free fixed URL, e.g. you.ngrok-free.app.", placeholder: "you.ngrok-free.app" },
   CF_TUNNEL_TOKEN: { label: "Cloudflare tunnel token", help: "For a named tunnel on your own domain." },
   CF_TUNNEL_HOSTNAME: { label: "Cloudflare tunnel hostname", help: "The public hostname routed to http://localhost:8890.", placeholder: "ai.example.com" },
-  KAGGLEUI_NOTIFY_URL: { label: "Notification URL", help: "An ntfy.sh topic URL or Discord webhook. Gets the link when KaggleUI starts.", placeholder: "https://ntfy.sh/your-topic" },
+  KINDLE_NOTIFY_URL: { label: "Notification URL", help: "An ntfy.sh topic URL or Discord webhook. Gets the link when Kindle starts.", placeholder: "https://ntfy.sh/your-topic" },
 };
 
-const SOURCE_LABEL: Record<string, string> = { kaggle: "From Kaggle secret", kaggleui: "Set in KaggleUI", env: "From environment" };
+const SOURCE_LABEL: Record<string, string> = { kaggle: "From Kaggle secret", kindle: "Set in Kindle", env: "From environment" };
 
 function Row({ item, hf, onSaved }: { item: SecretItem; hf?: SecretDetails["hf"]; onSaved: (d: SecretDetails) => void }) {
   const info = INFO[item.name] ?? { label: item.name, help: "" };
@@ -149,7 +149,7 @@ export function SecretsCard() {
       <div className="mb-1.5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="readout mb-1.5">Hugging Face, tunnels, notifications</div>
-          <h2 className="display text-[30px]">Keys & tokens</h2>
+          <h2 className="display text-[20px]">Keys & tokens</h2>
         </div>
         <Button size="sm" onClick={reload} busy={reloading}>
           <RefreshCw className="size-3.5" /> Reload Kaggle secrets

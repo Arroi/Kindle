@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from kaggleui.catalog import hf
-from kaggleui.catalog.service import CatalogService
-from kaggleui.engines import workers_engine
-from kaggleui.engines.context import EngineContext
-from kaggleui.engines.workers_engine import download_model
-from kaggleui.schemas import DeploymentSpec
+from kindle.catalog import hf
+from kindle.catalog.service import CatalogService
+from kindle.engines import workers_engine
+from kindle.engines.context import EngineContext
+from kindle.engines.workers_engine import download_model
+from kindle.schemas import DeploymentSpec
 
 GB = 1024**3
 FILES = [{"rfilename": "model_index.json", "size": 500},
@@ -76,7 +76,7 @@ def test_to_bf16_rewrites_only_float32(tmp_path: Path):
     torch = pytest.importorskip("torch")
     from safetensors.torch import load_file, save_file
 
-    from kaggleui.engines.download import to_bf16
+    from kindle.engines.download import to_bf16
 
     src = tmp_path / "a.safetensors"
     save_file({"w": torch.ones(4, dtype=torch.float32), "i": torch.arange(3)}, str(src), metadata={"format": "pt"})

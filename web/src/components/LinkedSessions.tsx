@@ -1,10 +1,62 @@
-import { Link2, Trash2 } from "lucide-react";
+import { Cpu, Link2, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../lib/api";
+import { bytes } from "../lib/format";
 import { useLive } from "../lib/live";
-import type { LinkedSession } from "../lib/types";
-import { Button, Chip, Field, Input, useToast } from "./ui";
+import type { LinkedSession, PoolInfo } from "../lib/types";
+import { Button, Chip, Field, Input, Toggle, useToast } from "./ui";
+
+const POOL_STATUS: Record<PoolInfo["status"], string> = {
+  idle: "Waiting for a head session",
+  installing: "Installing llama.cpp",
+  starting: "Starting the RPC server",
+  seeding: "Downloading its share of the weights",
+  ready: "In the pool",
+  error: "Error",
+};
+
+/** Lend this session's GPU to a head session that runs one model too big for a single GPU. */
+function ShareGpu() {
+  const { overview, dispatch } = useLive();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (!overview) return null;
+  const pool = overview.pool;
+  const on = overview.settings.pool?.share_gpu ?? false;
+
+  async function toggle(value: boolean) {
+    setBusy(true);
+    try {
+      dispatch({ type: "settings", data: await api.updateSettings({ pool: { share_gpu: value } }) });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Couldn't change GPU sharing", "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-line bg-bg-2 px-3 py-3">
+      <Toggle checked={on} disabled={busy} onChange={toggle}
+        label={<span className="flex items-center gap-2"><Cpu className="size-3.5" /> Share this GPU with a pool</span>}
+        hint="For models bigger than one GPU. Link this session from the session that will run the model, then deploy it there with the llama.cpp (GPU pool) engine. Each token makes a round trip over the public link, so pooled models are slower than single-session ones." />
+      {on && pool && (
+        <div className="mt-3 space-y-1 border-t border-line pt-2 text-[12.5px]">
+          <div className="flex flex-wrap gap-x-3 text-fg-2">
+            <span>{POOL_STATUS[pool.status]}</span>
+            {pool.gpus.map((g, i) => <span key={i} className="text-fg-3">{g.name} · {bytes(g.vram_free)} free</span>)}
+          </div>
+          {pool.message && pool.status !== "idle" && <div className="text-fg-3">{pool.message}</div>}
+          {pool.progress != null && pool.status === "seeding" && (
+            <div className="h-1.5 overflow-hidden rounded-full bg-panel-3"><div className="h-full bg-signal" style={{ width: `${Math.round(pool.progress * 100)}%` }} /></div>
+          )}
+          {pool.error && <div className="text-worst">{pool.error}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const STATUS: Record<LinkedSession["status"], [string, string]> = {
   up: ["dot dot-live", "Connected"],
@@ -13,7 +65,7 @@ const STATUS: Record<LinkedSession["status"], [string, string]> = {
   mismatch: ["dot dot-warn", "GPUs don't match"],
 };
 
-/** Pool another KaggleUI session's models behind this one's URL and API key. */
+/** Pool another Kindle session's models behind this one's URL and API key. */
 export function LinkedSessions() {
   const { overview, dispatch } = useLive();
   const toast = useToast();
@@ -47,8 +99,9 @@ export function LinkedSessions() {
 
   return (
     <div className="space-y-4">
+      <ShareGpu />
       <p className="text-[13px] leading-snug text-fg-2">
-        Link another KaggleUI session that has the <b className="text-fg">same GPUs</b> as this one ({links.gpu_label}). Its running models
+        Link another Kindle session that has the <b className="text-fg">same GPUs</b> as this one ({links.gpu_label}). Its running models
         appear here under this URL and API key. When both sessions run the same model, requests alternate between them. Video and world
         jobs stay on the session that runs them.
       </p>
@@ -89,7 +142,12 @@ export function LinkedSessions() {
                     <Trash2 className="size-3.5" />
                   </Button>
                 </div>
-                {l.gpu_label && <div className="mt-1 text-fg-3">{l.gpu_label}{l.version ? ` · KaggleUI ${l.version}` : ""}</div>}
+                {l.gpu_label && <div className="mt-1 text-fg-3">{l.gpu_label}{l.version ? ` · Kindle ${l.version}` : ""}</div>}
+                {l.pool?.enabled && (
+                  <div className="mt-1 flex items-center gap-1.5 text-fg-2">
+                    <Cpu className="size-3" /> Shares its GPU{l.pool.status && l.pool.status !== "idle" ? ` · ${POOL_STATUS[l.pool.status]}` : " · available to the pool"}
+                  </div>
+                )}
                 {l.error && <div className="mt-1 text-worst">{l.error}</div>}
                 {l.models.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">

@@ -6,15 +6,15 @@ import types
 import pytest
 from fastapi.testclient import TestClient
 
-from kaggleui import secretstore
-from kaggleui.schemas import Settings
-from kaggleui.server.app import create_app
-from kaggleui.server.state import AppState
+from kindle import secretstore
+from kindle.schemas import Settings
+from kindle.server.app import create_app
+from kindle.server.state import AppState
 
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for n in (*secretstore.SECRET_NAMES, "HUGGING_FACE_HUB_TOKEN", "KAGGLEUI_KAGGLE_SECRETS"):
+    for n in (*secretstore.SECRET_NAMES, "HUGGING_FACE_HUB_TOKEN", "KINDLE_KAGGLE_SECRETS"):
         monkeypatch.delenv(n, raising=False)
     secretstore._sources.clear()
     yield
@@ -75,13 +75,13 @@ def test_panel_endpoints_never_echo_values(paths):
         r = c.put("/_kui/api/secrets/NGROK_AUTHTOKEN", json={"value": "SUPERSECRET123"}, headers=admin)
         assert r.status_code == 200 and "SUPERSECRET123" not in r.text
         item = next(i for i in r.json()["items"] if i["name"] == "NGROK_AUTHTOKEN")
-        assert item == {"name": "NGROK_AUTHTOKEN", "set": True, "source": "kaggleui", "editable": True}
+        assert item == {"name": "NGROK_AUTHTOKEN", "set": True, "source": "kindle", "editable": True}
         assert c.get("/_kui/api/overview", headers=admin).json()["secrets"]["NGROK_AUTHTOKEN"] is True
         assert "SUPERSECRET123" not in c.get("/_kui/api/overview", headers=admin).text
-        # KaggleUI's own credentials aren't editable here
-        assert c.put("/_kui/api/secrets/KAGGLEUI_ADMIN_TOKEN", json={"value": "x"}, headers=admin).status_code == 400
+        # Kindle's own credentials aren't editable here
+        assert c.put("/_kui/api/secrets/KINDLE_ADMIN_TOKEN", json={"value": "x"}, headers=admin).status_code == 400
         # launch() hand-off
-        r = c.post("/_kui/api/secrets/import", json={"values": {"HF_TOKEN": "hf_x", "KAGGLEUI_PASSWORD": "p"}},
+        r = c.post("/_kui/api/secrets/import", json={"values": {"HF_TOKEN": "hf_x", "KINDLE_PASSWORD": "p"}},
                    headers=admin)
         assert r.json() == {"updated": ["HF_TOKEN"]} and secretstore._sources["HF_TOKEN"] == "kaggle"
         assert c.delete("/_kui/api/secrets/NGROK_AUTHTOKEN", headers=admin).status_code == 200
@@ -103,6 +103,6 @@ def test_reload_endpoint_and_clear_error_for_unknown_calls(paths, monkeypatch):
 
 
 def test_package_exports_launch_and_stop():
-    import kaggleui
+    import kindle
 
-    assert callable(kaggleui.launch) and callable(kaggleui.stop)
+    assert callable(kindle.launch) and callable(kindle.stop)

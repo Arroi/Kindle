@@ -18,11 +18,11 @@ export function UpdateNotice({ full = false }: { full?: boolean }) {
   }, [update?.progress?.status, update?.current]);
   const running = ["installing", "restarting"].includes(update?.progress?.status ?? "");
   if (!full && !update?.available && !update?.blocked && !running) return null;
-  return <section className={full ? "panel mb-6 p-5" : "update-notice mb-6"} aria-label="KaggleUI updates">
+  return <section className={full ? "panel mb-6 p-5" : "update-notice mb-6"} aria-label="Kindle updates">
     <div className="flex flex-wrap items-center gap-4">
       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-signal-soft text-signal"><ArrowDownToLine className="size-4" /></span>
       <div className="min-w-0 flex-1">
-        <h2 className="text-[14px] font-semibold">{update?.blocked ? "Update required" : update?.available ? `KaggleUI ${update.latest} is available` : `KaggleUI ${update?.current ?? __APP_VERSION__}`}</h2>
+        <h2 className="text-[14px] font-semibold">{update?.blocked ? "Update required" : update?.available ? `Kindle ${update.latest} is available` : `Kindle ${update?.current ?? __APP_VERSION__}`}</h2>
         <p className="mt-0.5 text-[13px] text-fg-2">{running ? update?.progress?.message : update?.blocked ? update.message : update?.available ? "Install the latest release and restart your workspace." : update?.latest ? "Your workspace is up to date." : query.isFetching ? "Checking releases…" : "Release status unavailable. Try checking again."}</p>
       </div>
       {update?.available && !running && <Button size="sm" variant="primary" busy={busy} onClick={async () => {

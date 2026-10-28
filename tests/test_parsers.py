@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from kaggleui.capabilities import context_length
-from kaggleui.catalog import hf, ollama
-from kaggleui.catalog.attached import scan
-from kaggleui.catalog.resolve import resolve_hf
-from kaggleui.util import parse_params, parse_size
+from kindle.capabilities import context_length
+from kindle.catalog import hf, ollama
+from kindle.catalog.attached import scan
+from kindle.catalog.resolve import resolve_hf
+from kindle.util import parse_params, parse_size
 
 FIX = Path(__file__).parent / "fixtures"
 
@@ -80,10 +80,10 @@ def test_resolver():
 
 
 def test_sglang_is_a_selectable_text_engine():
-    from kaggleui.catalog.resolve import ENGINE_LABELS, MODALITY_ENGINES
+    from kindle.catalog.resolve import ENGINE_LABELS, MODALITY_ENGINES
 
     assert ENGINE_LABELS["sglang"] == "SGLang"
-    assert MODALITY_ENGINES["text"] == ["ollama", "vllm", "sglang", "transformers"]
+    assert MODALITY_ENGINES["text"] == ["ollama", "llamacpp", "vllm", "sglang", "transformers"]
 
 
 def test_context_length_reads_real_configs():
@@ -137,7 +137,7 @@ def test_attached_text_models_report_their_context_window(tmp_path):
 
 
 def test_ollama_effective_param_sizes():
-    from kaggleui.catalog.service import CatalogService
+    from kindle.catalog.service import CatalogService
 
     it = CatalogService(lambda: None)._from_ollama({"name": "gemma4", "sizes": ["e4b", "12b"], "downloads": 1})
     assert [v["params"] for v in it["variants"]] == [4e9, 12e9]

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 
-from kaggleui.catalog.fit import TPU_ENGINES, Candidate, assess
-from kaggleui.system.probe import Probe
-from kaggleui.util import GB, GiB
+from kindle.catalog.fit import TPU_ENGINES, Candidate, assess
+from kindle.system.probe import Probe
+from kindle.util import GB, GiB
 
 
 def _clean_env(monkeypatch) -> None:

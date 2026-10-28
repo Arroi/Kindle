@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from kaggleui.catalog import hf
-from kaggleui.catalog.service import CatalogService
-from kaggleui.engines import workers_engine
-from kaggleui.engines.context import DeployError, EngineContext
-from kaggleui.engines.workers_engine import download_model, ensure_pipeline_class, pipeline_class
-from kaggleui.schemas import DeploymentSpec
+from kindle.catalog import hf
+from kindle.catalog.service import CatalogService
+from kindle.engines import workers_engine
+from kindle.engines.context import DeployError, EngineContext
+from kindle.engines.workers_engine import download_model, ensure_pipeline_class, pipeline_class
+from kindle.schemas import DeploymentSpec
 
 # Wan-AI's original release: tagged "diffusers" on the Hub but laid out for the Wan repo's own code.
 ORIGINAL_FILES = [{"rfilename": "config.json", "size": 300},
@@ -214,7 +214,7 @@ async def test_legacy_kokoro_deploy_explains(paths, hw, tmp_path, monkeypatch):
 
 
 def test_prequantized_checkpoints_install_their_backend(tmp_path):
-    from kaggleui.engines.workers_engine import quantization_requirements
+    from kindle.engines.workers_engine import quantization_requirements
 
     (tmp_path / "transformer").mkdir()
     (tmp_path / "transformer" / "config.json").write_text(json.dumps(

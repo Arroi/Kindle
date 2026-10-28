@@ -12,10 +12,10 @@ const SECRET_HELP: Record<string, string> = {
   NGROK_DOMAIN: "Your free static ngrok domain",
   CF_TUNNEL_TOKEN: "Cloudflare named tunnel",
   CF_TUNNEL_HOSTNAME: "Hostname for the named tunnel",
-  KAGGLEUI_PASSWORD: "Fixed access password",
-  KAGGLEUI_ADMIN_TOKEN: "Fixed admin token",
-  KAGGLEUI_API_KEY: "Fixed API key",
-  KAGGLEUI_NOTIFY_URL: "Push the URL to ntfy.sh or a Discord webhook",
+  KINDLE_PASSWORD: "Fixed access password",
+  KINDLE_ADMIN_TOKEN: "Fixed admin token",
+  KINDLE_API_KEY: "Fixed API key",
+  KINDLE_NOTIFY_URL: "Push the URL to ntfy.sh or a Discord webhook",
 };
 
 export default function System() {
@@ -25,7 +25,7 @@ export default function System() {
   const devices = s.gpus.length ? s.gpus : s.tpus ?? [];
   return (
     <div>
-      <SectionTitle title={s.accelerator_label} description={`${s.platform}. Hardware, storage, session time and the secrets KaggleUI can see.`} />
+      <SectionTitle title={s.accelerator_label} description={`${s.platform}. Hardware, storage, session time and the secrets Kindle can see.`} />
       <UpdateNotice full />
       {s.notes.length > 0 && (
         <div className="mb-4 space-y-2">
@@ -46,7 +46,7 @@ export default function System() {
               {devices.map((g) => (
                 <div key={g.index} className="rounded-xl border border-line bg-bg-2 p-4">
                   <div className="mb-3 flex items-baseline justify-between">
-                    <span className="display text-[24px]">{g.name.replace("NVIDIA ", "")}</span>
+                    <span className="display text-[18px]">{g.name.replace("NVIDIA ", "")}</span>
                     <span className="font-mono text-[11px] text-fg-3">{g.kind === "tpu" ? "HBM" : `sm_${g.sm ?? "?"}`}</span>
                   </div>
                   <GpuMeter gpu={g} />
@@ -125,7 +125,7 @@ export default function System() {
               </div>
             ))}
           </div>
-          <div className="mt-4 font-mono text-[10.5px] text-fg-3">KaggleUI {overview.version}</div>
+          <div className="mt-4 font-mono text-[10.5px] text-fg-3">Kindle {overview.version}</div>
         </section>
       </div>
     </div>

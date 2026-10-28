@@ -31,7 +31,7 @@ export function Brand({ small }: { small?: boolean }) {
         <rect x="12.5" y="12" width="3" height="8" rx="1.5" fill="var(--bg)" opacity=".7" />
         <rect x="18" y="16" width="3" height="4" rx="1.5" fill="var(--good)" />
       </svg>
-      <span className="text-[16px] font-semibold tracking-[-0.03em]">KaggleUI</span>
+      <span className="text-[16px] font-semibold tracking-[-0.03em]">Kindle</span>
     </div>
   );
 }
@@ -174,7 +174,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </a>
       <header className="app-header">
         <div className="app-header-inner">
-          <Link to="/" aria-label="KaggleUI overview">
+          <Link to="/" aria-label="Kindle overview">
             <Brand small />
           </Link>
           <nav className="app-nav" aria-label="Workspace">
@@ -217,10 +217,10 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </main>
       <footer className="app-footer">
-        <span className="font-mono">KaggleUI {__APP_VERSION__}</span>
+        <span className="font-mono">Kindle {__APP_VERSION__}</span>
         {overview?.mock && <span className="text-tight">Demo engines: nothing runs on a GPU</span>}
         <a href="https://github.com/ryyReid/KaggleUI" target="_blank" rel="noreferrer">
-          Source & help ↗
+          Based on KaggleUI ↗
         </a>
         <button type="button" className="sm:hidden" onClick={() => api.logout().then(() => window.location.assign("/login"))}>
           Sign out

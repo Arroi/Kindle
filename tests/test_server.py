@@ -5,9 +5,9 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from kaggleui.schemas import Settings
-from kaggleui.server.app import create_app
-from kaggleui.server.state import AppState
+from kindle.schemas import Settings
+from kindle.server.app import create_app
+from kindle.server.state import AppState
 
 
 @pytest.fixture
@@ -81,6 +81,27 @@ def test_unknown_model_falls_back_when_single_model(client, state):
     assert r.status_code == 200
 
 
+def test_aliases_and_strict_model_names(client, state):
+    deploy(client, state)
+    deploy(client, state, model_id="llama3.2", variant="1b")
+    key = {"Authorization": f"Bearer {state.auth.api_key}"}
+    body = {"messages": [{"role": "user", "content": "x"}]}
+    # Two models: an unknown name is ambiguous until an alias points it somewhere
+    assert client.post("/v1/chat/completions", json={**body, "model": "claude-haiku-4-5"}, headers=key).status_code == 404
+    state.settings.api.aliases = {"claude-*haiku*": "llama3.2:1b"}
+    r = client.post("/v1/chat/completions", json={**body, "model": "claude-haiku-4-5"}, headers=key)
+    assert r.status_code == 200 and r.json()["model"] == "llama3.2:1b"
+
+
+def test_strict_models_rejects_unknown_name(client, state):
+    deploy(client, state)
+    state.settings.api.strict_models = True
+    key = {"Authorization": f"Bearer {state.auth.api_key}"}
+    r = client.post("/v1/chat/completions", json={"model": "gpt-4o", "messages": [{"role": "user", "content": "x"}]},
+                    headers=key)
+    assert r.status_code == 404 and "qwen3:0.6b" in r.json()["error"]["message"]
+
+
 def test_wrong_modality_gives_helpful_404(client, state):
     deploy(client, state)
     key = {"Authorization": f"Bearer {state.auth.api_key}"}
@@ -126,7 +147,7 @@ def test_preset_export(client, state):
     deploy(client, state)
     r = client.get("/_kui/api/preset", headers={"Authorization": f"Bearer {state.auth.admin_token}"}).json()
     assert r["preset"]["deployments"][0]["model"]["id"] == "qwen3"
-    assert "kaggleui.launch(preset=" in r["cell"]
+    assert "kindle.launch(preset=" in r["cell"]
 
 
 def test_spa_fallback_does_not_swallow_api(client):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from kaggleui.config import Paths
-from kaggleui.system.probe import Probe
+from kindle.config import Paths
+from kindle.system.probe import Probe
 
 
 @pytest.fixture
@@ -24,6 +24,6 @@ def _no_weight_header_reads(monkeypatch):
     """Precision planning reads safetensors headers from the Hub; tests opt in with their own stub."""
     from unittest.mock import AsyncMock
 
-    from kaggleui.catalog import hf
+    from kindle.catalog import hf
 
     monkeypatch.setattr(hf, "bf16_plan", AsyncMock(return_value=None))

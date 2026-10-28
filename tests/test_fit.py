@@ -1,5 +1,5 @@
-from kaggleui.catalog.fit import Candidate, Fit, assess, gguf_size, pick_quant, rank, weights_from_safetensors
-from kaggleui.util import GB
+from kindle.catalog.fit import Candidate, Fit, assess, gguf_size, pick_quant, rank, weights_from_safetensors
+from kindle.util import GB
 
 
 def text(size_gb: float, params_b: float, engine: str = "ollama", **kw) -> Candidate:

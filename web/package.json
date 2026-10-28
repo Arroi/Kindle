@@ -1,11 +1,11 @@
 {
-  "name": "kaggleui-web",
+  "name": "kindle-web",
   "private": true,
   "version": "0.2.16",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p . && vite build && touch ../kaggleui/static/.gitkeep",
+    "build": "tsc -p . && vite build && touch ../kindle/static/.gitkeep",
     "typecheck": "tsc -p ."
   },
   "dependencies": {

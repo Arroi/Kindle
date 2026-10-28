@@ -1,0 +1,121 @@
+# Published Hub repositories to keep discovery useful if live search is unavailable.
+# An engine is set only when Kindle has an explicit integration for that checkpoint.
+# Metadata and file sizes are refreshed from the Hub; these are not Kaggle-tested picks.
+- id: nvidia/Cosmos-Predict2.5-2B
+  name: Cosmos Predict 2.5 2B
+  params_b: 2.059
+  engine: diffusers_world
+  gated: true
+  experimental: true
+  blurb: "NVIDIA world prediction from text or a starting image. Requires an Ampere or newer GPU."
+  tags: [text-to-world, image-to-world]
+  options: {revision: "diffusers/base/post-trained", dtype: bfloat16, frames: 93, steps: 36, fps: 16, width: 832, height: 480, offload: model}
+- id: nvidia/Cosmos-Predict2.5-14B
+  name: Cosmos Predict 2.5 14B
+  params_b: 14
+  engine: diffusers_world
+  gated: true
+  experimental: true
+  blurb: "Larger NVIDIA world prediction model using the official Diffusers checkpoint. Ampere or newer."
+  tags: [text-to-world, image-to-world]
+  options: {revision: "diffusers/base/post-trained", dtype: bfloat16, frames: 93, steps: 36, fps: 16, width: 832, height: 480, offload: model}
+- id: nvidia/Cosmos-1.0-Diffusion-7B-Text2World
+  name: Cosmos 1.0 Text2World 7B
+  params_b: 7
+  gated: true
+  engine: diffusers_world
+  experimental: true
+  blurb: "NVIDIA text-conditioned world video generation using its Diffusers runner. Ampere or newer."
+  tags: [text-to-world]
+  options: {pipeline: CosmosTextToWorldPipeline, dtype: bfloat16, frames: 121, steps: 35, fps: 24, width: 1280, height: 704, offload: sequential}
+- id: nvidia/Cosmos-1.0-Diffusion-7B-Video2World
+  name: Cosmos 1.0 Video2World 7B
+  params_b: 7
+  gated: true
+  engine: diffusers_world
+  experimental: true
+  blurb: "NVIDIA world prediction from a starting image using the Video2World runner. Ampere or newer."
+  tags: [image-to-world]
+  options: {pipeline: CosmosVideoToWorldPipeline, require_image: true, dtype: bfloat16, frames: 121, steps: 35, fps: 24, width: 1280, height: 704, offload: sequential}
+- id: nvidia/Cosmos3-Edge
+  name: Cosmos 3 Edge
+  engine: diffusers_world
+  gated: true
+  experimental: true
+  blurb: "Cosmos 3 Edge image-to-world video runner. Requires a starting image and an Ampere or newer GPU."
+  tags: [image-to-world]
+  options: {pipeline: Cosmos3OmniPipeline, require_image: true, flow_shift: 12, dtype: bfloat16, frames: 49, steps: 20, fps: 24, width: 832, height: 480, guidance: 6, offload: model}
+- id: nvidia/Cosmos3-Nano
+  name: Cosmos 3 Nano
+  engine: diffusers_world
+  gated: true
+  experimental: true
+  blurb: "NVIDIA's unified world model. Text/image-to-video runner through Diffusers; Ampere or newer."
+  tags: [text-to-world, image-to-world]
+  options: {pipeline: Cosmos3OmniPipeline, dtype: bfloat16, frames: 49, steps: 35, fps: 24, width: 1280, height: 720, guidance: 6, offload: model}
+- id: nvidia/Cosmos3-Super
+  name: Cosmos 3 Super
+  engine: diffusers_world
+  gated: true
+  experimental: true
+  blurb: "Larger Cosmos 3 world model with a text/image-to-video runner. Needs substantial memory."
+  tags: [text-to-world, image-to-world]
+  options: {pipeline: Cosmos3OmniPipeline, dtype: bfloat16, frames: 49, steps: 35, fps: 24, width: 1280, height: 720, guidance: 6, offload: model}
+- {id: Skywork/Matrix-Game, name: "Matrix-Game 1.0", blurb: "Skywork's first Matrix-Game world model.", tags: [interactive-world]}
+- id: Skywork/Matrix-Game-3.0
+  name: Matrix-Game 3.0
+  params_b: 5
+  engine: world_recipe
+  recipe: matrix_game_3
+  options: {frames: 57, steps: 3, fps: 16}
+  min_sm: 80
+  min_vram_gb: 24
+  experimental: true
+  blurb: "World generation with long-horizon memory, using Skywork's native runner. Ampere or newer; upstream recommends 64 GB RAM."
+  tags: [image-to-world, random-actions]
+- {id: robbyant/lingbot-world-fast, name: "LingBot World Fast", blurb: "Robbyant's interactive world generation model.", tags: [interactive-world]}
+- {id: robbyant/lingbot-world-fast-diffusers, name: "LingBot World Fast (Diffusers format)", blurb: "World generation checkpoint using LingBot's custom Diffusers pipeline.", tags: [interactive-world]}
+- id: robbyant/lingbot-world-base-cam
+  name: LingBot World Base Camera
+  engine: world_recipe
+  recipe: lingbot_world_base
+  options: {frames: 33, steps: 20, fps: 16}
+  min_sm: 80
+  min_vram_gb: 24
+  experimental: true
+  blurb: "Image and text-conditioned world video using Robbyant's native runner with CPU offload. Ampere or newer."
+  tags: [image-to-world, text-conditioning]
+- {id: stdstu123/Yume-5B-720P, name: "Yume 5B 720p", params_b: 5.2, blurb: "Interactive world generation using the Yume runtime.", tags: [interactive-world]}
+- id: tencent/HunyuanWorld-1
+  name: HunyuanWorld 1.0 · Text / image to 3D
+  engine: world_recipe
+  recipe: hunyuan_world_1
+  min_sm: 80
+  min_vram_gb: 32
+  experimental: true
+  blurb: "Tencent's text/image-to-world runner: panorama generation, semantic layers and exported 3D meshes. Uses FLUX base models; their Hugging Face access is required."
+  tags: [text-to-3D, image-to-3D, 360-panorama, mesh-export]
+  options: {steps: 50}
+- id: tencent/HY-WorldPlay
+  name: HY-WorldPlay 1.5 · 5B
+  params_b: 5
+  engine: world_recipe
+  recipe: hy_worldplay
+  min_sm: 80
+  min_vram_gb: 24
+  experimental: true
+  blurb: "Tencent's WorldPlay 5B runner for text/image-conditioned video and camera action strings. Uses the WAN pipeline with SageAttention."
+  tags: [text-to-world, image-to-world, camera-actions]
+  options: {frames: 17, steps: 4, chunks: 1, pose: "w-4"}
+- id: tencent/HY-World-2.0
+  name: HY-World 2.0 · Text / image to 3D
+  engine: world_recipe
+  recipe: hy_world_2
+  min_sm: 80
+  min_vram_gb: 48
+  experimental: true
+  blurb: "Tencent's full 3D world pipeline with HY-Pano 2.0, navigation, WorldStereo and Gaussian scene export. Needs a separate vision-language server; upstream recommends 4+ GPUs."
+  tags: [text-to-3D, image-to-3D, Gaussian-splats, mesh-export]
+  options: {steps: 40}
+- {id: tencent/HunyuanWorld-Mirror, name: "HunyuanWorld Mirror", blurb: "Tencent's 3D world reconstruction model. Needs a 3D output integration.", tags: [3D-reconstruction]}
+- {id: tencent/HunyuanWorld-Voyager, name: "HunyuanWorld Voyager", blurb: "World video generation with camera trajectories using the Voyager runtime.", tags: [camera-control]}

@@ -1,9 +1,9 @@
-import { RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { SecretsCard } from "../components/Secrets";
 import { AccessForm, ApiForm, ExposurePicker, StreamingNote, type ApiState } from "../components/settings";
-import { Button, CopyButton, CopyField, Segmented, SectionTitle, useToast } from "../components/ui";
+import { Button, CopyButton, CopyField, Input, Segmented, SectionTitle, Toggle, useToast } from "../components/ui";
 import { api } from "../lib/api";
 import { useLive } from "../lib/live";
 import type { Settings, TunnelProvider } from "../lib/types";
@@ -12,7 +12,7 @@ function Card({ title, kicker, children }: { title: string; kicker?: string; chi
   return (
     <section className="panel min-w-0 p-5 sm:p-6">
       {kicker && <div className="readout mb-1.5">{kicker}</div>}
-      <h2 className="display mb-5 text-[28px]">{title}</h2>
+      <h2 className="display mb-5 text-[20px]">{title}</h2>
       {children}
     </section>
   );
@@ -60,7 +60,7 @@ const reply = await client.chat.completions.create({
 });
 console.log(reply.choices[0].message.content);`;
     case "ollama":
-      return `# Any Ollama client: point OLLAMA_HOST at KaggleUI
+      return `# Any Ollama client: point OLLAMA_HOST at Kindle
 export OLLAMA_HOST=${base}
 curl ${base}/api/chat -H "Authorization: Bearer ${k}" -d '{
   "model": "${model}",
@@ -83,6 +83,48 @@ const ENDPOINTS: [string, string, string][] = [
   ["anthropic", "POST /v1/messages", "Anthropic Messages API (tools, images, streaming)"],
   ["ollama", "POST /api/chat · /api/generate · /api/embed", "Ollama API"],
 ];
+
+/** Map the model names clients send (Claude Code sends claude-*) to models running here. */
+function ModelNames({ aliases, strict, models, onSave }: {
+  aliases: Record<string, string>;
+  strict: boolean;
+  models: string[];
+  onSave: (aliases: Record<string, string>, strict: boolean) => void;
+}) {
+  const [rows, setRows] = useState<[string, string][]>(() => Object.entries(aliases));
+  const [isStrict, setStrict] = useState(strict);
+  const set = (i: number, j: 0 | 1, v: string) => setRows(rows.map((r, k) => (k === i ? (j ? [r[0], v] : [v, r[1]]) : r)));
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <div className="readout mb-1">Model names</div>
+      <p className="mb-3 text-[12.5px] text-fg-3">
+        Route the names clients ask for to a running model. Wildcards work: <code className="font-mono">claude-*haiku*</code> → a small model for an agent's background calls.
+      </p>
+      <datalist id="kui-text-models">{models.map((m) => <option key={m} value={m} />)}</datalist>
+      <div className="space-y-2">
+        {rows.map(([pattern, target], i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input aria-label="Requested name" value={pattern} placeholder="claude-*" onChange={(e) => set(i, 0, e.target.value)} className="font-mono" />
+            <span className="text-fg-3">→</span>
+            <Input aria-label="Running model" value={target} placeholder="qwen3:8b" list="kui-text-models" onChange={(e) => set(i, 1, e.target.value)} className="font-mono" />
+            <Button size="sm" variant="ghost" aria-label="Remove" onClick={() => setRows(rows.filter((_, k) => k !== i))}><Trash2 className="size-3.5" /></Button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="ghost" onClick={() => setRows([...rows, ["", ""]])}><Plus className="size-3.5" /> Add name</Button>
+      </div>
+      <div className="mt-3">
+        <Toggle checked={isStrict} onChange={setStrict} label="Reject unknown model names"
+          hint="Off: when only one text model runs, any name reaches it. On: unknown names get a 404 unless a rule above matches." />
+      </div>
+      <Button className="mt-3" size="sm" variant="primary"
+        onClick={() => onSave(Object.fromEntries(rows.filter(([p, t]) => p.trim() && t.trim()).map(([p, t]) => [p.trim(), t.trim()])), isStrict)}>
+        Save model names
+      </Button>
+    </div>
+  );
+}
 
 export default function Access() {
   const { overview, dispatch } = useLive();
@@ -127,7 +169,7 @@ export default function Access() {
         <Card kicker="Who can get in" title="Access">
           <div className="mb-5">
             <CopyField label="Admin token (control panel)" value={overview.credentials.admin_token} secret />
-            <p className="mt-1.5 text-[12.5px] text-fg-3">Always required for this panel. Set a KAGGLEUI_ADMIN_TOKEN secret to keep it the same every session.</p>
+            <p className="mt-1.5 text-[12.5px] text-fg-3">Always required for this panel. Set a KINDLE_ADMIN_TOKEN secret to keep it the same every session.</p>
           </div>
           <AccessForm
             enabled={locked}
@@ -172,6 +214,12 @@ export default function Access() {
           <div className="mt-4">
             <StreamingNote />
           </div>
+          <ModelNames
+            aliases={overview.settings.api.aliases ?? {}}
+            strict={overview.settings.api.strict_models ?? false}
+            models={overview.deployments.filter((d) => d.modality === "text").map((d) => d.name)}
+            onSave={(aliases, strict_models) => save({ api: { aliases, strict_models } })}
+          />
         </Card>
 
         <Card kicker="Copy & paste" title="Use it from code">

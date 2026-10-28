@@ -127,7 +127,7 @@ export function ImageStudio({ model }: { model: StudioModel }) {
         {results.length === 0 ? (
           <div className="panel grid h-full min-h-[360px] place-items-center p-8 text-center text-fg-3">
             <div>
-              <div className="display text-[40px]">{model.name}</div>
+              <div className="display text-[24px]">{model.name}</div>
               <p className="mt-1 text-[13.5px]">Images show up here. Ctrl/⌘+Enter generates.</p>
             </div>
           </div>
@@ -139,7 +139,7 @@ export function ImageStudio({ model }: { model: StudioModel }) {
                 <figcaption className="flex items-center gap-2 px-3 py-2 text-[12px] text-fg-2">
                   <span className="min-w-0 flex-1 truncate">{r.prompt}</span>
                   <span className="font-mono text-[10.5px] text-fg-3">{r.seconds}s</span>
-                  <a href={r.src} download={`kaggleui-${Date.now()}.png`} className="text-fg-2 hover:text-fg">
+                  <a href={r.src} download={`kindle-${Date.now()}.png`} className="text-fg-2 hover:text-fg">
                     <Download className="size-3.5" />
                   </a>
                 </figcaption>
@@ -315,7 +315,7 @@ export function ClipList({ videos, placeholder }: { videos: { url: string; promp
     return (
       <div className="panel grid h-full min-h-[360px] place-items-center p-8 text-center text-fg-3">
         <div>
-          <div className="display text-[40px]">{placeholder}</div>
+          <div className="display text-[24px]">{placeholder}</div>
           <p className="mt-1 text-[13.5px]">Clips show up here.</p>
         </div>
       </div>
@@ -329,7 +329,7 @@ export function ClipList({ videos, placeholder }: { videos: { url: string; promp
           <figcaption className="flex items-center gap-2 px-3 py-2 text-[12px] text-fg-2">
             {v.frame && <img src={v.frame} alt="Starting frame" title="Starting frame" className="h-8 rounded border border-line" />}
             <span className="min-w-0 flex-1 truncate">{v.prompt}</span>
-            <a href={v.url} download={`kaggleui-${Date.now()}.mp4`} className="hover:text-fg">
+            <a href={v.url} download={`kindle-${Date.now()}.mp4`} className="hover:text-fg">
               <Download className="size-3.5" />
             </a>
           </figcaption>
@@ -423,7 +423,7 @@ export function TtsStudio({ model }: { model: StudioModel }) {
               <div className="mb-2 flex items-center gap-2 text-[12px] text-fg-2">
                 <span className="font-mono text-[10.5px] text-fg-3">{c.voice}</span>
                 <span className="min-w-0 flex-1 truncate">{c.text}</span>
-                <a href={c.url} download={`kaggleui-speech.${c.format}`} className="hover:text-fg">
+                <a href={c.url} download={`kindle-speech.${c.format}`} className="hover:text-fg">
                   <Download className="size-3.5" />
                 </a>
               </div>

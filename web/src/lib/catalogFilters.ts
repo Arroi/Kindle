@@ -1,4 +1,4 @@
-import brandDefinitions from "../../../kaggleui/catalog/brands.json";
+import brandDefinitions from "../../../kindle/catalog/brands.json";
 import type { CatalogBrand, Modality } from "./types";
 
 export const CAPABILITY_FILTERS = [
@@ -14,7 +14,7 @@ export const CONTEXT_PRESETS = [
   { label: "1M", value: "1048576" },
 ];
 export const BRAND_DEFINITIONS = brandDefinitions;
-const STORAGE_KEY = "kaggleui-catalog-filters";
+const STORAGE_KEY = "kindle-catalog-filters";
 
 export interface CatalogFiltersState {
   min: string;

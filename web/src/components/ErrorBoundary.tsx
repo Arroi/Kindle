@@ -10,7 +10,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[kaggleui] render error", error, info.componentStack);
+    console.error("[kindle] render error", error, info.componentStack);
   }
 
   componentDidUpdate(prev: { resetKey?: string }) {
@@ -26,7 +26,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
           <span className="readout text-worst">This page hit an error</span>
         </div>
         <p className="mb-3 text-[14px] text-fg-2">
-          If you just updated KaggleUI, the old server may still be running. In the notebook, re-run the KaggleUI cell. It
+          If you just updated Kindle, the old server may still be running. In the notebook, re-run the Kindle cell. It
           restarts the server.
         </p>
         <pre className="mb-4 overflow-x-auto rounded-lg border border-line bg-bg p-3 font-mono text-[11.5px] text-fg-3">{String(this.state.error.message || this.state.error)}</pre>

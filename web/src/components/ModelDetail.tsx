@@ -68,6 +68,33 @@ function ContextLength({ value, max, onChange }: { value: number; max: number; o
   );
 }
 
+/** llama.cpp: pool linked sessions' GPUs, parallel request slots, MoE experts kept in RAM. */
+function LlamaCppOptions({ options, set }: { options: Record<string, any>; set: (k: string, v: unknown) => void }) {
+  const { overview } = useLive();
+  const sharing = (overview?.links?.links ?? []).filter((l) => l.status === "up" && l.pool?.enabled);
+  const pooledVram = sharing.flatMap((l) => l.pool?.gpus ?? []).reduce((sum, g) => sum + (g.vram_free ?? 0), 0);
+  return (
+    <>
+      <div className="sm:col-span-2">
+        <Toggle checked={options.pool === "all"} disabled={!sharing.length && options.pool !== "all"}
+          onChange={(v) => set("pool", v ? "all" : undefined)}
+          label={`Pool GPUs from linked sessions${sharing.length ? ` (${sharing.length} sharing, ${bytes(pooledVram)} free)` : ""}`}
+          hint={sharing.length
+            ? "Splits the model's layers across this GPU and every linked session that shares its GPU. Each helper downloads its own share of the weights. Slower per token than one GPU: use it when the model doesn't fit."
+            : "No linked session is sharing its GPU yet. On the other session, open Linked sessions and turn on 'Share this GPU', then link it here."} />
+      </div>
+      <Field label="Parallel requests" hint="Slots served at once. Agents with sub-tasks benefit from 4 or more; each slot shares the context window.">
+        <Select value={String(options.parallel ?? 4)} onChange={(e) => set("parallel", Number(e.target.value))}>
+          {[1, 2, 4, 8].map((v) => <option key={v} value={v}>{v}</option>)}
+        </Select>
+      </Field>
+      <Field label="MoE layers with experts in RAM" hint="For mixture-of-experts models that almost fit: keeps the experts of this many layers in system RAM. Slower; 0 keeps everything on GPU.">
+        <Input type="number" min={0} max={200} value={options.cpu_moe ?? ""} placeholder="0" onChange={(e) => set("cpu_moe", e.target.value ? Number(e.target.value) : "")} />
+      </Field>
+    </>
+  );
+}
+
 /** Engine options shown per modality. Values are merged into spec.options. */
 function EngineOptions({
   item,
@@ -107,6 +134,7 @@ function EngineOptions({
             </Select>
           </Field>
         )}
+        {item.engine === "llamacpp" && <LlamaCppOptions options={options} set={set} />}
         {item.engine === "sglang" && (
           <Field label="GPU memory use" hint="Fraction of VRAM SGLang reserves for weights and the KV cache.">
             <Select value={String(options.mem_fraction_static ?? 0.88)} onChange={(e) => set("mem_fraction_static", Number(e.target.value))}>
@@ -261,6 +289,9 @@ export function ModelDetail({
   const engines = useMemo(() => {
     if (item.modality === "text" && item.source === "hf" && item.engine !== "ollama")
       return pool?.tpu ? ["vllm", "transformers"] : ["vllm", "sglang", "transformers"];
+    // GGUF repos: Ollama, or llama.cpp directly (needed to pool GPUs across sessions).
+    if (item.modality === "text" && (item.source === "hf" || item.source === "attached") && item.engine === "ollama" && !pool?.tpu)
+      return ["ollama", "llamacpp"];
     return item.engine ? [item.engine] : [];
   }, [item, pool?.tpu]);
 
@@ -311,7 +342,7 @@ export function ModelDetail({
             {item.experimental && <span className="rounded-[5px] bg-tight-soft px-1.5 py-px text-[11px] font-medium text-tight">Experimental</span>}
             {detail.isFetching && <Loader className="size-3.5 animate-spin text-fg-3" />}
           </div>
-          <div className="flex items-start gap-4"><ModelLogo id={item.id} name={item.name} source={item.source} className="size-12" /><h2 className="display min-w-0 break-words text-[32px] leading-tight">{item.name}</h2></div>
+          <div className="flex items-start gap-4"><ModelLogo id={item.id} name={item.name} source={item.source} className="size-12" /><h2 className="display min-w-0 break-words text-[20px] leading-tight">{item.name}</h2></div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11.5px] text-fg-2">
             <span>{item.id}</span>
             {item.brand && <span>{item.brand.label}</span>}
@@ -333,7 +364,7 @@ export function ModelDetail({
         {!item.engine ? (
           <div className="rounded-xl border border-line bg-bg-2 p-4">
             <div className="mb-2 text-[14px] font-medium">Runner not available yet</div>
-            <p className="text-[13px] text-fg-2">This model is published on Hugging Face. KaggleUI doesn't have a runtime for it yet, so it can't be deployed from this panel.</p>
+            <p className="text-[13px] text-fg-2">This model is published on Hugging Face. Kindle doesn't have a runtime for it yet, so it can't be deployed from this panel.</p>
             {item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-[13px] text-signal hover:underline">Open model documentation <ExternalLink className="size-3.5" /></a>}
             {item.url && onImport && <div className="mt-3"><Button onClick={() => onImport(item.url!)}>Download model files</Button></div>}
           </div>
@@ -371,7 +402,7 @@ export function ModelDetail({
           {assessed.error && <p className="mt-2 text-[12px] text-tight">Couldn't re-check this configuration: {(assessed.error as Error).message}</p>}
           {item.bf16_saved && options.weights !== "original" ? (
             <p className="mt-3 text-[12.5px] text-fg-2">
-              Published in fp32. KaggleUI stores the weights as BF16 while downloading, which saves {bytes(item.bf16_saved)} of disk. Generation quality is unchanged: the runner loads 16-bit weights either way.
+              Published in fp32. Kindle stores the weights as BF16 while downloading, which saves {bytes(item.bf16_saved)} of disk. Generation quality is unchanged: the runner loads 16-bit weights either way.
             </p>
           ) : null}
           {Object.keys(fit.suggest ?? {}).length > 0 && (

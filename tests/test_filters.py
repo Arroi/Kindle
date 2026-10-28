@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from kaggleui.catalog.filters import CatalogFilters
+from kindle.catalog.filters import CatalogFilters
 
 
 def item(**kw) -> dict:

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from kaggleui.catalog import abliterate_worker as worker
-from kaggleui.catalog.imports import ModelImports
+from kindle.catalog import abliterate_worker as worker
+from kindle.catalog.imports import ModelImports
 
 
 def test_refusal_detection():
@@ -48,11 +48,11 @@ async def test_abliteration_job_runs_the_worker_and_imports_the_result(tmp_path,
         "result.write_text(json.dumps({'models': [{'path': str(root), 'name': job['name'], 'modality': 'text',\n"
         "  'engine': 'vllm', 'envs': job['envs'], 'method': job['method']}], 'message': 'done'}))\n")
     imports = ModelImports(tmp_path / "imports", tmp_path / "envs")
-    import kaggleui.catalog.imports as module
+    import kindle.catalog.imports as module
     real = module.ManagedProcess
 
     def spawn(name, cmd, **kw):
-        assert cmd[2] == "kaggleui.catalog.abliterate_worker"
+        assert cmd[2] == "kindle.catalog.abliterate_worker"
         return real(name, [sys.executable, str(fake), *cmd[1:]], **kw)
 
     monkeypatch.setattr(module, "ManagedProcess", spawn)
@@ -70,7 +70,7 @@ def test_heretic_command_is_unattended(tmp_path, monkeypatch):
     """Heretic must never wait on a prompt: every interactive choice is passed on the command line."""
     env = tmp_path / "envs" / "heretic"
     (env / "bin").mkdir(parents=True)
-    (env / ".kaggleui-ready").touch()
+    (env / ".kindle-ready").touch()
     seen = {}
 
     class Proc:
@@ -102,8 +102,8 @@ async def test_ollama_models_map_to_their_original_repo(hw, monkeypatch):
     """gemma3:4b and friends can't be edited (GGUF); the form is prefilled with the full-precision original."""
     from unittest.mock import AsyncMock
 
-    from kaggleui.catalog import hf
-    from kaggleui.catalog.service import CatalogService
+    from kindle.catalog import hf
+    from kindle.catalog.service import CatalogService
 
     rows = {
         "qwen3 8b": ["Qwen/Qwen3-VL-8B-Instruct", "Qwen/Qwen3-8B", "Qwen/Qwen3-8B-AWQ", "unsloth/Qwen3-8B"],

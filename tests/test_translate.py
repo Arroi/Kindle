@@ -1,6 +1,6 @@
 import json
 
-from kaggleui.gateway.translate import (
+from kindle.gateway.translate import (
     anthropic_to_openai,
     ollama_chat_to_openai,
     openai_stream_to_anthropic,
@@ -112,7 +112,7 @@ def test_thinking_controls_map_to_reasoning_effort():
 
 
 def test_template_engines_get_enable_thinking_switch():
-    from kaggleui.engines.base import OpenAIUpstream
+    from kindle.engines.base import OpenAIUpstream
 
     vllm = OpenAIUpstream("http://x", "m", template_thinking=True)
     assert vllm._body({"reasoning_effort": "none"})["chat_template_kwargs"] == {"enable_thinking": False}

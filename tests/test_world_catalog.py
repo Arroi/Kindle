@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from kaggleui.catalog import hf, world
-from kaggleui.catalog.service import CatalogService
-from kaggleui.engines.context import DeployError, EngineContext
-from kaggleui.engines.download import _worker
-from kaggleui.engines.workers_engine import deploy, download_model
-from kaggleui.schemas import DeploymentSpec
+from kindle.catalog import hf, world
+from kindle.catalog.service import CatalogService
+from kindle.engines.context import DeployError, EngineContext
+from kindle.engines.download import _worker
+from kindle.engines.workers_engine import deploy, download_model
+from kindle.schemas import DeploymentSpec
 
 DISCOVERED = {"id": "community/new-interactive-world", "pipeline_tag": "image-to-video",
               "library_name": "custom-world-runtime", "tags": ["world-model"],
@@ -137,7 +137,7 @@ def test_download_worker_uses_requested_revision(tmp_path, monkeypatch):
 
 
 async def test_world_download_passes_revision_to_listing_and_worker(paths, hw, monkeypatch):
-    from kaggleui.engines import workers_engine
+    from kindle.engines import workers_engine
     files = AsyncMock(return_value=[{"rfilename": "model_index.json", "size": 1},
                                   {"rfilename": "transformer/model.safetensors", "size": 10}])
     download = AsyncMock(return_value="/snapshot")

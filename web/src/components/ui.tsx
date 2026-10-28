@@ -348,7 +348,7 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
   return (
     <div className="panel-quiet flex flex-col items-center px-6 py-14 text-center">
       {icon && <div className="mb-4 grid size-11 place-items-center rounded-xl border border-line bg-panel text-fg-2">{icon}</div>}
-      <div className="display text-[28px]">{title}</div>
+      <div className="display text-[20px]">{title}</div>
       {children && <div className="mt-2 max-w-md text-[13.5px] text-fg-2">{children}</div>}
     </div>
   );

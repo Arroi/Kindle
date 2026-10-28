@@ -54,7 +54,7 @@ type Iface = NonNullable<DeploymentSpec["interface"]>;
 
 function interfaceOptions(m: Modality): { value: Iface; title: string; desc: string; icon: ReactNode; badge?: string }[] {
   const opts: { value: Iface; title: string; desc: string; icon: ReactNode; badge?: string }[] = [
-    { value: "studio", title: "KaggleUI Studio", desc: "Built-in playground. Streams over WebSockets, so it works through any tunnel.", icon: <LayoutDashboard className="size-4" />, badge: "default" },
+    { value: "studio", title: "Kindle Studio", desc: "Built-in playground. Streams over WebSockets, so it works through any tunnel.", icon: <LayoutDashboard className="size-4" />, badge: "default" },
     { value: "gradio", title: "Gradio", desc: "Auto-generated Gradio app, with an optional public gradio.live link.", icon: <AppWindow className="size-4" /> },
   ];
   if (m === "text") opts.push({ value: "openwebui", title: "Open WebUI", desc: "Full ChatGPT-style app: chat history, RAG, files. First start takes a few minutes.", icon: <Blocks className="size-4" /> });
@@ -184,7 +184,7 @@ export default function Launch() {
     <div>
       <SectionTitle
         title="New deployment"
-        description="Pick a model and how you want to reach it. KaggleUI checks it against this machine, then installs, downloads and starts it."
+        description="Pick a model and how you want to reach it. Kindle checks it against this machine, then installs, downloads and starts it."
       />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_288px]">

@@ -11,7 +11,7 @@ function Frame({ children, footer }: { children: React.ReactNode; footer?: React
     <div className="login-page">
       <header className="login-header"><Brand /><span className="text-[12px] text-fg-3">{__APP_VERSION__}</span></header>
       <main className="login-layout page-enter">
-        <section className="login-intro"><span className="eyebrow">A notebook. A GPU. Your workspace.</span><h2 className="display mt-5 text-[38px] sm:text-[48px]">Open models,<br />within reach.</h2><p className="mt-5 max-w-sm text-[15px] leading-relaxed text-fg-2">Chat, images, video, speech, and 3D worlds. Run a model on your notebook and use it from any browser.</p><div className="mt-8 flex gap-3" aria-label="Supported model families">{["qwen-color", "deepseek-color", "mistral-color", "meta-color", "hunyuan-color"].map(brand => <span key={brand} className="model-logo size-11"><img src={`/brands/${brand}.svg`} width="28" height="28" alt={`${brand.replace("-color", "")} logo`} /></span>)}</div><p className="mt-5 text-[12px] text-fg-3">Open source · Powered by your notebook session</p></section>
+        <section className="login-intro"><span className="eyebrow">A notebook. A GPU. Your workspace.</span><h2 className="display mt-5 text-[22px] sm:text-[26px]">Open models,<br />within reach.</h2><p className="mt-5 max-w-sm text-[15px] leading-relaxed text-fg-2">Chat, images, video, speech, and 3D worlds. Run a model on your notebook and use it from any browser.</p><div className="mt-8 flex gap-3" aria-label="Supported model families">{["qwen-color", "deepseek-color", "mistral-color", "meta-color", "hunyuan-color"].map(brand => <span key={brand} className="model-logo size-11"><img src={`/brands/${brand}.svg`} width="28" height="28" alt={`${brand.replace("-color", "")} logo`} /></span>)}</div><p className="mt-5 text-[12px] text-fg-3">Open source · Powered by your notebook session</p></section>
         <section className="login-form"><div>{children}</div>{footer && <div className="mt-6 border-t border-line pt-5 text-[13px] text-fg-3">{footer}</div>}</section>
       </main>
       <footer className="login-footer"><CommunityLinks /></footer>
@@ -53,7 +53,7 @@ export function AdminLogin() {
         <KeyRound className="size-4" />
         <span className="readout text-signal">Control panel</span>
       </div>
-      <h1 className="display mb-2 text-4xl">Admin token</h1>
+      <h1 className="display mb-2 text-2xl">Admin token</h1>
       <p className="mb-5 text-[14px] text-fg-2">
         Paste the token printed in your Kaggle notebook, or open the link from that cell. It signs you in directly.
       </p>
@@ -106,8 +106,8 @@ export function AccessLogin() {
         <Lock className="size-4" />
         <span className="readout text-signal">Password locked</span>
       </div>
-      <h1 className="display mb-2 text-4xl">Studio access</h1>
-      <p className="mb-5 text-[14px] text-fg-2">The host locked this KaggleUI with a password. Ask them for it.</p>
+      <h1 className="display mb-2 text-2xl">Studio access</h1>
+      <p className="mb-5 text-[14px] text-fg-2">The host locked this Kindle with a password. Ask them for it.</p>
       <form onSubmit={submit} className="space-y-3">
         <label className="block text-[12px] font-medium text-fg-2" htmlFor="studio-password">Studio password</label>
         <div className="relative"><Input id="studio-password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter the host’s password" type={shown ? "text" : "password"} className="pr-11" /><button type="button" onClick={() => setShown(!shown)} className="absolute right-3 top-3 text-fg-3" aria-label={shown ? "Hide password" : "Show password"}>{shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div>

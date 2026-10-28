@@ -50,8 +50,25 @@ export interface System {
 
 export interface Settings {
   access: { password_enabled: boolean };
-  api: { enabled: boolean; openai: boolean; anthropic: boolean; ollama: boolean; require_key: boolean };
+  api: {
+    enabled: boolean; openai: boolean; anthropic: boolean; ollama: boolean; require_key: boolean;
+    aliases?: Record<string, string>; strict_models?: boolean;
+  };
   exposure: { provider: TunnelProvider };
+  pool: { share_gpu: boolean };
+}
+
+/** This session's side of a GPU pool (when it shares its GPU with a head session). */
+export interface PoolInfo {
+  enabled: boolean;
+  status: "idle" | "installing" | "starting" | "seeding" | "ready" | "error";
+  message: string;
+  error: string | null;
+  progress: number | null;
+  tag: string | null;
+  gpus: { name: string; vram_total: number; vram_free: number }[];
+  seeded_bytes?: number;
+  log?: string[];
 }
 
 export type TunnelProvider = "cloudflare" | "cloudflare_named" | "ngrok" | "gradio" | "none";
@@ -114,6 +131,7 @@ export interface Overview {
   streaming_ok: boolean;
   deployments: Deployment[];
   links?: Links;
+  pool?: PoolInfo;
   started_at: number;
 }
 
@@ -126,6 +144,7 @@ export interface LinkedSession {
   gpu_label: string | null;
   last_seen: number | null;
   models: { name: string; modality: Modality }[];
+  pool?: Partial<PoolInfo>;
 }
 
 export interface Links {
@@ -260,6 +279,15 @@ export interface UpdateStatus {
   progress: { status: string; message: string } | null;
 }
 
+/** A saved Studio conversation, as listed in the sidebar. */
+export interface ChatSummary {
+  id: string;
+  title: string;
+  model: string | null;
+  updated: number;
+  messages: number;
+}
+
 export interface StudioModel {
   adapter?: string;
   reasoning?: import("./capabilities").ReasoningSupport;
@@ -287,7 +315,7 @@ export interface StudioModel {
 export interface SecretItem {
   name: string;
   set: boolean;
-  source: "kaggle" | "env" | "kaggleui" | null;
+  source: "kaggle" | "env" | "kindle" | null;
   editable: boolean;
 }
 

@@ -3,13 +3,13 @@
 import httpx
 import pytest
 
-from kaggleui.config import Paths
-from kaggleui.deploy.manager import Deployment
-from kaggleui.engines.base import Backend
-from kaggleui.links import HOP_HEADER, LinkError
-from kaggleui.schemas import DeploymentSpec, ModelRef, Settings
-from kaggleui.server.app import create_app
-from kaggleui.server.state import AppState
+from kindle.config import Paths
+from kindle.deploy.manager import Deployment
+from kindle.engines.base import Backend
+from kindle.links import HOP_HEADER, LinkError
+from kindle.schemas import DeploymentSpec, ModelRef, Settings
+from kindle.server.app import create_app
+from kindle.server.state import AppState
 
 REMOTE = "http://remote.test"
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 type Theme = "dark" | "light";
-const KEY = "kaggleui-theme";
+const KEY = "kindle-theme";
 
 function stored(): Theme | null {
   try {

@@ -290,7 +290,7 @@ export default function Deployments() {
             </div>
           </div>
           <p className="text-[13px] text-fg-3">
-            Add a <code className="font-mono">KAGGLEUI_NOTIFY_URL</code> secret (an ntfy.sh topic or Discord webhook) to get the new link pushed to your phone when it starts.
+            Add a <code className="font-mono">KINDLE_NOTIFY_URL</code> secret (an ntfy.sh topic or Discord webhook) to get the new link pushed to your phone when it starts.
           </p>
         </div>
       </Drawer>

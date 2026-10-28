@@ -13,11 +13,11 @@ import psutil
 import pytest
 from websockets.sync.client import connect
 
-from kaggleui import launcher
-from kaggleui.engines.context import EngineContext
-from kaggleui.engines.download import hf_download
-from kaggleui.proc import ManagedProcess, run_cmd
-from kaggleui.util import free_port
+from kindle import launcher
+from kindle.engines.context import EngineContext
+from kindle.engines.download import hf_download
+from kindle.proc import ManagedProcess, run_cmd
+from kindle.util import free_port
 
 
 async def wait_file(path):
@@ -153,9 +153,9 @@ def test_stale_state_does_not_stop_unrelated_process(paths):
 async def test_retained_tunnel_is_adopted_and_full_stop_closes_it(paths, monkeypatch):
     from unittest.mock import AsyncMock
 
-    from kaggleui.server.auth import Auth
-    from kaggleui.tunnels import manager
-    from kaggleui.tunnels.persistent import read_record
+    from kindle.server.auth import Auth
+    from kindle.tunnels import manager
+    from kindle.tunnels.persistent import read_record
 
     # A real child writes to the same kind of regular log file as cloudflared.
     executable = paths.bin / "fake-cloudflared"
@@ -199,7 +199,7 @@ async def test_retained_tunnel_is_adopted_and_full_stop_closes_it(paths, monkeyp
 
 
 def test_update_stop_retains_tunnel_child_then_full_stop_removes_it(paths, monkeypatch):
-    from kaggleui.tunnels.persistent import read_record
+    from kindle.tunnels.persistent import read_record
 
     monkeypatch.setenv("NGROK_AUTHTOKEN", "test-token")
     executable = paths.bin / "ngrok"

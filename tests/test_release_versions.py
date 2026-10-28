@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from kaggleui import __version__
+from kindle import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,7 +32,7 @@ def test_web_package_version_matches_package():
 
 
 def test_built_web_bundle_carries_current_version():
-    bundles = sorted((ROOT / "kaggleui" / "static" / "assets").glob("index-*.js"))
+    bundles = sorted((ROOT / "kindle" / "static" / "assets").glob("index-*.js"))
     if not bundles:
         pytest.skip("web bundle not built (run `pnpm build` in web/ first)")
     text = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in bundles)

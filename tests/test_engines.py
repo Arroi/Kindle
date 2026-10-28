@@ -6,9 +6,9 @@ import asyncio
 
 import pytest
 
-from kaggleui.engines import registry
-from kaggleui.engines.context import DeployError, EngineContext
-from kaggleui.schemas import DeploymentSpec
+from kindle.engines import registry
+from kindle.engines.context import DeployError, EngineContext
+from kindle.schemas import DeploymentSpec
 
 
 def _ctx(paths, hw) -> EngineContext:

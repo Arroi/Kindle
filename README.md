@@ -1,6 +1,6 @@
-# KaggleUI
+# Kindle
 
-One notebook cell turns a free Kaggle GPU into a model host. Run it, open the link on your own computer, and pick what to serve from a web control panel:
+One notebook cell turns a free GPU notebook (molab or Kaggle) into a model host for apps and coding agents, and several sessions can pool their GPUs for one model that doesn't fit a single GPU. Run it, open the link on your own computer, and pick what to serve from a web control panel:
 
 - **Model categories:** Text (LLMs), Image, Video, Text-to-speech, Audio generation, Speech-to-text, World models and 3D models. Runner availability is shown separately from catalog discovery.
 - **Live catalog** from Hugging Face and Ollama, plus models attached under `/kaggle/input`. Every model is sized against *this* machine's VRAM, RAM and disk and tagged **Best fit**, **Fits**, **Tight** or **Won't fit**, with the reason. Toggle between **All models** and **Fits this GPU**, sort by **Lowest parameters** or **Highest parameters**, and use **Load more** to browse deeper. Parameter sorting uses the shown variant; unknown counts appear last.
@@ -14,7 +14,7 @@ The model catalog offers a compact list with parameter count, download size and 
 
 Models display **Reasoning**, **Vision**, **Tools** and **Embeddings** tags when detected. Details inspect model metadata and chat templates without executing model code. Family estimates are labeled; the loaded runner determines the reasoning controls available in Studio.
 
-Made by **WeirdMM (iloveoliver.tree)** · [Discord community](https://discord.gg/7Kb6ScwvYG)
+Kindle is a fork of [KaggleUI](https://github.com/ryyReid/KaggleUI) by WeirdMM (iloveoliver.tree), MIT licensed.
 
 ### Model filters
 
@@ -31,7 +31,7 @@ Filters apply on the server before pagination. **Load more** expands discovery e
 
 **Audio generation** separates music, effects and mixed sound scenes from speech synthesis. MusicGen and MiDashengLM-Gen have configured runners; other architectures are marked when they still need one. Studio provides an audio prompt and downloads instead of a voice selector. `POST /v1/audio/generations` accepts `model`, `prompt` (or `input`) and `response_format`, returning encoded audio. Explicitly named audio models remain callable through `/v1/audio/speech` for compatibility with older clients. Known audio checkpoints in old TTS launch presets are reclassified on load.
 
-**3D models** browses image-to-3D and text-to-3D checkpoints, with bundled entries for TRELLIS, Hunyuan3D, TripoSR, Stable Fast 3D and others. This release adds discovery and downloads; these standalone 3D architectures do **not** yet have configured KaggleUI generation runners. Model details show **Runner unavailable** instead of offering a launch that would fail. Existing world scene generators are listed separately in **World**.
+**3D models** browses image-to-3D and text-to-3D checkpoints, with bundled entries for TRELLIS, Hunyuan3D, TripoSR, Stable Fast 3D and others. This release adds discovery and downloads; these standalone 3D architectures do **not** yet have configured Kindle generation runners. Model details show **Runner unavailable** instead of offering a launch that would fail. Existing world scene generators are listed separately in **World**.
 
 **World discovery** searches Hugging Face tags and families including Matrix-Game, LingBot, Yume, Cosmos and HunyuanWorld. World opens with the broader catalog; **Launchable only** shows configured runtimes, and **Fits this machine** applies the hardware filter. A bundled catalog keeps 20 published checkpoints visible when live search is unavailable.
 
@@ -53,10 +53,10 @@ Open **Imports** (or **Models → Import from URL**) and paste one of:
 
 - A Hugging Face model URL, such as `https://huggingface.co/owner/model`. An optional revision selects a branch; known world models automatically use their configured checkpoint branch.
 - A direct file URL, including Hugging Face `/resolve/` links to GGUF files.
-- A ZIP or TAR archive URL. KaggleUI extracts it and scans for model formats.
+- A ZIP or TAR archive URL. Kindle extracts it and scans for model formats.
 - An HTTPS Git repository URL. Choose **Git repository** if automatic detection doesn't recognize the provider. Git LFS repositories need `git-lfs` available; unresolved LFS pointers are reported as an error.
 
-Downloads show progress and can be cancelled. `.stop()` stops active download processes too. Completed downloads are remembered across KaggleUI restarts. They stay in **Imports** and are never added to the model catalog or notebook attachments. Click **Customize → Continue to deployment** on a detected checkpoint to choose its settings and launch it. GGUF, Transformers, Whisper, Kokoro, Chatterbox, Diffusers and the configured world checkpoints reuse their existing runners. Source code repositories or standalone weights without a recognizable model configuration are downloaded as files and aren't automatically executed. Restarting the Kaggle notebook itself may clear notebook storage.
+Downloads show progress and can be cancelled. `.stop()` stops active download processes too. Completed downloads are remembered across Kindle restarts. They stay in **Imports** and are never added to the model catalog or notebook attachments. Click **Customize → Continue to deployment** on a detected checkpoint to choose its settings and launch it. GGUF, Transformers, Whisper, Kokoro, Chatterbox, Diffusers and the configured world checkpoints reuse their existing runners. Source code repositories or standalone weights without a recognizable model configuration are downloaded as files and aren't automatically executed. Restarting the Kaggle notebook itself may clear notebook storage.
 
 ### Checkpoints with custom code or audio architectures
 
@@ -79,45 +79,78 @@ These new audio adapters are **experimental and have not been verified with real
 3. Paste this into a cell and run it:
 
    ```python
-   !curl -fsSL https://raw.githubusercontent.com/ryyReid/KaggleUI/main/install.sh | bash
-   import kaggleui
-   kaggleui.launch()
+   !pip install -q "kindle @ git+https://github.com/OWNER/Kindle@main"
+   import os
+   os.environ["KINDLE_REPO"] = "OWNER/Kindle"
+   import kindle
+   kindle.launch()
    ```
 
-   The installer uses the latest release's wheel when one is published. Otherwise it builds the current `main` branch from source, which needs Node.js 20 or newer for the control panel and takes a minute or two. If `kaggleui` was already imported in this session, restart the kernel first.
+   The built control panel is part of the repository, so no Node.js is needed. If `kindle` was already imported in this session, restart the kernel first.
 
 4. After the install, the cell prints a card within 20–60 seconds with a `https://….trycloudflare.com/?token=…` link, your admin token, the access password and the API key. Open the link on your computer. The token in the link signs you in.
 5. In the panel: **Deploy model → pick a type → pick a model → choose interface/password/API → Launch**. Install, download and load progress appear live under **Deployments**. When it shows **Ready**, open **Studio** or call the API.
 
-The cell keeps running so the session stays alive. Interrupt it to get the notebook back; the server keeps running in the background. `kaggleui.stop()` shuts it down.
+The cell keeps running so the session stays alive. Interrupt it to get the notebook back; the server keeps running in the background. `kindle.stop()` shuts it down.
 
 ### Running on a TPU
 
-Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and launch KaggleUI exactly as above. The panel detects the chips, sizes models against the combined HBM (8 × 16 GiB on v5e-8) and serves text models by sharding them across every chip through **vLLM's TPU backend** (`PJRT_DEVICE=TPU`, tensor parallelism = chip count).
+Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and launch Kindle exactly as above. The panel detects the chips, sizes models against the combined HBM (8 × 16 GiB on v5e-8) and serves text models by sharding them across every chip through **vLLM's TPU backend** (`PJRT_DEVICE=TPU`, tensor parallelism = chip count).
 
 - The first deployment compiles XLA graphs and can take **10–30 minutes** before it reports Ready; later starts are much faster. The deployment log shows compile progress.
 - Only **text** models run on a TPU. Ollama, Diffusers, TTS and ASR runners need a CUDA GPU, so those models are marked **Won't fit** in the catalog on a TPU session; open the same panel with `GPU T4 x2` for them.
 - vLLM runs in **bf16** on TPU, and TPU sessions are limited to about **9 hours** (the session bar accounts for this).
 - TPU usage on Kaggle is quota-limited per week; if no TPU option appears in the notebook settings, your account has no remaining TPU quota.
 
-### Running on molab
+## Run it on molab
 
-Cloudflare quick tunnels don't connect from [molab](https://molab.marimo.io), so KaggleUI uses a **Gradio share link** (`https://….gradio.live`) there instead. That's the same relay `gradio share=True` uses, with no account and no Gradio install. Paste this into a cell:
+[molab](https://molab.marimo.io) can't use Cloudflare quick tunnels, so Kindle publishes each session through a **Gradio share link** (`https://….gradio.live`), the relay `gradio share=True` uses. If Kindle's own tunnel doesn't connect, the start script falls back to the tunnel from the `gradio` package.
 
-```python
-import subprocess
-subprocess.run("curl -fsSL https://raw.githubusercontent.com/ryyReid/KaggleUI/main/install.sh | bash", shell=True, check=True)
-import kaggleui
-kaggleui.launch(tunnel="gradio")
-```
+### One session
 
-molab doesn't support `!` shell lines, so the install runs through `subprocess`. Paste the cell with no leading spaces: molab's editor can indent pasted lines, which Python rejects with `IndentationError`. If that happens, select all lines and press **Shift+Tab**. As on Kaggle, building from source needs Node.js 20 or newer.
+1. Create a molab notebook with a GPU.
+2. Paste this into a cell, with no leading spaces, and run it. The same code is in [`notebooks/molab_cell.py`](notebooks/molab_cell.py).
 
-The cell keeps running and prints a short status line every 20 seconds, such as `[kaggleui 14:02:20] qwen3:8b loading 42%`. molab shuts down a server whose cell shows no new output for a while, so this line keeps it awake, including while a model downloads or loads. If the server still stops, print more often with `kaggleui.launch(tunnel="gradio", heartbeat=10)`. `heartbeat=None` turns it off. Gradio share links expire after about 72 hours. KaggleUI then opens a new one and prints the new card in the cell. Interfaces such as Open WebUI get their own share links. You can also pick **Gradio share link** under exposure in the panel on any platform, or set `KAGGLEUI_TUNNEL=gradio`.
+   ```python
+   ROLE = "head"
+   REPO = "OWNER/Kindle"
+   REF = "main"
+   UPDATE = False
+
+   import importlib, os, subprocess, sys
+   os.environ["KINDLE_REPO"] = REPO
+   if UPDATE or subprocess.run([sys.executable, "-c", "import kindle"], capture_output=True).returncode != 0:
+       subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", f"kindle @ git+https://github.com/{REPO}@{REF}"], check=True)
+   importlib.invalidate_caches()
+   import kindle.molab
+   kindle.molab.start(ROLE)
+   ```
+
+3. The cell prints a card with the panel link, the API base URL, the API key, and this machine's GPU, RAM and free disk. Open the panel link on your computer.
+4. Deploy a model from the panel, then use **Studio** or the API.
+
+The cell keeps running and prints a status line every 20 seconds, because molab stops servers whose cell shows no new output. Interrupt it to get the notebook back; Kindle keeps running. Re-running the cell reuses the running server. Set `UPDATE = True` to reinstall from GitHub, then restart the kernel so the new code loads.
+
+molab's editor can indent pasted lines, which Python rejects with `IndentationError`. If that happens, select all lines and press **Shift+Tab**.
+
+### Pool several sessions for one big model
+
+A model bigger than one GPU (DeepSeek or GLM class MoE models are 150–350 GB as GGUF) can be split across several sessions with the **llama.cpp (GPU pool)** engine:
+
+1. **Head:** run the cell above with `ROLE = "head"`. This session downloads the GGUF, runs the model and serves the API, so it needs **free disk for the whole GGUF file** (see "Disk" on its card).
+2. **Helpers:** open one more molab notebook per extra GPU and run the same cell with `ROLE = "helper"`. Each prints its **Link** and **API key**. Check the **GPU** line: every helper must have its own GPU.
+3. In the head's panel, open **Linked sessions**. For each helper, paste its link and API key and press **Link session**. Helpers show as "Shares its GPU".
+4. In the head's panel, open **Models**, search for a GGUF build of the model (for example from unsloth or bartowski), and pick a quant. Choose the **llama.cpp (GPU pool)** engine, turn on **Pool GPUs from linked sessions**, set the context length, and launch. The fit check adds the helpers' free VRAM.
+5. Watch **Deployments**. First every helper installs the same llama.cpp build and downloads its share of the weights straight from Hugging Face. Then the head starts the model across all GPUs. Every helper's cell shows its progress.
+6. When it shows **Ready**, use the API from the head's link (see [Using it from coding agents](#using-it-from-coding-agents)).
+
+How many sessions: add up the GGUF size plus about 2 GB per GPU and 4 GB on the head for buffers and the context cache, then divide by one session's VRAM. Longer context windows need more. When it's close, choose a smaller quant or set **MoE layers with experts in RAM**.
+
+Keep every cell running. If a helper's session ends or its link changes (relays expire after about 72 hours), the model on the head fails; re-link the helper and restart the deployment. Use molab within its fair-use terms: pooling is meant for your own sessions, not for collecting GPUs across accounts.
 
 ### If the link won't open
 
-From v0.2.3, the main public tunnel survives app server restarts and in-app updates within the same Kaggle session. This happens automatically, with no account or domain setup. Keep your current link bookmarked. `kaggleui.stop()` deliberately stops both the app and its tunnel, including a retained tunnel whose server has crashed.
+From v0.2.3, the main public tunnel survives app server restarts and in-app updates within the same Kaggle session. This happens automatically, with no account or domain setup. Keep your current link bookmarked. `kindle.stop()` deliberately stops both the app and its tunnel, including a retained tunnel whose server has crashed.
 
 A fresh Kaggle session, full stop, tunnel provider/port change, or a tunnel failure that requires a new Cloudflare process still creates a new hostname. Anonymous Cloudflare URLs cannot be reserved permanently. The first upgrade from v0.2.2 or earlier also creates a new link; subsequent updates can reuse it. Use the latest card printed by the notebook if the address changes.
 
@@ -126,15 +159,15 @@ If Safari says it can't find the server but Brave opens the same link, give Safa
 If the link fails in every browser, reconnect the tunnel from another notebook cell:
 
 ```python
-import kaggleui
-kaggleui.restart_tunnel()
+import kindle
+kindle.restart_tunnel()
 ```
 
 This prints a fresh link and keeps your model deployments running. Startup waits for Cloudflare to connect and for the new hostname to resolve before showing the link.
 
 ### Updates and compatibility
 
-From v0.2.0, the host sees an **Update to …** button when a newer GitHub release has an installable wheel. **System** also offers a manual check and release notes. Installing an update restarts the server and relaunches active deployments; requests in flight are interrupted. Credentials, imported checkpoints and model caches are preserved. From v0.2.3, the existing main tunnel stays running through the update, and the page reconnects at the same address. Updating from older releases may still change the URL: re-run `kaggleui.launch()` to display the latest link. If installation fails, check `logs/update.log` under the KaggleUI home directory or re-run the install cell.
+From v0.2.0, the host sees an **Update to …** button when a newer GitHub release has an installable wheel. **System** also offers a manual check and release notes. Installing an update restarts the server and relaunches active deployments; requests in flight are interrupted. Credentials, imported checkpoints and model caches are preserved. From v0.2.3, the existing main tunnel stays running through the update, and the page reconnects at the same address. Updating from older releases may still change the URL: re-run `kindle.launch()` to display the latest link. If installation fails, check `logs/update.log` under the Kindle home directory or re-run the install cell.
 
 `release-policy.json` controls the minimum supported version and explicit `revoked_versions`. Compatible releases check this policy periodically, retain the last valid policy across restarts, stop model deployments, and return HTTP 426 for inference when blocked. Host sign-in and updating remain available. A temporary check failure keeps the last known policy; it does not disable a previously supported server. **Versions released before v0.2.0 have no compatibility checker or update button and cannot be retroactively disabled.** Self-hosted installations can also modify the checker.
 
@@ -144,17 +177,66 @@ The public root link opens Studio access for guests. Guests enter the **Studio p
 
 ### Hosting for hours (browser closed)
 
-Interactive sessions stop when idle. For long runs, set up a model once, then click **Deployments → Export launch cell** and use that cell in **Save Version → Save & Run All**. Batch runs last up to about 12 hours and auto-deploy everything in the preset. Batch runs don't show output live, so add a `KAGGLEUI_NOTIFY_URL` secret (an [ntfy.sh](https://ntfy.sh) topic URL or a Discord webhook) to get the link pushed to you.
+Interactive sessions stop when idle. For long runs, set up a model once, then click **Deployments → Export launch cell** and use that cell in **Save Version → Save & Run All**. Batch runs last up to about 12 hours and auto-deploy everything in the preset. Batch runs don't show output live, so add a `KINDLE_NOTIFY_URL` secret (an [ntfy.sh](https://ntfy.sh) topic URL or a Discord webhook) to get the link pushed to you.
 
 ### Linked sessions (pool two GPU sessions)
 
-Run KaggleUI in two sessions with the **same accelerator**, for example two `GPU T4 x2` sessions on different platforms. In one of them, open the **Linked sessions** tab and paste the other session's link and API key. The other session's running models then appear in this session's API, Studio and `/v1/models`. When both sessions run the same model, requests alternate between them, so two sessions can handle twice the requests.
+Run Kindle in two sessions with the **same accelerator**, for example two `GPU T4 x2` sessions on different platforms. In one of them, open the **Linked sessions** tab and paste the other session's link and API key. The other session's running models then appear in this session's API, Studio and `/v1/models`. When both sessions run the same model, requests alternate between them, so two sessions can handle twice the requests.
 
 - Linking is refused unless both sessions report the same GPU model and count. If the other session later changes hardware, the link pauses and shows why.
 - Text (chat, completions, embeddings), image, text-to-speech, audio generation and speech-to-text are pooled. Video and world jobs stay on the session that runs them.
 - Each model still has to fit on one session's GPUs. Linking adds request capacity; it doesn't combine VRAM.
 - Links are remembered across app restarts. Re-link if the other session's URL changes.
 - Linking sessions on different platforms is fine. Using several Kaggle accounts to get more GPUs breaks Kaggle's rules.
+
+### GPU pool: one model across several sessions
+
+For models bigger than one GPU (for example a 170 GB GGUF of a large mixture-of-experts model), the **llama.cpp (GPU pool)** engine splits the model's layers across this session's GPU and the GPUs of linked sessions, using llama.cpp's RPC backend.
+
+1. In each **helper** session, start Kindle with `kindle.molab.start("helper")` on molab or `kindle.launch(share_gpu=True)` elsewhere. Or turn on **Share this GPU** in its Linked sessions tab.
+
+2. In the **head** session (the one that runs the model and serves the API), open **Linked sessions** and link each helper with its link and API key.
+3. Pick a GGUF model, choose the **llama.cpp (GPU pool)** engine, turn on **Pool GPUs from linked sessions**, and launch. The fit check counts the pooled VRAM.
+
+How it works and what to expect:
+
+- Every session installs the same prebuilt llama.cpp release (CUDA 12.8 or 13.4, chosen from the driver). The RPC protocol requires matching builds, so the head tells helpers which one to use. Override with `KINDLE_LLAMACPP_TAG`.
+- The RPC server listens on 127.0.0.1 only. The head reaches it through an authenticated WebSocket on the helper's public link (`/_kui/pool/rpc`, checked against the helper's API key). Never expose the RPC server itself: it has no authentication.
+- **Weights don't travel through the relay.** The head works out which layers each helper will hold, and each helper downloads exactly those tensors from Hugging Face (byte ranges) into llama.cpp's RPC cache. A tensor that wasn't pre-seeded still works; it's just sent over the link, which is slow for large weights.
+- **Speed:** each generated token makes a round trip to every helper over the public relay. Expect a few tokens per second, not single-GPU speeds. Use the pool for models that otherwise don't fit.
+- The head needs disk space for the whole GGUF. Helpers only need room for their share.
+- The model's architecture must be supported by the pinned llama.cpp release.
+- Options: **Parallel requests** (slots sharing one KV cache), and **MoE layers with experts in RAM** (`--n-cpu-moe`) for mixture-of-experts models that almost fit.
+
+### Using it from coding agents
+
+Tool calling works on every text engine:
+
+- vLLM and SGLang start with the tool-call parser for the model family (Qwen, Llama 3, Mistral, DeepSeek, GLM, gpt-oss, Kimi). Set the deployment option `tool_call_parser` for others.
+- llama.cpp runs with `--jinja`.
+- The Transformers fallback parses Hermes, Mistral and Llama-style calls from the output.
+
+The Anthropic, OpenAI and Ollama APIs carry tool calls and thinking blocks in both streamed and complete replies. Errors mid-stream arrive in-band instead of cutting the stream.
+
+Claude Code, for example:
+
+```bash
+export ANTHROPIC_BASE_URL=https://YOUR-URL
+export ANTHROPIC_AUTH_TOKEN=kui-…
+claude --model qwen3-coder
+```
+
+Agents also send names of their own (Claude Code uses `claude-*` names for background calls). Under **Access & API → Model names**, route them with wildcards, for example `claude-*haiku*` → a small model. With one text model running, unknown names reach it. With **Reject unknown model names** on, they get a 404 instead.
+
+Reliability for long agent runs:
+
+- Running deployments are saved and restored when the server restarts. Set `KINDLE_RESTORE=0` to skip this.
+- A watchdog restarts a runner that crashes after it was ready, up to 3 times in 15 minutes.
+- A request that can't reach one copy of a model (for example a linked session that dropped) is retried on another copy before any output is sent.
+
+### Installing and updating
+
+Kindle installs straight from its GitHub repository, with `pip install "kindle @ git+https://github.com/OWNER/Kindle@main"`. Set `KINDLE_REPO` (`owner/name`) in the notebook to enable the in-panel update check against that repository's releases. Without it, Kindle never checks for updates. `install.sh` also works, and reads `KINDLE_REPO` and `KINDLE_REF`.
 
 ### Keys & tokens (Hugging Face, ngrok, …)
 
@@ -167,8 +249,8 @@ Or use Kaggle secrets: add them under **Add-ons → Secrets** and **switch each 
 | `HF_TOKEN` | Gated Hugging Face models (FLUX, Llama, SD 3.5…). Accept the license on HF first. |
 | `NGROK_AUTHTOKEN` (+ `NGROK_DOMAIN`) | Use ngrok instead of Cloudflare: real-time API streaming, and a stable URL if you set a free static domain. |
 | `CF_TUNNEL_TOKEN` + `CF_TUNNEL_HOSTNAME` | Cloudflare named tunnel on your own domain (point its public hostname at `http://localhost:8890`). |
-| `KAGGLEUI_PASSWORD`, `KAGGLEUI_ADMIN_TOKEN`, `KAGGLEUI_API_KEY` | Keep the same credentials across sessions. |
-| `KAGGLEUI_NOTIFY_URL` | Push the panel link to ntfy.sh or a Discord webhook when it starts. |
+| `KINDLE_PASSWORD`, `KINDLE_ADMIN_TOKEN`, `KINDLE_API_KEY` | Keep the same credentials across sessions. |
+| `KINDLE_NOTIFY_URL` | Push the panel link to ntfy.sh or a Discord webhook when it starts. |
 
 ## Using the API
 
@@ -249,13 +331,13 @@ Heavy or conflicting stacks (vLLM, SGLang, Open WebUI, Chatterbox) install into 
 ```bash
 uv venv --python 3.11 && uv pip install -e ".[dev]"
 cd web && pnpm install && pnpm build && cd ..
-.venv/bin/python -m kaggleui serve --mock-engines --fake-hw t4x2 --tunnel none
+.venv/bin/python -m kindle serve --mock-engines --fake-hw t4x2 --tunnel none
 # open http://127.0.0.1:8890/?token=<printed token>
 .venv/bin/python -m pytest
-.venv/bin/python -m kaggleui selftest --mock-engines --fake-hw t4x2
+.venv/bin/python -m kindle selftest --mock-engines --fake-hw t4x2
 ```
 
-`--fake-hw` simulates `t4x2`, `p100`, `tpu` or `cpu`; `--mock-engines` simulates installs, downloads and outputs. On a real GPU, `kaggleui selftest` deploys the smallest model of each type and checks every API surface.
+`--fake-hw` simulates `t4x2`, `p100`, `tpu` or `cpu`; `--mock-engines` simulates installs, downloads and outputs. On a real GPU, `kindle selftest` deploys the smallest model of each type and checks every API surface.
 
 ## License
 

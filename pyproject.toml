@@ -3,7 +3,7 @@ requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kaggleui"
+name = "kindle"
 version = "0.2.16"
 description = "One-cell control panel for hosting AI models (text, image, video, speech, world) on Kaggle's free GPUs."
 readme = "README.md"
@@ -33,19 +33,19 @@ dependencies = [
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "openai>=1.40", "anthropic>=0.40"]
 
 [project.scripts]
-kaggleui = "kaggleui.cli:main"
+kindle = "kindle.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ryyReid/KaggleUI"
-Issues = "https://github.com/ryyReid/KaggleUI/issues"
+Homepage = "https://github.com/OWNER/Kindle"
+Upstream = "https://github.com/ryyReid/KaggleUI"
 
 [tool.hatch.build.targets.wheel]
-packages = ["kaggleui"]
-artifacts = ["kaggleui/static/**"]
+packages = ["kindle"]
+artifacts = ["kindle/static/**"]
 
 [tool.hatch.build.targets.sdist]
-include = ["kaggleui", "README.md", "LICENSE", "install.sh"]
-artifacts = ["kaggleui/static/**"]
+include = ["kindle", "README.md", "LICENSE", "install.sh"]
+artifacts = ["kindle/static/**"]
 
 [tool.ruff]
 line-length = 110

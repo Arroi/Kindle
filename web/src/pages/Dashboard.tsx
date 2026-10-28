@@ -83,7 +83,7 @@ function RunRow({ d }: { d: Deployment }) {
 function GettingStarted() {
   return (
     <div className="panel p-6 sm:p-7">
-      <h3 className="display text-[30px]">Three steps to a running model</h3>
+      <h3 className="display text-[20px]">Three steps to a running model</h3>
       <ol className="start-steps mt-5">
         <li>
           <span className="text-[14px] font-medium">Pick a model that fits</span>

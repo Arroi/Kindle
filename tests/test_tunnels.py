@@ -4,10 +4,10 @@ import asyncio
 import json
 from unittest.mock import AsyncMock
 
-from kaggleui.schemas import Settings
-from kaggleui.server.app import _open_main_tunnel
-from kaggleui.server.state import AppState
-from kaggleui.tunnels import manager
+from kindle.schemas import Settings
+from kindle.server.app import _open_main_tunnel
+from kindle.server.state import AppState
+from kindle.tunnels import manager
 
 
 async def test_quick_tunnel_waits_for_registration(paths, monkeypatch):
@@ -84,9 +84,9 @@ async def test_gradio_tunnel_reports_share_url(paths, monkeypatch):
 
 
 def test_molab_defaults_to_gradio(monkeypatch):
-    from kaggleui import config
+    from kindle import config
 
-    monkeypatch.delenv("KAGGLEUI_TUNNEL", raising=False)
+    monkeypatch.delenv("KINDLE_TUNNEL", raising=False)
     monkeypatch.setattr(config, "ON_MOLAB", True)
     assert config.default_tunnel() == "gradio"
 
