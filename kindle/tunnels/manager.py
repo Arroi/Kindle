@@ -1,4 +1,4 @@
-"""Expose local ports publicly: Cloudflare quick tunnels (default), named tunnels, ngrok, or Gradio share links.
+"""Expose local ports publicly: Cloudflare quick tunnels (default), named tunnels, burrow, ngrok, or Gradio share links.
 
 Kaggle has no inbound ports, so every URL the user opens goes through one of these.
 """
@@ -20,17 +20,19 @@ import httpx
 
 from ..config import Paths
 from ..proc import ManagedProcess
-from .binaries import ensure_cloudflared, ensure_frpc, ensure_ngrok
+from .binaries import ensure_burrow, ensure_cloudflared, ensure_frpc, ensure_ngrok
 from .persistent import PersistentProcess, binding, read_record, stop_saved_tunnel
 
 QUICK_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 GRADIO_SUCCESS_RE = re.compile(r"start proxy success: (\S+)")
 GRADIO_URL_RE = re.compile(r"https://[a-zA-Z0-9.-]+\.gradio\.live")
-GRADIO_TUNNEL_APIS = ("https://api.gradio.app/v3/tunnel-request", "https://api.gradio.live/v3/tunnel-request")
+BURROW_SERVICE_RE = re.compile(r'"service"\s*:\s*"(https?://[^"]+)"')
+GRADIO_TUNNEL_APIS =("https://api.gradio.app/v3/tunnel-request", "https://api.gradio.live/v3/tunnel-request")
 
 PROVIDER_LABELS = {
     "cloudflare": "Cloudflare quick tunnel",
     "cloudflare_named": "Cloudflare named tunnel",
+    "burrow": "Burrow tunnel",
     "ngrok": "ngrok",
     "gradio": "Gradio share link",
     "none": "Local only",
@@ -82,6 +84,8 @@ class TunnelManager:
         await self.close(name)
         if provider == "cloudflare_named" and name != "main":
             provider = "cloudflare"  # a named tunnel's hostname maps to one fixed port
+        if provider == "burrow" and name != "main":
+            provider = "gradio"  # so does burrow's; and it's used where quick tunnels don't work (molab)
         if provider == "ngrok" and name != "main":
             provider = "cloudflare"  # free ngrok accounts get one agent session
         if name == "main":
@@ -137,7 +141,7 @@ class TunnelManager:
                 print("[kindle] Reusing the existing public tunnel and URL.", flush=True)
             else:
                 t.status, t.error = "starting", None
-                if t.provider != "cloudflare_named":
+                if t.provider not in ("cloudflare_named", "burrow"):  # their URL is the fixed hostname
                     t.url = None
             t.proc = proc
         else:
@@ -158,6 +162,9 @@ class TunnelManager:
                     except (OSError, asyncio.TimeoutError):
                         await asyncio.sleep(0.5)
                         continue
+                if t.provider == "burrow" and not await self._reaches_kindle(t):
+                    await asyncio.sleep(2)
+                    continue
                 return t.url
             if t and t.status == "error" and t.restarts >= 3:
                 return None
@@ -187,6 +194,8 @@ class TunnelManager:
             await self._run_cloudflare_quick(t)
         elif t.provider == "cloudflare_named":
             await self._run_cloudflare_named(t)
+        elif t.provider == "burrow":
+            await self._run_burrow(t)
         elif t.provider == "ngrok":
             await self._run_ngrok(t)
         elif t.provider == "gradio":
@@ -238,6 +247,48 @@ class TunnelManager:
         rc = await t.proc.wait()
         if t.status != "stopped":
             t.error = f"cloudflared exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
+
+    async def _run_burrow(self, t: Tunnel) -> None:
+        """burrow serves BURROW_HOSTNAME through its agent. The local port it forwards to is set on
+        burrow's dashboard and has to be Kindle's port (8890 unless KINDLE_PORT says otherwise)."""
+        token = os.environ.get("BURROW_TOKEN")
+        host = os.environ.get("BURROW_HOSTNAME")
+        if not token or not host:
+            raise RuntimeError("burrow needs the BURROW_TOKEN and BURROW_HOSTNAME secrets")
+        exe = await ensure_burrow(self.paths.bin)
+        t.url = (host if host.startswith("http") else f"https://{host}").rstrip("/")
+
+        def on_line(line: str) -> None:
+            low = line.lower()
+            if "registered tunnel connection" in low:
+                t.status = "up"
+                t.error = None
+                self._changed(t)
+            elif "token is not valid" in low:
+                t.error = "burrow rejected BURROW_TOKEN. Copy the key again from burrow's dashboard."
+            elif "updated to new configuration" in low:
+                services = BURROW_SERVICE_RE.findall(line.replace('\\"', '"'))
+                ports = {urlsplit(s).port for s in services if urlsplit(s).hostname in ("localhost", "127.0.0.1")}
+                if ports and t.port not in ports:
+                    t.error = (f"burrow forwards {host} to {', '.join(services)}, but Kindle listens on port "
+                               f"{t.port}. Point the tunnel at http://127.0.0.1:{t.port} on burrow's dashboard.")
+                    self._changed(t)
+
+        # The agent reads its key from TUNNEL_TOKEN, as burrow's own `burrow connect` wrapper passes it.
+        await self._start_process(t, [exe, "tunnel", "--no-autoupdate", "run"], on_line, env={"TUNNEL_TOKEN": token})
+        rc = await t.proc.wait()
+        if t.status != "stopped":
+            t.error = t.error or f"burrow exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
+
+    async def _reaches_kindle(self, t: Tunnel) -> bool:
+        """A connected agent isn't enough: the hostname must forward to this port, not to nothing
+        (a gateway error) or to another app."""
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
+                r = await client.get(f"{t.url}/_kui/api/session")
+            return r.status_code == 200 and "admin" in r.json()
+        except (httpx.HTTPError, ValueError, TypeError):
+            return False
 
     async def _run_ngrok(self, t: Tunnel) -> None:
         token = os.environ.get("NGROK_AUTHTOKEN")

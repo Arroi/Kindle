@@ -79,6 +79,16 @@ async def test_different_gpus_are_refused(tmp_path):
     assert hub.links.list()["links"] == []
 
 
+async def test_different_gpus_link_when_the_other_session_shares_its_gpu(tmp_path):
+    hub, remote = make_state(tmp_path, "hub", "t4x2"), make_state(tmp_path, "remote", "p100")
+    remote.settings.pool.share_gpu = True  # a GPU-pool helper: mixed GPU models are fine
+    hub.links._transport = httpx.ASGITransport(app=create_app(remote))
+    await hub.links.add(REMOTE, remote.auth.api_key)
+    link = hub.links.list()["links"][0]
+    assert link["status"] == "up" and link["pool"]["enabled"] is True
+    await hub.links.close()
+
+
 async def test_wrong_api_key_is_reported(pair):
     hub, _ = pair
     with pytest.raises(LinkError) as err:

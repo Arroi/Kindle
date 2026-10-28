@@ -19,9 +19,10 @@ from pathlib import Path
 import httpx
 
 from . import __version__
-from .config import Paths, disk_budget
-from .launcher import _read_state, _running, _status_line, launch
+from .config import Paths, burrow_configured, disk_budget
+from .launcher import _read_state, _running, _status_line, launch, stop
 from .system.memory import container_memory
+from .tunnels.manager import PROVIDER_LABELS
 
 GB = 1000**3
 
@@ -90,9 +91,33 @@ def _card(role: str, url: str, state: dict, home: str) -> None:
     print("\n".join(lines), flush=True)
 
 
-def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None) -> None:
+TUNNEL_SECRETS = {"burrow": ("BURROW_TOKEN", "BURROW_HOSTNAME"),
+                  "cloudflare_named": ("CF_TUNNEL_TOKEN", "CF_TUNNEL_HOSTNAME"),
+                  "gradio": ()}
+
+
+def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None, tunnel: str | None = None) -> None:
+    """Where the public link comes from:
+
+    - ``"burrow"``: your own domain through burrow. Needs BURROW_TOKEN (the key from burrow's
+      dashboard) and BURROW_HOSTNAME, and the tunnel must point at http://127.0.0.1:8890 there.
+    - ``"cloudflare_named"``: your own domain through a Cloudflare named tunnel (CF_TUNNEL_TOKEN and
+      CF_TUNNEL_HOSTNAME, its public hostname pointed at http://localhost:8890).
+    - ``"gradio"``: a gradio.live share link. No account needed.
+
+    By default the head uses burrow when its two variables are set, else Gradio. Helpers default to
+    Gradio: two sessions on one burrow key would split the hostname's requests between them. If the
+    chosen tunnel doesn't connect, Kindle falls back to a Gradio share link, then to the gradio
+    package's own tunnel.
+    """
     if role not in ("head", "helper"):
         raise ValueError('role must be "head" or "helper"')
+    tunnel = tunnel or ("burrow" if role == "head" and burrow_configured() else "gradio")
+    if tunnel not in TUNNEL_SECRETS:
+        raise ValueError('tunnel must be "burrow", "gradio" or "cloudflare_named"')
+    missing = [name for name in TUNNEL_SECRETS[tunnel] if not os.environ.get(name)]
+    if missing:
+        raise ValueError(f"The {PROVIDER_LABELS[tunnel]} needs {' and '.join(missing)} set first")
     for folder in old_data_folders():
         from .util import dir_size
 
@@ -110,14 +135,16 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None)
     state: dict | None = None
     external = False
     if not reuse_external:
-        try:
-            state = launch(tunnel="gradio", block=False, share_gpu=helper, home=home)
-        except RuntimeError as exc:
-            print(f"Kindle's own Gradio tunnel didn't connect ({exc}). Using the gradio package's tunnel instead.",
-                  flush=True)
-            from .launcher import stop
-
-            stop(home)
+        for provider in dict.fromkeys((tunnel, "gradio")):
+            try:
+                state = launch(tunnel=provider, block=False, share_gpu=helper, home=home)
+                break
+            except RuntimeError as exc:
+                reason = ((_read_state(paths) or {}).get("tunnel") or {}).get("error") or exc
+                fallback = "a Gradio share link" if provider != "gradio" else "the gradio package's tunnel"
+                print(f"The {PROVIDER_LABELS[provider]} didn't connect ({reason}). Using {fallback} instead.",
+                      flush=True)
+                stop(home)
     if state is None:
         state = launch(tunnel="none", block=False, share_gpu=helper, home=home)
         external = True

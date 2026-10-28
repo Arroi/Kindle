@@ -12,6 +12,8 @@ const SECRET_HELP: Record<string, string> = {
   NGROK_DOMAIN: "Your free static ngrok domain",
   CF_TUNNEL_TOKEN: "Cloudflare named tunnel",
   CF_TUNNEL_HOSTNAME: "Hostname for the named tunnel",
+  BURROW_TOKEN: "burrow tunnel on your own domain",
+  BURROW_HOSTNAME: "Domain for the burrow tunnel",
   KINDLE_PASSWORD: "Fixed access password",
   KINDLE_ADMIN_TOKEN: "Fixed admin token",
   KINDLE_API_KEY: "Fixed API key",

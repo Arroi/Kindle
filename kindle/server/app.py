@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from pydantic import ValidationError
 
 from .. import __version__, notify, secretstore
+from ..build import installed_build
 from ..capabilities import profile
 from ..catalog.filters import CatalogFilters
 from ..catalog.resolve import ENGINE_LABELS, MODALITY_ENGINES
@@ -33,6 +34,8 @@ from .proxy import proxy_http, proxy_ws
 from .state import AppState
 from .studio import studio_ws
 from .updates import REPO as UPDATE_REPO
+
+BUILD = installed_build()  # fixed at server start: launch() restarts the server when the install changes
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 RESERVED = ("/v1/", "/api/", "/_kui/", "/gradio/")
@@ -751,7 +754,7 @@ def _write_state(state: AppState, status: str = "running") -> None:
         tunnel.proc.save({"credentials": {"admin_token": state.auth.admin_token,
                                           "password": state.auth.password, "api_key": state.auth.api_key}})
     data = {
-        "pid": os.getpid(), "version": __version__, "port": state.port, "status": status,
+        "pid": os.getpid(), "version": __version__, "build": BUILD, "port": state.port, "status": status,
         "url": state.main_url() if status == "running" else None,
         "process_started_at": psutil.Process().create_time(),
         "tunnel": (state.tunnels.get("main").info() if state.tunnels.get("main") else None),

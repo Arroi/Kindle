@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Cloud, Globe2, Laptop, Radio, RefreshCw, Zap } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Globe2, Laptop, Link2, Radio, RefreshCw, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { api } from "../lib/api";
@@ -59,6 +59,7 @@ export function ExposurePicker({ value, onChange }: { value: TunnelProvider; onC
   const { overview } = useLive();
   const sec = overview?.secrets ?? {};
   const named = Boolean(sec.CF_TUNNEL_TOKEN && sec.CF_TUNNEL_HOSTNAME);
+  const burrow = Boolean(sec.BURROW_TOKEN && sec.BURROW_HOSTNAME);
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       <OptionCard active={value === "cloudflare"} onClick={() => onChange("cloudflare")} icon={<Cloud className="size-4" />} title="Cloudflare quick tunnel" badge={<Tag>default</Tag>}>
@@ -73,6 +74,18 @@ export function ExposurePicker({ value, onChange }: { value: TunnelProvider; onC
         badge={<Tag tone="signal">stable URL</Tag>}
       >
         {named ? "Your own hostname, with real-time streaming." : "Add CF_TUNNEL_TOKEN and CF_TUNNEL_HOSTNAME secrets to enable."}
+      </OptionCard>
+      <OptionCard
+        active={value === "burrow"}
+        disabled={!burrow}
+        onClick={() => onChange("burrow")}
+        icon={<Link2 className="size-4" />}
+        title="Burrow tunnel"
+        badge={<Tag tone="signal">stable URL</Tag>}
+      >
+        {burrow
+          ? "Your own domain through burrow. Works on molab. Point the tunnel at http://127.0.0.1:8890 on burrow's dashboard."
+          : "Add BURROW_TOKEN and BURROW_HOSTNAME secrets to enable."}
       </OptionCard>
       <OptionCard
         active={value === "ngrok"}

@@ -22,7 +22,8 @@ from ..config import Paths
 
 def binding(provider: str, port: int) -> str:
     names = {"ngrok": ("NGROK_AUTHTOKEN", "NGROK_DOMAIN"),
-             "cloudflare_named": ("CF_TUNNEL_TOKEN", "CF_TUNNEL_HOSTNAME")}.get(provider, ())
+             "cloudflare_named": ("CF_TUNNEL_TOKEN", "CF_TUNNEL_HOSTNAME"),
+             "burrow": ("BURROW_TOKEN", "BURROW_HOSTNAME")}.get(provider, ())
     value = [provider, port, *(os.environ.get(name, "") for name in names)]
     return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 

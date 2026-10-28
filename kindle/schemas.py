@@ -12,7 +12,7 @@ Modality = Literal["text", "image", "video", "tts", "audio", "stt", "world", "me
 MODALITIES: tuple[str, ...] = ("text", "image", "video", "tts", "audio", "stt", "world", "mesh")
 
 InterfaceKind = Literal["studio", "gradio", "openwebui", "comfyui", "none"]
-TunnelProvider = Literal["cloudflare", "cloudflare_named", "ngrok", "gradio", "none"]
+TunnelProvider = Literal["cloudflare", "cloudflare_named", "burrow", "ngrok", "gradio", "none"]
 
 
 class ModelRef(BaseModel):

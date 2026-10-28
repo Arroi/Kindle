@@ -269,9 +269,12 @@ class LinkManager:
         if not mine:
             raise LinkError(409, "This session has no GPU. Linking pools sessions with matching GPUs.")
         theirs = sorted(node.get("gpus") or [])
-        if theirs != mine:
+        # A session that shares its GPU joins a llama.cpp pool, which mixes GPU models fine (a Kaggle
+        # T4 can help a molab GPU). Plain links pool request load, so they keep matching hardware.
+        if theirs != mine and not (node.get("pool") or {}).get("enabled"):
             raise LinkError(409, f"GPUs don't match: this session has {describe(mine)}, "
-                                 f"that one has {describe(theirs)}. Use the same accelerator in both.")
+                                 f"that one has {describe(theirs)}. Use the same accelerator in both, or turn on "
+                                 "'Share this GPU' there to use it in a GPU pool.")
 
     async def add(self, url: str, api_key: str = "") -> dict:
         url = normalize_url(url)

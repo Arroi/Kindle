@@ -12,6 +12,7 @@ from pathlib import Path
 import psutil
 
 from . import __version__
+from .build import installed_build
 from .config import DEFAULT_PORT, Paths, default_tunnel, load_preset
 from .notify import card_html, card_text
 from .proc import sacrifice
@@ -74,6 +75,8 @@ def _show(state: dict) -> None:
     provider = (state.get("tunnel") or {}).get("provider")
     if provider == "cloudflare":
         note = "App updates keep this link. A fresh notebook session, full stop or tunnel reconnect creates a new one."
+    elif provider == "burrow":
+        note = "Your own domain through burrow: the link stays the same across sessions."
     elif provider == "gradio":
         note = "Gradio share links expire after about 72 hours. While this cell runs, a replacement link is printed here."
     _display(card_html(state["url"], state["admin_token"], state.get("password"), state.get("api_key"), note),
@@ -210,12 +213,14 @@ def launch(preset=None, *, block: bool = True, heartbeat: float | None = 20, tun
     if current != __version__:
         print(f"Note: this notebook has Kindle {__version__} imported but {current} is installed. The server will "
               f"run {current}; restart the kernel to update kindle.* helpers too.", flush=True)
-    if _running(existing) and existing.get("version") != current:
-        # pip upgraded the files under a running server: its Python code is old but it would serve the
-        # new web UI. Restart so both match. (Servers before 0.1.4 didn't record a version.)
-        old = existing.get("version") or "an older version"
-        print(f"Kindle was updated ({old} → {current}). Restarting the server; relaunch your models "
-              "afterwards.", flush=True)
+    build = installed_build()
+    if _running(existing) and (existing.get("version") != current or existing.get("build") != build):
+        # pip installed new files under a running server: its Python code is old but it would serve the
+        # new web UI. Restart so both match. The build includes the git commit, so an update with an
+        # unchanged version number restarts too.
+        old = existing.get("build") or existing.get("version") or "an older version"
+        print(f"Kindle was updated ({old} → {build}). Restarting the server; its models are relaunched "
+              "automatically.", flush=True)
         stop(home, _keep_tunnel=True)
         existing = None
     if _running(existing) and existing.get("url"):

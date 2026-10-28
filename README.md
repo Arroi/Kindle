@@ -106,21 +106,30 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
 
 [molab](https://molab.marimo.io) can't use Cloudflare quick tunnels, so Kindle publishes each session through a **Gradio share link** (`https://….gradio.live`), the relay `gradio share=True` uses. If Kindle's own tunnel doesn't connect, the start script falls back to the tunnel from the `gradio` package.
 
+**Your own domain with burrow:** set `BURROW_TOKEN` (the key from [burrow](https://burroww.lovable.app)'s dashboard) and `BURROW_HOSTNAME` (the domain it serves) in the cell below, and point the tunnel at `http://127.0.0.1:8890` on burrow's dashboard. The head session then serves its panel, API and Gradio interfaces on that domain, and the link stays the same across sessions. Kindle only prints the link once the domain actually reaches it. If burrow doesn't connect, or forwards to another port, the cell says why and falls back to a Gradio share link. Open WebUI and ComfyUI need a second public link, so they get a Gradio share link. Helper sessions use Gradio share links: two sessions on one burrow key would split the domain's requests between them. To switch a running session to burrow, run `kindle.stop()` and then re-run the cell.
+
 ### One session
 
 1. Create a molab notebook with a GPU.
 2. Paste this into a cell, with no leading spaces, and run it. The same code is in [`notebooks/molab_cell.py`](notebooks/molab_cell.py).
 
    ```python
-   ROLE = "head" in the session that runs the model and serves the API,
+   # ROLE = "head" in the session that runs the model and serves the API,
    # ROLE = "helper" in every extra session that lends its GPU to the head's pool.
    ROLE = "head"
    REPO = "Arroi/Kindle"  # GitHub repo to install from (must be public for this install line)
    REF = "main"           # branch or tag to install
    UPDATE = False         # True: fetch the latest Kindle from GitHub
+   # Head only: serve the panel on your own domain through burrow (Gradio share links stay the fallback).
+   # Point the tunnel at http://127.0.0.1:8890 on burrow's dashboard. Keep the key private.
+   BURROW_TOKEN = ""      # the key from burrow's dashboard (eyJ…)
+   BURROW_HOSTNAME = ""   # the domain that key serves, e.g. kindle.example.com
 
    import importlib, importlib.metadata, os, subprocess, sys
    os.environ["KINDLE_REPO"] = REPO
+   for _name, _value in (("BURROW_TOKEN", BURROW_TOKEN), ("BURROW_HOSTNAME", BURROW_HOSTNAME)):
+       if _value:
+           os.environ[_name] = _value
    _source = f"kindle @ git+https://github.com/{REPO}@{REF}"
    try:
        importlib.metadata.version("kindle")  # the installed package, not just any folder named "kindle"
@@ -280,6 +289,7 @@ Or use Kaggle secrets: add them under **Add-ons → Secrets** and **switch each 
 | `HF_TOKEN` | Gated Hugging Face models (FLUX, Llama, SD 3.5…). Accept the license on HF first. |
 | `NGROK_AUTHTOKEN` (+ `NGROK_DOMAIN`) | Use ngrok instead of Cloudflare: real-time API streaming, and a stable URL if you set a free static domain. |
 | `CF_TUNNEL_TOKEN` + `CF_TUNNEL_HOSTNAME` | Cloudflare named tunnel on your own domain (point its public hostname at `http://localhost:8890`). |
+| `BURROW_TOKEN` + `BURROW_HOSTNAME` | [burrow](https://burroww.lovable.app) tunnel on your own domain: the key from burrow's dashboard and the domain it serves (point the tunnel at `http://127.0.0.1:8890`). The primary link on molab when set. |
 | `KINDLE_PASSWORD`, `KINDLE_ADMIN_TOKEN`, `KINDLE_API_KEY` | Keep the same credentials across sessions. |
 | `KINDLE_NOTIFY_URL` | Push the panel link to ntfy.sh or a Discord webhook when it starts. |
 

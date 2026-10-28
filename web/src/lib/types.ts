@@ -71,7 +71,7 @@ export interface PoolInfo {
   log?: string[];
 }
 
-export type TunnelProvider = "cloudflare" | "cloudflare_named" | "ngrok" | "gradio" | "none";
+export type TunnelProvider = "cloudflare" | "cloudflare_named" | "burrow" | "ngrok" | "gradio" | "none";
 
 export interface Tunnel {
   name: string;

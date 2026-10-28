@@ -1,4 +1,4 @@
-"""Download tunnel binaries (cloudflared, ngrok, Gradio's frpc) on demand."""
+"""Download tunnel binaries (cloudflared, ngrok, burrow, Gradio's frpc) on demand."""
 
 from __future__ import annotations
 
@@ -78,6 +78,25 @@ async def ensure_ngrok(bin_dir: Path) -> str:
             local.write_bytes(zf.read("ngrok"))
     _make_exec(local)
     os.environ.setdefault("NGROK_CONFIG", str(bin_dir / "ngrok.yml"))
+    return str(local)
+
+
+async def ensure_burrow(bin_dir: Path) -> str:
+    """burrow's tunnel agent (burroww.lovable.app), which serves a local port on your own domain."""
+    local = bin_dir / "burrow-core"
+    if local.exists():
+        return str(local)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    data = await _download(f"https://burroww.lovable.app/api/public/agent/{_os()}-{_arch()}")
+    if _os() == "darwin":  # a .tar.gz there, a bare binary on Linux
+        with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+            f = tf.extractfile(next(m for m in tf.getmembers() if m.isfile()))
+            assert f
+            data = f.read()
+    tmp = local.with_suffix(".part")
+    tmp.write_bytes(data)
+    _make_exec(tmp)
+    tmp.replace(local)
     return str(local)
 
 

@@ -84,8 +84,7 @@ class InterfaceManager:
         server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="off"))
         task = asyncio.create_task(server.serve())
         self._servers[dep.id] = (server, task)
-        provider = self.state.settings.exposure.provider
-        tunnel = await self.state.tunnels.open(f"ui-{dep.id}", port, provider if provider != "cloudflare_named" else "cloudflare")
+        tunnel = await self.state.tunnels.open(f"ui-{dep.id}", port, self.state.settings.exposure.provider)
         url = await self.state.tunnels.wait_url(tunnel.name, timeout=90)
         return url or f"http://127.0.0.1:{port}"
 

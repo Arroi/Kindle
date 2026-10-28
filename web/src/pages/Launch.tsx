@@ -317,7 +317,7 @@ export default function Launch() {
             </div>
           )}
           <SheetRow label="Interface">{ifaceLabel}</SheetRow>
-          <SheetRow label="URL">{exposure === "cloudflare" ? "Quick tunnel" : exposure === "cloudflare_named" ? "Named tunnel" : exposure === "ngrok" ? "ngrok" : exposure === "gradio" ? "Gradio share link" : "Local only"}</SheetRow>
+          <SheetRow label="URL">{exposure === "cloudflare" ? "Quick tunnel" : exposure === "cloudflare_named" ? "Named tunnel" : exposure === "burrow" ? "Burrow tunnel" : exposure === "ngrok" ? "ngrok" : exposure === "gradio" ? "Gradio share link" : "Local only"}</SheetRow>
           <SheetRow label="Password">{locked ? "On" : "Off"}</SheetRow>
           <SheetRow label="API">{apiState.enabled ? surfaces.join(", ") || "none" : "Off"}</SheetRow>
           <Button variant="primary" size="lg" className="mt-5 w-full" disabled={!choice} busy={busy} onClick={launch}>

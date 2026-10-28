@@ -18,6 +18,8 @@ SECRET_NAMES = (
     "NGROK_DOMAIN",
     "CF_TUNNEL_TOKEN",
     "CF_TUNNEL_HOSTNAME",
+    "BURROW_TOKEN",
+    "BURROW_HOSTNAME",
     "KINDLE_PASSWORD",
     "KINDLE_ADMIN_TOKEN",
     "KINDLE_API_KEY",
@@ -26,7 +28,7 @@ SECRET_NAMES = (
 
 # Secrets that can be set from the panel. Credentials for Kindle itself are managed on the Access page.
 EDITABLE = ("HF_TOKEN", "NGROK_AUTHTOKEN", "NGROK_DOMAIN", "CF_TUNNEL_TOKEN", "CF_TUNNEL_HOSTNAME",
-            "KINDLE_NOTIFY_URL")
+            "BURROW_TOKEN", "BURROW_HOSTNAME", "KINDLE_NOTIFY_URL")
 
 # Kaggle secret labels are case-sensitive and people name them differently.
 ALIASES: dict[str, tuple[str, ...]] = {

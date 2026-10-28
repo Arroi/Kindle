@@ -18,6 +18,8 @@ const INFO: Record<string, { label: string; help: string; link?: string; placeho
   NGROK_DOMAIN: { label: "ngrok static domain", help: "Optional free fixed URL, e.g. you.ngrok-free.app.", placeholder: "you.ngrok-free.app" },
   CF_TUNNEL_TOKEN: { label: "Cloudflare tunnel token", help: "For a named tunnel on your own domain." },
   CF_TUNNEL_HOSTNAME: { label: "Cloudflare tunnel hostname", help: "The public hostname routed to http://localhost:8890.", placeholder: "ai.example.com" },
+  BURROW_TOKEN: { label: "burrow key", help: "For a burrow tunnel on your own domain. Keep it private.", link: "https://burroww.lovable.app/dashboard", placeholder: "eyJ…" },
+  BURROW_HOSTNAME: { label: "burrow domain", help: "The domain that key serves, pointed at http://127.0.0.1:8890 on burrow's dashboard.", placeholder: "ai.example.com" },
   KINDLE_NOTIFY_URL: { label: "Notification URL", help: "An ntfy.sh topic URL or Discord webhook. Gets the link when Kindle starts.", placeholder: "https://ntfy.sh/your-topic" },
 };
 

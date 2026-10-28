@@ -95,10 +95,14 @@ def load_preset(value: str | dict | Preset | None) -> Preset | None:
     return Preset.model_validate(json.loads(text))
 
 
+def burrow_configured() -> bool:
+    return bool(os.environ.get("BURROW_TOKEN") and os.environ.get("BURROW_HOSTNAME"))
+
+
 def default_tunnel() -> str:
     env = os.environ.get("KINDLE_TUNNEL")
     if env:
         return env
     if ON_MOLAB:
-        return "gradio"
+        return "burrow" if burrow_configured() else "gradio"
     return "cloudflare" if (ON_KAGGLE or ON_COLAB) else "none"
