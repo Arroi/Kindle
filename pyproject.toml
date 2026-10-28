@@ -36,7 +36,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "openai>=1.40", "anthro
 kindle = "kindle.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/OWNER/Kindle"
+Homepage = "https://github.com/Arroi/Kindle"
 Upstream = "https://github.com/ryyReid/KaggleUI"
 
 [tool.hatch.build.targets.wheel]

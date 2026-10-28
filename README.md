@@ -79,9 +79,9 @@ These new audio adapters are **experimental and have not been verified with real
 3. Paste this into a cell and run it:
 
    ```python
-   !pip install -q "kindle @ git+https://github.com/OWNER/Kindle@main"
+   !pip install -q "kindle @ git+https://github.com/Arroi/Kindle@main"
    import os
-   os.environ["KINDLE_REPO"] = "OWNER/Kindle"
+   os.environ["KINDLE_REPO"] = "Arroi/Kindle"
    import kindle
    kindle.launch()
    ```
@@ -113,7 +113,7 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
 
    ```python
    ROLE = "head"
-   REPO = "OWNER/Kindle"
+   REPO = "Arroi/Kindle"
    REF = "main"
    UPDATE = False
 
@@ -236,7 +236,7 @@ Reliability for long agent runs:
 
 ### Installing and updating
 
-Kindle installs straight from its GitHub repository, with `pip install "kindle @ git+https://github.com/OWNER/Kindle@main"`. Set `KINDLE_REPO` (`owner/name`) in the notebook to enable the in-panel update check against that repository's releases. Without it, Kindle never checks for updates. `install.sh` also works, and reads `KINDLE_REPO` and `KINDLE_REF`.
+Kindle installs straight from its GitHub repository, with `pip install "kindle @ git+https://github.com/Arroi/Kindle@main"`. Set `KINDLE_REPO` (`owner/name`) in the notebook to enable the in-panel update check against that repository's releases. Without it, Kindle never checks for updates. `install.sh` also works, and reads `KINDLE_REPO` and `KINDLE_REF`.
 
 ### Keys & tokens (Hugging Face, ngrok, …)
 

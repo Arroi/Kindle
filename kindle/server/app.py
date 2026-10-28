@@ -36,7 +36,7 @@ from .updates import REPO as UPDATE_REPO
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 RESERVED = ("/v1/", "/api/", "/_kui/", "/gradio/")
-INSTALL_LINE = f'!pip install -q "kindle @ git+https://github.com/{UPDATE_REPO or "OWNER/Kindle"}"'
+INSTALL_LINE = f'!pip install -q "kindle @ git+https://github.com/{UPDATE_REPO or "Arroi/Kindle"}"'
 # The launch cell also tells the updater where Kindle's releases live.
 REPO_LINE = f'import os\nos.environ["KINDLE_REPO"] = "{UPDATE_REPO}"\n' if UPDATE_REPO else ""
 

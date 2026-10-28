@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Install Kindle: the latest release wheel (prebuilt web UI) when there is one, otherwise the
 # current main branch built from source (needs Node.js 20+ for the web UI).
-#   !curl -fsSL https://raw.githubusercontent.com/OWNER/Kindle/main/install.sh | bash
+#   !curl -fsSL https://raw.githubusercontent.com/Arroi/Kindle/main/install.sh | bash
 set -euo pipefail
-REPO="${KINDLE_REPO:-OWNER/Kindle}"
+REPO="${KINDLE_REPO:-Arroi/Kindle}"
 REF="${KINDLE_REF:-}"                     # a branch or tag to build from source instead of the latest release
 URL=""
 if [ -z "$REF" ]; then

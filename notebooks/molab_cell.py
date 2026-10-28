@@ -2,7 +2,7 @@
 # ROLE = "head" in the session that runs the model and serves the API,
 # ROLE = "helper" in every extra session that lends its GPU to the head's pool.
 ROLE = "head"
-REPO = "OWNER/Kindle"  # your GitHub repo (public, or see README for a private one)
+REPO = "Arroi/Kindle"  # GitHub repo to install from (must be public for this install line)
 REF = "main"           # branch or tag to install
 UPDATE = False         # True reinstalls from GitHub; restart the kernel afterwards so the new code loads
 
