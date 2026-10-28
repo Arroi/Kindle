@@ -122,9 +122,16 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None)
 
     print("Serving. Interrupt this cell to get the notebook back; Kindle keeps running in the background.", flush=True)
     reported: set[str] = set()
+    last_print = 0.0
     try:
         while True:
-            time.sleep(heartbeat)
+            time.sleep(1)
+            # While a deployment works, report every few seconds: if the sandbox dies, the last line
+            # still on screen shows which step (download, unpack, load) it was in, and the disk/RAM.
+            busy = _busy(paths)
+            if time.monotonic() - last_print < (BUSY_INTERVAL if busy else heartbeat):
+                continue
+            last_print = time.monotonic()
             current = _read_state(paths)
             if not _running(current):
                 print("Kindle stopped. Its log:", flush=True)
@@ -142,16 +149,46 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None)
                     line = f"pool: {pool.get('status')} · {pool.get('message')}"
                 except (httpx.HTTPError, ValueError):
                     pass
-            print(f"[kindle {time.strftime('%H:%M:%S')}] {_memory_line()} · {line}", flush=True)
+            if busy:
+                line = " · ".join(busy)
+            print(f"[kindle {time.strftime('%H:%M:%S')}] {_memory_line()} · {_disk_line(paths)} · {line}", flush=True)
             _report_failures(current, reported)
     except KeyboardInterrupt:
         print("Cell released. Kindle is still running in the background.", flush=True)
+
+
+BUSY_INTERVAL = 3
+WORKING = ("queued", "installing", "downloading", "loading")
+
+
+def _busy(paths: Paths) -> list[str]:
+    """One line per deployment that's still working, with its current step."""
+    state = _read_state(paths)
+    if not _running(state):
+        return []
+    try:
+        deps = _admin(state, "GET", "/_kui/api/deployments").json()
+    except (httpx.HTTPError, ValueError):
+        return []
+    out = []
+    for d in deps:
+        if d.get("status") in WORKING:
+            pct = f" {round(d['progress'] * 100)}%" if d.get("progress") else ""
+            out.append(f"{d['name']} {d['status']}{pct}: {d.get('message', '')}")
+    return out
 
 
 def _memory_line() -> str:
     used, limit = container_memory()
     warn = " (nearly full!)" if limit and used > limit * 0.8 else ""
     return f"RAM {used / GB:.1f}/{limit / GB:.0f} GB{warn}"
+
+
+def _disk_line(paths: Paths) -> str:
+    try:
+        return f"disk {shutil.disk_usage(paths.home).free / GB:.0f} GB free"
+    except OSError:
+        return "disk ?"
 
 
 def _tail(path, n: int = 40) -> str:

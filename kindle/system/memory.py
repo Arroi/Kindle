@@ -80,14 +80,24 @@ def in_memory(path: Path) -> bool:
     return fs_type(path) in MEMORY_FS
 
 
-def roomiest_home(name: str = "kindle") -> Path:
-    """The writable, disk-backed place with the most free space, for models and caches.
+NETWORK_FS = {"nfs", "nfs4", "cifs", "smb3", "smbfs", "9p", "ceph", "glusterfs", "lustre", "afs"}
 
-    A previous run's folder wins, so every helper (``kindle.stop()``, the server, re-runs) agrees.
+
+def on_network(path: Path) -> bool:
+    """Network and FUSE mounts often report huge free space but stall (or hit a quota) under GB of writes."""
+    kind = fs_type(path)
+    return kind in NETWORK_FS or kind.startswith("fuse")
+
+
+def roomiest_home(name: str = "kindle") -> Path:
+    """The writable, local, disk-backed place with the most free space, for models and caches.
+
+    Local disks come before network mounts, whatever their free space. A previous run's folder wins,
+    so every helper (``kindle.stop()``, the server, re-runs) agrees.
     """
     roots = ["/tmp", str(Path.home()), os.getcwd(), "/mnt", "/data", "/workspace", "/scratch", "/var/tmp"]
     seen: set[str] = set()
-    options: list[tuple[int, Path]] = []
+    options: list[tuple[bool, int, Path]] = []
     for root in roots:
         base = Path(root)
         if str(base) in seen or not base.is_dir() or not os.access(base, os.W_OK):
@@ -99,7 +109,7 @@ def roomiest_home(name: str = "kindle") -> Path:
         if in_memory(base):
             continue
         try:
-            options.append((psutil.disk_usage(str(base)).free, home))
+            options.append((not on_network(base), psutil.disk_usage(str(base)).free, home))
         except OSError:
             continue
-    return max(options)[1] if options else Path("/tmp") / name
+    return max(options)[2] if options else Path("/tmp") / name

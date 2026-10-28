@@ -63,6 +63,38 @@ async def test_ollama_install_refuses_when_disk_is_short(paths, monkeypatch):
         await ollama.install_ollama(ctx_for(paths))
 
 
+def test_ollama_unpack_keeps_only_the_drivers_cuda(tmp_path):
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w") as tar:
+        for name in ("bin/ollama", "lib/ollama/libggml-base.so", "lib/ollama/cuda_v12/libcublas.so",
+                     "lib/ollama/cuda_v13/libcublas.so"):
+            info = tarfile.TarInfo(name)
+            info.size = 1
+            tar.addfile(info, io.BytesIO(b"x"))
+    archive = tmp_path / "o.tar.zst"
+    archive.write_bytes(zstandard.ZstdCompressor().compress(raw.getvalue()))
+    ollama._unpack_zst(archive, tmp_path / "out", "13")
+    lib = tmp_path / "out" / "lib" / "ollama"
+    assert (lib / "cuda_v13" / "libcublas.so").exists() and not (lib / "cuda_v12").exists()
+    assert (lib / "libggml-base.so").exists() and (tmp_path / "out" / "bin" / "ollama").exists()
+    ollama._unpack_zst(archive, tmp_path / "all", None)  # driver unknown: keep everything
+    assert (tmp_path / "all" / "lib" / "ollama" / "cuda_v12").exists()
+
+
+def test_home_prefers_local_disk_over_a_roomier_network_mount(tmp_path, monkeypatch):
+    local, network = tmp_path / "local", tmp_path / "net"
+    local.mkdir()
+    network.mkdir()
+    monkeypatch.chdir(network)
+    monkeypatch.setattr(memory.Path, "home", staticmethod(lambda: local))
+    monkeypatch.setattr(memory, "in_memory", lambda p: False)
+    monkeypatch.setattr(memory, "on_network", lambda p: p == network)
+    sizes = {str(local): 50, str(network): 10**6}
+    monkeypatch.setattr(memory.psutil, "disk_usage", lambda p: SimpleNamespace(free=sizes.get(p, 0)))
+    monkeypatch.setattr(memory.os, "access", lambda p, mode: str(p) in sizes)
+    assert memory.roomiest_home() == local / "kindle"
+
+
 def test_container_memory_reads_cgroup_v2(monkeypatch):
     files = {"/sys/fs/cgroup/memory.max": "34359738368",
              "/sys/fs/cgroup/memory.stat": "anon 8000000000\nfile 50000000000\nshmem 2000000000\nkernel 100\n"}

@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import platform
+import re
 import shutil
 import tempfile
 
@@ -139,7 +140,7 @@ async def install_ollama(ctx: EngineContext) -> str:
         await pip_install(ctx, ["zstandard"], label="the zstd decompressor")
     shutil.rmtree(staging, ignore_errors=True)
     try:
-        await asyncio.to_thread(_unpack_zst, archive, staging)
+        await asyncio.to_thread(_unpack_zst, archive, staging, await asyncio.to_thread(_driver_cuda_major))
     except Exception as exc:  # noqa: BLE001 - a corrupt download or a full disk
         shutil.rmtree(staging, ignore_errors=True)
         raise DeployError(f"Couldn't unpack Ollama: {type(exc).__name__}: {exc}") from exc
@@ -171,7 +172,20 @@ def _zstd_module():
         return None
 
 
-def _unpack_zst(archive, dest) -> None:
+CUDA_DIR = re.compile(r"(?:^|/)lib/ollama/cuda_v(\d+)(?:/|$)")
+
+
+def _driver_cuda_major() -> str | None:
+    from ..pool.binaries import cuda_flavor
+
+    try:
+        return cuda_flavor().split(".")[0]
+    except Exception:  # noqa: BLE001 - unknown: keep every runtime
+        return None
+
+
+def _unpack_zst(archive, dest, cuda_major: str | None = None) -> None:
+    """Stream-extract the archive, skipping CUDA runtimes the driver won't use (each is GBs of writes)."""
     import importlib
     import tarfile
 
@@ -181,10 +195,14 @@ def _unpack_zst(archive, dest) -> None:
         raise RuntimeError("no zstd decompressor available")
     dest.mkdir(parents=True)
     with archive.open("rb") as raw, opener(raw) as stream, tarfile.open(fileobj=stream, mode="r|") as tar:
-        try:
-            tar.extractall(dest, filter="data")
-        except TypeError:  # Pythons before the extraction-filter backport
-            tar.extractall(dest)  # noqa: S202 - official Ollama release archive
+        for member in tar:
+            m = CUDA_DIR.search(member.name)
+            if cuda_major and m and m.group(1) != cuda_major:
+                continue
+            try:
+                tar.extract(member, dest, filter="data")
+            except TypeError:  # Pythons before the extraction-filter backport
+                tar.extract(member, dest)  # noqa: S202 - official Ollama release archive
 
 
 def model_ref(spec: DeploymentSpec) -> str | None:
