@@ -200,6 +200,45 @@ def restart_tunnel(home: str | None = None) -> dict:
     raise RuntimeError(f"The public tunnel didn't connect. Check {paths.logs / 'tunnel-main.log'}.")
 
 
+def missing_dependencies() -> list[str]:
+    """Requirements of the installed kindle package that aren't installed.
+
+    Hosted notebooks can rebuild their environment and keep Kindle but not what it depends on (seen
+    on molab: kindle installed, fastapi gone), and the notebook cell updates Kindle with --no-deps.
+    """
+    import importlib.metadata
+    import re
+
+    try:
+        requires = importlib.metadata.requires("kindle") or []
+    except importlib.metadata.PackageNotFoundError:  # running from a source checkout
+        return []
+    try:
+        from packaging.requirements import Requirement
+    except ImportError:
+        Requirement = None
+    missing = []
+    for req in requires:
+        if Requirement is not None:
+            marker = Requirement(req).marker
+            if marker and not marker.evaluate({"extra": ""}):
+                continue  # an optional extra, or another platform's requirement
+        elif ";" in req:
+            continue
+        try:
+            importlib.metadata.version(re.match(r"[A-Za-z0-9_.-]+", req).group(0))
+        except importlib.metadata.PackageNotFoundError:
+            missing.append(req)
+    return missing
+
+
+def ensure_dependencies() -> None:
+    missing = missing_dependencies()
+    if missing:
+        print("Installing what Kindle needs: " + ", ".join(missing), flush=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", *missing], check=True)
+
+
 def launch(preset=None, *, block: bool = True, heartbeat: float | None = 20, tunnel: str | None = None,
            port: int | None = None, mock: bool = False, fake_hw: str | None = None, home: str | None = None,
            share_gpu: bool = False):
@@ -234,6 +273,7 @@ def launch(preset=None, *, block: bool = True, heartbeat: float | None = 20, tun
         raise RuntimeError("Kindle is running but its tunnel isn't ready. Run kindle.restart_tunnel() "
                            "to reconnect, or kindle.stop() before launching again.")
 
+    ensure_dependencies()
     p = load_preset(preset)
     cmd = [sys.executable, "-m", "kindle", "serve", "--port", str(port or retained.get("port") or DEFAULT_PORT),
            "--tunnel", tunnel or (p.settings.exposure.provider if p else

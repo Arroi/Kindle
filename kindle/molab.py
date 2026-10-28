@@ -140,7 +140,10 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None,
                 state = launch(tunnel=provider, block=False, share_gpu=helper, home=home)
                 break
             except RuntimeError as exc:
-                reason = ((_read_state(paths) or {}).get("tunnel") or {}).get("error") or exc
+                failed = _read_state(paths) or {}
+                if failed.get("status") != "tunnel_error":
+                    raise  # the server itself didn't start: another tunnel won't help
+                reason = (failed.get("tunnel") or {}).get("error") or exc
                 fallback = "a Gradio share link" if provider != "gradio" else "the gradio package's tunnel"
                 print(f"The {PROVIDER_LABELS[provider]} didn't connect ({reason}). Using {fallback} instead.",
                       flush=True)
