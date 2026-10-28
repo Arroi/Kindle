@@ -129,6 +129,19 @@ def test_old_kindle_folders_are_found_and_cleaned(tmp_path, monkeypatch, capsys)
     assert "Removed" in capsys.readouterr().out
 
 
+def test_old_folders_on_scratch_disks_are_found(tmp_path, monkeypatch):
+    from kindle import molab
+
+    scratch = tmp_path / "var-tmp"
+    old = scratch / "kindle"
+    (old / "logs").mkdir(parents=True)
+    (old / "state.json").write_text("{}")
+    (scratch / "kindle-data").mkdir()  # the current folder is never listed
+    monkeypatch.setattr(memory, "SCRATCH", (str(scratch),))
+    monkeypatch.chdir(tmp_path)
+    assert molab.old_data_folders() == [old]
+
+
 def test_disk_budget_defaults_on_molab_and_can_be_changed(monkeypatch):
     from kindle import config
 

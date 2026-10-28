@@ -94,8 +94,11 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None)
     if role not in ("head", "helper"):
         raise ValueError('role must be "head" or "helper"')
     for folder in old_data_folders():
-        print(f"Note: {folder} is data from an earlier Kindle run, stored in the notebook's persistent storage. "
-              "Free it with kindle.molab.clean_old_data().", flush=True)
+        from .util import dir_size
+
+        print(f"!! {folder} holds {dir_size(folder) / GB:.1f} GB from an earlier Kindle version. It still counts "
+              "toward this sandbox's storage limit. Free it with: import kindle.molab as _k; _k.clean_old_data()",
+              flush=True)
     os.environ.setdefault("KINDLE_PLATFORM", "molab")  # molab can't use Cloudflare quick tunnels
     paths = Paths(home)
     home_dir = str(paths.home)
@@ -130,13 +133,18 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None)
     print("Serving. Interrupt this cell to get the notebook back; Kindle keeps running in the background.", flush=True)
     reported: set[str] = set()
     last_print = 0.0
+    watch_until = 0.0
+    ready_seen: set[str] = set()
     try:
         while True:
             time.sleep(1)
             # While a deployment works, report every few seconds: if the sandbox dies, the last line
             # still on screen shows which step (download, unpack, load) it was in, and the disk/RAM.
-            busy = _busy(paths)
-            if time.monotonic() - last_print < (BUSY_INTERVAL if busy else heartbeat):
+            busy, fresh = _busy(paths, ready_seen)
+            if fresh:  # the first minutes after a model loads are when a sandbox has died; watch closely
+                watch_until = time.monotonic() + READY_WATCH
+            close = busy or time.monotonic() < watch_until
+            if time.monotonic() - last_print < (BUSY_INTERVAL if close else heartbeat):
                 continue
             last_print = time.monotonic()
             current = _read_state(paths)
@@ -158,31 +166,43 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None)
                     pass
             if busy:
                 line = " · ".join(busy)
-            print(f"[kindle {time.strftime('%H:%M:%S')}] {_memory_line()} · {_disk_line(paths)} · {line}", flush=True)
+            print(f"[kindle {time.strftime('%H:%M:%S')}] {_memory_line()} · {_gpu_line(current)} · {_disk_line(paths)} · {line}", flush=True)
             _report_failures(current, reported)
     except KeyboardInterrupt:
         print("Cell released. Kindle is still running in the background.", flush=True)
 
 
 BUSY_INTERVAL = 3
+READY_WATCH = 120  # seconds of close reporting after a model becomes ready
 WORKING = ("queued", "installing", "downloading", "loading")
 
 
-def _busy(paths: Paths) -> list[str]:
-    """One line per deployment that's still working, with its current step."""
+def _busy(paths: Paths, ready_seen: set[str]) -> tuple[list[str], bool]:
+    """Lines for deployments still working, and whether one just became ready."""
     state = _read_state(paths)
     if not _running(state):
-        return []
+        return [], False
     try:
         deps = _admin(state, "GET", "/_kui/api/deployments").json()
     except (httpx.HTTPError, ValueError):
-        return []
-    out = []
+        return [], False
+    out, fresh = [], False
     for d in deps:
         if d.get("status") in WORKING:
             pct = f" {round(d['progress'] * 100)}%" if d.get("progress") else ""
             out.append(f"{d['name']} {d['status']}{pct}: {d.get('message', '')}")
-    return out
+        elif d.get("status") == "ready" and d["id"] not in ready_seen:
+            ready_seen.add(d["id"])
+            fresh = True
+    return out, fresh
+
+
+def _gpu_line(state: dict) -> str:
+    try:
+        gpus = _admin(state, "GET", "/_kui/api/system").json().get("gpus") or []
+    except (httpx.HTTPError, ValueError):
+        return "GPU ?"
+    return " ".join(f"GPU {g.get('vram_used', 0) / GB:.1f}/{g.get('vram_total', 0) / GB:.0f} GB" for g in gpus) or "no GPU"
 
 
 def _memory_line() -> str:
@@ -224,13 +244,16 @@ def _report_failures(state: dict, reported: set[str]) -> None:
 
 
 def old_data_folders() -> list[Path]:
-    """Data folders an earlier Kindle left in the notebook or home folder, named ``kindle``.
+    """Data folders earlier Kindle versions left behind, named ``kindle``.
 
-    Python can import such a folder as ``kindle`` instead of the real package, and on hosted
-    notebooks those places are usually quota'd persistent storage. Recognised by Kindle's state.json.
+    In the notebook or home folder, Python can import one as ``kindle`` instead of the real package.
+    On the scratch disks (/tmp, /var/tmp, …) they hold old downloads that still count toward the
+    sandbox's storage limit, unseen by the current budget. Recognised by Kindle's state.json.
     """
+    from .system.memory import SCRATCH
+
     found = []
-    for base in {Path.cwd(), Path.home()}:
+    for base in sorted({Path.cwd(), Path.home(), *(Path(root) for root in SCRATCH)}, key=str):
         folder = base / "kindle"
         if (folder / "state.json").is_file() and (folder / "logs").is_dir():
             found.append(folder)
