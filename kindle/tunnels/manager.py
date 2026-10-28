@@ -162,9 +162,18 @@ class TunnelManager:
                     except (OSError, asyncio.TimeoutError):
                         await asyncio.sleep(0.5)
                         continue
-                if t.provider == "burrow" and not await self._reaches_kindle(t):
-                    await asyncio.sleep(2)
-                    continue
+                if t.provider == "burrow":
+                    problem = await self._reaches_kindle(t)
+                    if problem:
+                        if not (t.error or "").startswith("burrow forwards"):  # the dashboard's port says more
+                            t.error = (f"burrow is connected, but {t.url} doesn't reach Kindle ({problem}). "
+                                       f"Point the tunnel at http://127.0.0.1:{t.port} on burrow's dashboard.")
+                            self._changed(t)
+                        await asyncio.sleep(2)
+                        continue
+                    if t.error:
+                        t.error = None
+                        self._changed(t)
                 return t.url
             if t and t.status == "error" and t.restarts >= 3:
                 return None
@@ -280,15 +289,20 @@ class TunnelManager:
         if t.status != "stopped":
             t.error = t.error or f"burrow exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
 
-    async def _reaches_kindle(self, t: Tunnel) -> bool:
-        """A connected agent isn't enough: the hostname must forward to this port, not to nothing
-        (a gateway error) or to another app."""
+    async def _reaches_kindle(self, t: Tunnel) -> str | None:
+        """None when the hostname reaches Kindle, else what it reached instead. A connected agent isn't
+        enough: the hostname must forward to this port, not to nothing (a gateway error) or another app."""
         try:
             async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
                 r = await client.get(f"{t.url}/_kui/api/session")
-            return r.status_code == 200 and "admin" in r.json()
-        except (httpx.HTTPError, ValueError, TypeError):
-            return False
+        except httpx.HTTPError as e:
+            return f"{type(e).__name__}: {e}"[:200]
+        try:
+            if r.status_code == 200 and "admin" in r.json():
+                return None
+        except (ValueError, TypeError):
+            pass
+        return f"HTTP {r.status_code} from another app" if r.status_code < 500 else f"HTTP {r.status_code}"
 
     async def _run_ngrok(self, t: Tunnel) -> None:
         token = os.environ.get("NGROK_AUTHTOKEN")

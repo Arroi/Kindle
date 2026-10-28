@@ -142,10 +142,13 @@ async def test_burrow_runs_its_agent_with_the_key(paths, monkeypatch):
 async def test_burrow_link_is_shared_only_once_it_reaches_kindle(paths, monkeypatch):
     tunnels = manager.TunnelManager(paths)
     tunnels.tunnels["main"] = manager.Tunnel("main", "burrow", 8890, url="https://ai.example.com", status="up")
-    reaches = AsyncMock(side_effect=[False, True])
+    errors = []
+    reaches = AsyncMock(side_effect=lambda t: errors.append(t.error) or (None if len(errors) > 1 else "HTTP 502"))
     monkeypatch.setattr(tunnels, "_reaches_kindle", reaches)
     assert await tunnels.wait_url("main", timeout=5) == "https://ai.example.com"
     assert reaches.await_count == 2
+    assert "doesn't reach Kindle (HTTP 502)" in errors[1]  # what the notebook prints if it never does
+    assert tunnels.tunnels["main"].error is None
 
 
 async def test_burrow_side_tunnels_use_gradio(paths, monkeypatch):

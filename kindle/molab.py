@@ -23,6 +23,7 @@ from .config import Paths, burrow_configured, disk_budget
 from .launcher import _read_state, _running, _status_line, launch, stop
 from .system.memory import container_memory
 from .tunnels.manager import PROVIDER_LABELS
+from .tunnels.persistent import read_record
 
 GB = 1000**3
 
@@ -143,10 +144,13 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None,
                 failed = _read_state(paths) or {}
                 if failed.get("status") != "tunnel_error":
                     raise  # the server itself didn't start: another tunnel won't help
-                reason = (failed.get("tunnel") or {}).get("error") or exc
+                reason = (failed.get("tunnel") or {}).get("error") or "it never reported a connection"
                 fallback = "a Gradio share link" if provider != "gradio" else "the gradio package's tunnel"
                 print(f"The {PROVIDER_LABELS[provider]} didn't connect ({reason}). Using {fallback} instead.",
                       flush=True)
+                log = _tail(paths.logs / "tunnel-main.log", 25, start=int(read_record(paths).get("log_start", 0)))
+                if log.strip() and log != "(no log)":
+                    print(f"Its log:\n{log}\n", flush=True)
                 stop(home)
     if state is None:
         state = launch(tunnel="none", block=False, share_gpu=helper, home=home)
@@ -248,9 +252,11 @@ def _disk_line(paths: Paths) -> str:
         return "disk ?"
 
 
-def _tail(path, n: int = 40) -> str:
+def _tail(path, n: int = 40, start: int = 0) -> str:
     try:
-        return "\n".join(path.read_text(errors="replace").splitlines()[-n:])
+        with path.open("rb") as f:
+            f.seek(start)
+            return "\n".join(f.read().decode(errors="replace").splitlines()[-n:])
     except OSError:
         return "(no log)"
 

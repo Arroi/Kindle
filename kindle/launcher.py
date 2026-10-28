@@ -298,7 +298,9 @@ def launch(preset=None, *, block: bool = True, heartbeat: float | None = 20, tun
                        ("KINDLE_API_KEY", "api_key")):
         if retained.get(field):
             env.setdefault(key, retained[field])
-    with open(paths.logs / "server.log", "a") as log:
+    server_log = paths.logs / "server.log"
+    log_start = server_log.stat().st_size if server_log.exists() else 0
+    with open(server_log, "a") as log:
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
                                 env={**env, "KINDLE_HOME": str(paths.home)})
     sacrifice(proc.pid, 500)  # under memory pressure the server goes before this notebook (its models go first)
@@ -307,18 +309,18 @@ def launch(preset=None, *, block: bool = True, heartbeat: float | None = 20, tun
     state = None
     while time.time() < deadline:
         if proc.poll() is not None:
-            print(_tail(paths.logs / "server.log"))
+            print(_tail(server_log, start=log_start))
             raise RuntimeError("Kindle exited during startup; see the log above.")
         state = _read_state(paths)
         if state and state.get("status") == "tunnel_error":
-            print(_tail(paths.logs / "server.log"))
+            print(_tail(server_log, start=log_start))
             raise RuntimeError("The public tunnel didn't connect. Run kindle.restart_tunnel() to retry.")
         if state and state.get("status") == "running" and state.get("url"):
             break
         time.sleep(0.5)
     if not state or state.get("status") != "running" or not state.get("url"):
         proc.terminate()
-        print(_tail(paths.logs / "server.log"))
+        print(_tail(server_log, start=log_start))
         raise RuntimeError("Kindle didn't start within 3 minutes.")
     _show(state)
     if block:
@@ -343,9 +345,12 @@ def _share_secrets(state: dict) -> None:
         pass
 
 
-def _tail(path: Path, n: int = 40) -> str:
+def _tail(path: Path, n: int = 40, start: int = 0) -> str:
+    """The last ``n`` lines, of those written after byte ``start`` (the log is shared across runs)."""
     try:
-        return "\n".join(path.read_text().splitlines()[-n:])
+        with path.open("rb") as f:
+            f.seek(start)
+            return "\n".join(f.read().decode(errors="replace").splitlines()[-n:])
     except Exception:
         return ""
 
