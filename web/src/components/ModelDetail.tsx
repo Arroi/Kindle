@@ -22,12 +22,50 @@ export interface ModelChoice {
 /** Settings that change a model's size or fit, re-checked by the server as they change. */
 const FIT_OPTIONS = ["ctx", "offload", "quantize", "weights"];
 
-const CTX = [2048, 4096, 8192, 16384, 32768, 65536];
+const K = 1024;
+const CTX_MIN = 2 * K;
+/** Upper limit when the catalog doesn't know the model's window. */
+const CTX_UNKNOWN_MAX = 64 * K;
 
-/** Selector options: the standard steps up to this model's window, then the window itself. */
-function ctxOptions(max?: number | null): number[] {
-  if (!max) return CTX;
-  return [...CTX.filter((c) => c < max), max];
+/** Any context size from 2K up to the model's window: drag the slider or type the size in K. */
+function ContextLength({ value, max, onChange }: { value: number; max: number; onChange: (v: number) => void }) {
+  const clamp = (v: number) => Math.min(max, Math.max(CTX_MIN, Math.round(v)));
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <div className="flex items-center gap-3">
+      <input
+        type="range"
+        min={CTX_MIN}
+        max={max}
+        step={K}
+        value={value}
+        onChange={(e) => onChange(clamp(Number(e.target.value)))}
+        className="min-w-0 flex-1 accent-[var(--fg)]"
+        aria-label="Context length"
+      />
+      <div className="relative w-[92px] shrink-0">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={CTX_MIN / K}
+          max={Math.floor(max / K)}
+          value={draft ?? String(Math.round(value / K))}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            const k = Number(e.target.value);
+            if (e.target.value && k * K >= CTX_MIN && k * K <= max) onChange(k * K);
+          }}
+          onBlur={() => {
+            if (draft) onChange(clamp(Number(draft) * K));
+            setDraft(null);
+          }}
+          className="pr-7 text-right font-mono"
+          aria-label="Context length in K tokens"
+        />
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-fg-3">K</span>
+      </div>
+    </div>
+  );
 }
 
 /** Engine options shown per modality. Values are merged into spec.options. */
@@ -44,23 +82,19 @@ function EngineOptions({
   const m = item.modality;
   if (m === "text") {
     const fallback = Math.min(8192, item.context_length ?? 8192);
+    const maxCtx = Math.max(item.context_length ?? CTX_UNKNOWN_MAX, CTX_MIN);
+    const ctx = Number(options.ctx ?? fallback);
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         <Field
-          label="Context length"
+          label={`Context length · ${ctx.toLocaleString()} tokens`}
           hint={
             item.context_length
               ? `This model supports up to ${tokens(item.context_length)} tokens. Longer context uses more VRAM for the KV cache.`
               : "Longer context uses more VRAM for the KV cache."
           }
         >
-          <Select value={String(options.ctx ?? fallback)} onChange={(e) => set("ctx", Number(e.target.value))}>
-            {ctxOptions(item.context_length).map((c) => (
-              <option key={c} value={c}>
-                {c.toLocaleString()} tokens
-              </option>
-            ))}
-          </Select>
+          <ContextLength value={ctx} max={maxCtx} onChange={(v) => set("ctx", v)} />
         </Field>
         {item.engine === "vllm" && (
           <Field label="GPU memory use" hint="Fraction of VRAM vLLM reserves.">
