@@ -119,8 +119,11 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
 
    import importlib, os, subprocess, sys
    os.environ["KINDLE_REPO"] = REPO
-   if UPDATE or subprocess.run([sys.executable, "-c", "import kindle"], capture_output=True).returncode != 0:
-       subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", f"kindle @ git+https://github.com/{REPO}@{REF}"], check=True)
+   SOURCE = f"kindle @ git+https://github.com/{REPO}@{REF}"
+   if subprocess.run([sys.executable, "-c", "import kindle"], capture_output=True).returncode != 0:
+       subprocess.run([sys.executable, "-m", "pip", "install", "-q", SOURCE], check=True)
+   elif UPDATE:
+       subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--force-reinstall", "--no-deps", SOURCE], check=True)
    importlib.invalidate_caches()
    import kindle.molab
    kindle.molab.start(ROLE)
