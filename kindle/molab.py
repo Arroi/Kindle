@@ -89,6 +89,9 @@ def _card(role: str, url: str, state: dict, home: str) -> None:
 def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None) -> None:
     if role not in ("head", "helper"):
         raise ValueError('role must be "head" or "helper"')
+    for folder in old_data_folders():
+        print(f"Note: {folder} is data from an earlier Kindle run, stored in the notebook's persistent storage. "
+              "Free it with kindle.molab.clean_old_data().", flush=True)
     os.environ.setdefault("KINDLE_PLATFORM", "molab")  # molab can't use Cloudflare quick tunnels
     paths = Paths(home)
     home_dir = str(paths.home)
@@ -214,6 +217,31 @@ def _report_failures(state: dict, reported: set[str]) -> None:
             print("   last log lines:\n   " + "\n   ".join(lines[-15:]) + "\n", flush=True)
         except (httpx.HTTPError, ValueError):
             pass
+
+
+def old_data_folders() -> list[Path]:
+    """Data folders an earlier Kindle left in the notebook or home folder, named ``kindle``.
+
+    Python can import such a folder as ``kindle`` instead of the real package, and on hosted
+    notebooks those places are usually quota'd persistent storage. Recognised by Kindle's state.json.
+    """
+    found = []
+    for base in {Path.cwd(), Path.home()}:
+        folder = base / "kindle"
+        if (folder / "state.json").is_file() and (folder / "logs").is_dir():
+            found.append(folder)
+    return found
+
+
+def clean_old_data() -> None:
+    """Delete the old ``kindle`` data folders (models, Ollama and logs from earlier runs)."""
+    folders = old_data_folders()
+    for folder in folders:
+        size = sum(f.stat().st_size for f in folder.rglob("*") if f.is_file()) / GB
+        shutil.rmtree(folder, ignore_errors=True)
+        print(f"Removed {folder} ({size:.1f} GB)", flush=True)
+    if not folders:
+        print("No old Kindle data folders found.", flush=True)
 
 
 def report(home: str | None = None) -> None:

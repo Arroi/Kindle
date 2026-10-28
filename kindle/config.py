@@ -18,12 +18,12 @@ DEFAULT_PORT = int(os.environ.get("KINDLE_PORT", "8890"))
 
 
 def default_home() -> str:
-    """Where models, caches and logs go. Kaggle and Colab: /tmp (a real disk). Elsewhere, e.g. molab:
-    the roomiest folder that isn't stored in RAM, since downloading models into a RAM-backed /tmp
-    runs the notebook out of memory. Pinned in KINDLE_HOME so the notebook and the server agree."""
+    """Where models, caches and logs go. Kaggle and Colab: /tmp (a real disk). Elsewhere, e.g. molab: a
+    local scratch disk that isn't stored in RAM, never the notebook's own (persistent, quota'd) folder.
+    Pinned in KINDLE_HOME so the notebook and the server agree."""
     if not os.environ.get("KINDLE_HOME"):
         if ON_KAGGLE or ON_COLAB:
-            os.environ["KINDLE_HOME"] = "/tmp/kindle"
+            os.environ["KINDLE_HOME"] = "/tmp/kindle-data"
         else:
             from .system.memory import roomiest_home
 

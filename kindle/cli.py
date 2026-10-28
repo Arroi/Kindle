@@ -16,7 +16,7 @@ def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--mock-engines", action="store_true", help="Simulate engines (UI development without a GPU)")
     p.add_argument("--fake-hw", choices=["t4x2", "p100", "tpu", "cpu"], default=None,
                    help="Pretend to run on this Kaggle hardware")
-    p.add_argument("--home", default=None, help="Working directory for models, envs and logs (default /tmp/kindle)")
+    p.add_argument("--home", default=None, help="Working directory for models, envs and logs (default: a local scratch disk, /tmp/kindle-data)")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--share-gpu", action="store_true",
                    help="Let a linked head session use this GPU for one big model (llama.cpp GPU pool)")

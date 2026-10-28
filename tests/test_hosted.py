@@ -3,6 +3,7 @@
 import asyncio
 import io
 import json
+import pathlib
 import tarfile
 import time
 from types import SimpleNamespace
@@ -81,18 +82,51 @@ def test_ollama_unpack_keeps_only_the_drivers_cuda(tmp_path):
     assert (tmp_path / "all" / "lib" / "ollama" / "cuda_v12").exists()
 
 
-def test_home_prefers_local_disk_over_a_roomier_network_mount(tmp_path, monkeypatch):
-    local, network = tmp_path / "local", tmp_path / "net"
-    local.mkdir()
-    network.mkdir()
-    monkeypatch.chdir(network)
-    monkeypatch.setattr(memory.Path, "home", staticmethod(lambda: local))
+def _scratch(tmp_path, monkeypatch, sizes: dict, network=()):
+    roots = [tmp_path / name for name in sizes]
+    for r in roots:
+        r.mkdir()
+    monkeypatch.setattr(memory, "SCRATCH", tuple(str(r) for r in roots))
     monkeypatch.setattr(memory, "in_memory", lambda p: False)
-    monkeypatch.setattr(memory, "on_network", lambda p: p == network)
-    sizes = {str(local): 50, str(network): 10**6}
-    monkeypatch.setattr(memory.psutil, "disk_usage", lambda p: SimpleNamespace(free=sizes.get(p, 0)))
-    monkeypatch.setattr(memory.os, "access", lambda p, mode: str(p) in sizes)
-    assert memory.roomiest_home() == local / "kindle"
+    monkeypatch.setattr(memory, "on_network", lambda p: p.name in network)
+    monkeypatch.setattr(memory.psutil, "disk_usage", lambda p: SimpleNamespace(free=sizes[pathlib.Path(p).name]))
+    return {r.name: r for r in roots}
+
+
+def test_home_prefers_local_disk_over_a_roomier_network_mount(tmp_path, monkeypatch):
+    roots = _scratch(tmp_path, monkeypatch, {"local": 50, "net": 10**6}, network={"net"})
+    assert memory.roomiest_home() == roots["local"] / "kindle-data"
+
+
+def test_home_reuses_a_previous_run(tmp_path, monkeypatch):
+    roots = _scratch(tmp_path, monkeypatch, {"big": 10**6, "old": 5})
+    (roots["old"] / "kindle-data").mkdir()
+    (roots["old"] / "kindle-data" / "state.json").write_text("{}")
+    assert memory.roomiest_home() == roots["old"] / "kindle-data"
+
+
+def test_home_is_never_importable_or_in_the_notebook_folder(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    home = memory.roomiest_home()
+    assert home.name.isidentifier() is False  # "kindle-data": Python can't import it as "kindle"
+    assert tmp_path not in home.parents
+
+
+def test_old_kindle_folders_are_found_and_cleaned(tmp_path, monkeypatch, capsys):
+    from kindle import molab
+
+    old = tmp_path / "kindle"
+    (old / "logs").mkdir(parents=True)
+    (old / "state.json").write_text("{}")
+    (old / "models.bin").write_bytes(b"x" * 1000)
+    unrelated = tmp_path / "other" / "kindle"
+    unrelated.mkdir(parents=True)  # no state.json: not ours, never touched
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(molab.Path, "home", staticmethod(lambda: tmp_path / "other"))
+    assert molab.old_data_folders() == [old]
+    molab.clean_old_data()
+    assert not old.exists() and unrelated.exists()
+    assert "Removed" in capsys.readouterr().out
 
 
 def test_container_memory_reads_cgroup_v2(monkeypatch):
@@ -112,14 +146,6 @@ def test_container_memory_cgroup_v1_unlimited_falls_back(monkeypatch):
     monkeypatch.setattr(memory, "_read", lambda path: files.get(path))
     used, limit = memory.container_memory()
     assert used == 12 and limit < (1 << 62)
-
-
-def test_home_reuses_a_previous_run(tmp_path, monkeypatch):
-    previous = tmp_path / "kindle"
-    previous.mkdir()
-    (previous / "state.json").write_text("{}")
-    monkeypatch.chdir(tmp_path)
-    assert memory.roomiest_home() == previous
 
 
 def test_reply_length_is_capped_to_the_window():

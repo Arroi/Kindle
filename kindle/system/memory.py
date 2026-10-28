@@ -89,27 +89,37 @@ def on_network(path: Path) -> bool:
     return kind in NETWORK_FS or kind.startswith("fuse")
 
 
-def roomiest_home(name: str = "kindle") -> Path:
-    """The writable, local, disk-backed place with the most free space, for models and caches.
+HOME_NAME = "kindle-data"  # hyphenated: a folder Python could import as "kindle" would shadow the package
+SCRATCH = ("/tmp", "/var/tmp", "/scratch", "/mnt", "/data", "/workspace")
+ENOUGH = 40 * 1000**3
 
-    Local disks come before network mounts, whatever their free space. A previous run's folder wins,
-    so every helper (``kindle.stop()``, the server, re-runs) agrees.
+
+def roomiest_home(name: str = HOME_NAME) -> Path:
+    """A local scratch disk for models and caches: /tmp when it's a real disk with room, else the roomiest.
+
+    Never the notebook's folder or the home directory: on hosted notebooks those are usually the
+    persistent, network-backed storage, with a quota, that's shared with the notebook server.
+    Filling them with GBs of models can stall or evict the whole sandbox. A previous run's folder
+    wins, so every helper (``kindle.stop()``, the server, re-runs) agrees.
     """
-    roots = ["/tmp", str(Path.home()), os.getcwd(), "/mnt", "/data", "/workspace", "/scratch", "/var/tmp"]
-    seen: set[str] = set()
     options: list[tuple[bool, int, Path]] = []
-    for root in roots:
+    for root in SCRATCH:
         base = Path(root)
-        if str(base) in seen or not base.is_dir() or not os.access(base, os.W_OK):
+        if not base.is_dir() or not os.access(base, os.W_OK):
             continue
-        seen.add(str(base))
         home = base / name
         if (home / "state.json").exists():
             return home
         if in_memory(base):
             continue
         try:
-            options.append((not on_network(base), psutil.disk_usage(str(base)).free, home))
+            free = psutil.disk_usage(str(base)).free
         except OSError:
             continue
-    return max(options)[2] if options else Path("/tmp") / name
+        local = not on_network(base)
+        if root == "/tmp" and local and free >= ENOUGH:
+            return home
+        options.append((local, free, home))
+    if options:
+        return max(options)[2]
+    return Path.home() / ".cache" / name  # nothing else writable: hidden, still not importable

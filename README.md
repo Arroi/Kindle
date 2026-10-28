@@ -112,18 +112,25 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
 2. Paste this into a cell, with no leading spaces, and run it. The same code is in [`notebooks/molab_cell.py`](notebooks/molab_cell.py).
 
    ```python
+   ROLE = "head" in the session that runs the model and serves the API,
+   # ROLE = "helper" in every extra session that lends its GPU to the head's pool.
    ROLE = "head"
-   REPO = "Arroi/Kindle"
-   REF = "main"
-   UPDATE = False
+   REPO = "Arroi/Kindle"  # GitHub repo to install from (must be public for this install line)
+   REF = "main"           # branch or tag to install
+   UPDATE = False         # True: fetch the latest Kindle from GitHub
 
-   import importlib, os, subprocess, sys
+   import importlib, importlib.metadata, os, subprocess, sys
    os.environ["KINDLE_REPO"] = REPO
-   SOURCE = f"kindle @ git+https://github.com/{REPO}@{REF}"
-   if subprocess.run([sys.executable, "-c", "import kindle"], capture_output=True).returncode != 0:
-       subprocess.run([sys.executable, "-m", "pip", "install", "-q", SOURCE], check=True)
-   elif UPDATE:
-       subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--force-reinstall", "--no-deps", SOURCE], check=True)
+   _source = f"kindle @ git+https://github.com/{REPO}@{REF}"
+   try:
+       importlib.metadata.version("kindle")  # the installed package, not just any folder named "kindle"
+       _installed = True
+   except importlib.metadata.PackageNotFoundError:
+       _installed = False
+   if UPDATE or not _installed:
+       subprocess.run([sys.executable, "-m", "pip", "install", "-q", *(["--force-reinstall", "--no-deps"] if _installed else []), _source], check=True)
+   for _m in [m for m in sys.modules if m == "kindle" or m.startswith("kindle.")]:
+       del sys.modules[_m]  # forget anything imported earlier (an old version, or a folder named kindle)
    importlib.invalidate_caches()
    import kindle.molab
    kindle.molab.start(ROLE)
@@ -155,14 +162,16 @@ Keep every cell running. If a helper's session ends or its link changes (relays 
 
 - Each status line shows the container's real memory use against its limit (`RAM 6.2/32 GB`). Hosted notebooks report the host machine's RAM to programs, but the sandbox is shut down at its own limit, taking the notebook with it ("sandbox stopped responding"). Kindle measures the real limit from the container. If a deployment would run it out, Kindle stops that deployment first, with an error saying so.
 - A failed deployment prints its error and last log lines in the cell, not only in the panel.
-- Models, caches and Ollama go to the roomiest folder that isn't stored in RAM (shown as **Disk** on the card). Set `KINDLE_HOME` to choose one yourself.
+- Models, caches and Ollama go to the roomiest folder that isn't stored in RAM (shown as **Disk** on the card). It's a local scratch disk such as `/tmp/kindle-data`, never the notebook's own folder, which on hosted notebooks is usually quota'd persistent storage. Set `KINDLE_HOME` to choose one yourself. Data an earlier version left in a `kindle` folder there can be removed with `kindle.molab.clean_old_data()`.
 - Ollama installs into that folder without root, so it works where the notebook user isn't root.
 - For a full report, run this in a new cell and share the output:
 
   ```python
-  import kindle.molab
-  kindle.molab.report()
+  import kindle.molab as _kindle
+  _kindle.report()
   ```
+
+  (marimo allows each name to be defined by one cell only; names starting with `_` stay local to their cell.)
 
 ### Context windows
 
