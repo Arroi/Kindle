@@ -19,7 +19,7 @@ from pathlib import Path
 import httpx
 
 from . import __version__
-from .config import Paths
+from .config import Paths, disk_budget
 from .launcher import _read_state, _running, _status_line, launch
 from .system.memory import container_memory
 
@@ -60,6 +60,10 @@ def _machine(state: dict, home: str) -> list[str]:
         lines.append(f" Disk:     {free / GB:.0f} GB free at {home}")
     except OSError:
         pass
+    budget = disk_budget()
+    if budget:
+        lines.append(f" Budget:   {budget / GB:.0f} GB for models and installs. molab stops sandboxes that write "
+                     "more (KINDLE_DISK_BUDGET_GB)")
     return lines
 
 

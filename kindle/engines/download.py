@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from ..catalog import hf
+from ..config import disk_budget
 from ..proc import ManagedProcess
 from ..util import dir_size, human_bytes
 from .context import DeployError, EngineContext
@@ -40,6 +41,16 @@ async def hf_download(ctx: EngineContext, repo_id: str, allow_patterns: list[str
     """
     cache = out_dir if convert else repo_cache_dir(repo_id)
     start_size = dir_size(cache)
+    budget = disk_budget()
+    if budget and expected_size:
+        left = budget - dir_size(ctx.paths.home)
+        missing = expected_size - start_size  # an earlier partial download already counts
+        if missing > left:
+            raise DeployError(
+                f"{repo_id} needs {human_bytes(expected_size)}, but only {human_bytes(max(left, 0))} of this session's "
+                f"{human_bytes(budget)} storage budget is left. This notebook sandbox stops (and disconnects) when it "
+                "writes more, so the download wasn't started. Pick a smaller quant or model, stop and remove other "
+                "models, or raise KINDLE_DISK_BUDGET_GB if your sandbox really has more room.")
     ctx.progress("downloading", 0.0 if expected_size else None,
                  f"Downloading {repo_id}" + (f" ({human_bytes(expected_size)})" if expected_size else ""))
     ctx.log(f"Downloading {repo_id} → {cache}" + (" (fp32 weights stored as BF16)" if convert else ""))

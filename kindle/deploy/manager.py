@@ -16,13 +16,14 @@ from typing import TYPE_CHECKING, Any
 
 import psutil
 
+from ..config import disk_budget
 from ..engines import registry
 from ..engines.base import Backend
 from ..engines.context import DeployError, EngineContext
 from ..proc import ManagedProcess
 from ..schemas import DeploymentSpec
 from ..system.memory import container_memory
-from ..util import short_id
+from ..util import dir_size, short_id
 
 if TYPE_CHECKING:
     from ..server.state import AppState
@@ -82,6 +83,8 @@ def default_name(spec: DeploymentSpec) -> str:
 WATCH_SECONDS = 15
 MEMORY_CHECK_SECONDS = 1
 MEMORY_LIMIT_FRACTION = 0.9
+DISK_CHECK_SECONDS = 3
+DISK_LIMIT_FRACTION = 0.97
 
 
 def _rss(dep: Deployment) -> int:
@@ -174,8 +177,21 @@ class DeploymentManager:
         """
         if self.state.mock:
             return  # simulated engines use no memory, and a dev machine isn't a container
+        last_disk = 0.0
         while True:
             await asyncio.sleep(MEMORY_CHECK_SECONDS)
+            budget = disk_budget()
+            if budget and time.monotonic() - last_disk >= DISK_CHECK_SECONDS:
+                last_disk = time.monotonic()
+                written = await asyncio.to_thread(dir_size, self.state.paths.home)
+                working = [d for d in self.deployments.values() if d.status in ("installing", "downloading")]
+                if written > budget * DISK_LIMIT_FRACTION and working:
+                    victim = max(working, key=lambda d: d.created_at)
+                    await self._halt(victim, (
+                        f"Stopped: this session has written {written / 1e9:.1f} GB, close to its {budget / 1e9:.0f} GB "
+                        "storage budget. The notebook sandbox stops (and disconnects) when it writes more. Pick a smaller "
+                        "quant or model, or remove other models first."))
+                    continue
             try:
                 used, limit = container_memory()
             except Exception:  # noqa: BLE001 - unreadable cgroup: nothing to guard
@@ -186,14 +202,17 @@ class DeploymentManager:
             if not active:
                 continue
             victim = max(active, key=lambda d: (_rss(d), d.created_at))
-            message = (f"Stopped: the notebook was about to run out of memory ({used / 1e9:.1f} of {limit / 1e9:.1f} GB "
-                       "in use), which would have shut down the whole session. Choose a smaller model or quant, a "
-                       "shorter context, or turn off RAM offload.")
-            self._log(victim, f"ERROR: {message}")
-            print(f"[kindle] {victim.served_name}: {message}", flush=True)
-            await self.stop(victim.id, remove=False)
-            self._fail(victim, message)
-            await asyncio.sleep(10)  # let the memory come back before judging again
+            await self._halt(victim, (
+                f"Stopped: the notebook was about to run out of memory ({used / 1e9:.1f} of {limit / 1e9:.1f} GB "
+                "in use), which would have shut down the whole session. Choose a smaller model or quant, a "
+                "shorter context, or turn off RAM offload."))
+
+    async def _halt(self, victim: Deployment, message: str) -> None:
+        self._log(victim, f"ERROR: {message}")
+        print(f"[kindle] {victim.served_name}: {message}", flush=True)
+        await self.stop(victim.id, remove=False)
+        self._fail(victim, message)
+        await asyncio.sleep(10)  # let memory or disk settle before judging again
 
     async def _crashed(self, dep: Deployment, reason: str) -> None:
         self._log(dep, f"ERROR: the runner {reason} after it was ready.")

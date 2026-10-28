@@ -129,6 +129,57 @@ def test_old_kindle_folders_are_found_and_cleaned(tmp_path, monkeypatch, capsys)
     assert "Removed" in capsys.readouterr().out
 
 
+def test_disk_budget_defaults_on_molab_and_can_be_changed(monkeypatch):
+    from kindle import config
+
+    monkeypatch.delenv("KINDLE_DISK_BUDGET_GB", raising=False)
+    monkeypatch.delenv("KINDLE_PLATFORM", raising=False)
+    monkeypatch.setattr(config, "ON_MOLAB", False)
+    assert config.disk_budget() is None
+    monkeypatch.setenv("KINDLE_PLATFORM", "molab")  # what kindle.molab.start() sets
+    assert config.disk_budget() == 30 * 1000**3
+    monkeypatch.setenv("KINDLE_DISK_BUDGET_GB", "120")
+    assert config.disk_budget() == 120 * 1000**3
+    monkeypatch.setenv("KINDLE_DISK_BUDGET_GB", "0")
+    assert config.disk_budget() is None
+
+
+async def test_download_over_budget_is_refused_before_it_starts(paths, monkeypatch):
+    from kindle.engines import download
+
+    monkeypatch.setenv("KINDLE_DISK_BUDGET_GB", "30")
+    started = []
+    monkeypatch.setattr(download.ManagedProcess, "start", lambda self: started.append(self))
+    with pytest.raises(ollama.DeployError, match="storage budget"):
+        await download.hf_download(ctx_for(paths), "big/model-GGUF", ["m.gguf"], 85 * 10**9)
+    assert not started
+
+
+def test_disk_guard_stops_a_download_past_the_budget(paths, monkeypatch):
+    s = Settings()
+    s.exposure.provider = "none"
+    st = AppState(paths=paths, settings=s, port=8999, mock=False, fake_hw="t4x2")
+    monkeypatch.setenv("KINDLE_DISK_BUDGET_GB", "30")
+    monkeypatch.setattr(manager_mod, "MEMORY_CHECK_SECONDS", 0.01)
+    monkeypatch.setattr(manager_mod, "DISK_CHECK_SECONDS", 0)
+    monkeypatch.setattr(manager_mod, "dir_size", lambda p: 29.5 * 10**9)
+    monkeypatch.setattr(manager_mod, "container_memory", lambda: (1, 100 * 10**9))
+    spec = DeploymentSpec(modality="text", name="pull", model=ModelRef(id="m", engine="mock"))
+    dep = Deployment(id="pull", spec=spec, served_name="pull", status="downloading", created_at=time.time())
+    st.manager.deployments[dep.id] = dep
+
+    async def run():
+        task = asyncio.create_task(st.manager.guard_memory())
+        for _ in range(200):
+            await asyncio.sleep(0.01)
+            if dep.status == "error":
+                break
+        task.cancel()
+
+    asyncio.run(run())
+    assert dep.status == "error" and "storage budget" in dep.error
+
+
 def test_container_memory_reads_cgroup_v2(monkeypatch):
     files = {"/sys/fs/cgroup/memory.max": "34359738368",
              "/sys/fs/cgroup/memory.stat": "anon 8000000000\nfile 50000000000\nshmem 2000000000\nkernel 100\n"}

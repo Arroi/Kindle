@@ -17,7 +17,7 @@ from pathlib import Path
 
 import psutil
 
-from ..config import ON_COLAB, ON_KAGGLE, ON_MOLAB, Paths
+from ..config import ON_COLAB, ON_KAGGLE, ON_MOLAB, Paths, disk_budget
 from ..util import GiB, MiB
 from .memory import container_memory
 
@@ -141,6 +141,7 @@ class Probe:
         self._internet_checked = 0.0
         self._snapshot: HardwareProfile | None = None
         self._working_usage = (0.0, 0)
+        self._home_usage = (0.0, 0)
         if not self.fake:
             try:
                 import pynvml  # type: ignore
@@ -340,6 +341,17 @@ class Probe:
             except OSError:
                 continue
             total, used, free = u.total, u.used, u.free
+            budget = disk_budget()
+            if key == "models" and budget:
+                # The sandbox's real limit is lower than the disk reports: count against the budget.
+                if time.monotonic() - self._home_usage[0] > 15:
+                    from ..util import dir_size
+
+                    self._home_usage = (time.monotonic(), dir_size(path))
+                used = self._home_usage[1]
+                total, free = budget, max(min(budget - used, free), 0)
+                note = (f"Storage budget {budget / 1e9:.0f} GB (KINDLE_DISK_BUDGET_GB): this sandbox stops "
+                        "when it writes much more than that")
             if key == "working" and ON_KAGGLE:
                 # /kaggle/working shares a big disk but output is capped at 20 GB.
                 from ..util import dir_size
