@@ -31,14 +31,14 @@ def default_home() -> str:
     return os.environ["KINDLE_HOME"]
 
 
-MOLAB_DISK_BUDGET_GB = 30
+MOLAB_DISK_BUDGET_GB = 200
 
 
 def disk_budget() -> int | None:
     """Most bytes Kindle may write to its data folder, or None for no limit beyond the disk itself.
 
-    molab sandboxes are stopped without an error once they write roughly 35–40 GB of files (a quota
-    or RAM-backed storage that free-space checks can't see), so Kindle stays under 30 GB there.
+    molab sandboxes can be stopped without an error when they write more than their storage allows (a
+    quota free-space checks can't see), so Kindle keeps a budget there: 200 GB by default.
     KINDLE_DISK_BUDGET_GB overrides it; 0 turns the budget off.
     """
     value = os.environ.get("KINDLE_DISK_BUDGET_GB")

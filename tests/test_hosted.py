@@ -150,7 +150,7 @@ def test_disk_budget_defaults_on_molab_and_can_be_changed(monkeypatch):
     monkeypatch.setattr(config, "ON_MOLAB", False)
     assert config.disk_budget() is None
     monkeypatch.setenv("KINDLE_PLATFORM", "molab")  # what kindle.molab.start() sets
-    assert config.disk_budget() == 30 * 1000**3
+    assert config.disk_budget() == 200 * 1000**3
     monkeypatch.setenv("KINDLE_DISK_BUDGET_GB", "120")
     assert config.disk_budget() == 120 * 1000**3
     monkeypatch.setenv("KINDLE_DISK_BUDGET_GB", "0")
