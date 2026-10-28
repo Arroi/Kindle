@@ -113,7 +113,25 @@ export interface Overview {
   main_url: string;
   streaming_ok: boolean;
   deployments: Deployment[];
+  links?: Links;
   started_at: number;
+}
+
+export interface LinkedSession {
+  id: string;
+  url: string;
+  status: "connecting" | "up" | "down" | "mismatch";
+  error: string | null;
+  version: string | null;
+  gpu_label: string | null;
+  last_seen: number | null;
+  models: { name: string; modality: Modality }[];
+}
+
+export interface Links {
+  gpu_label: string;
+  can_link: boolean;
+  links: LinkedSession[];
 }
 
 export interface Fit {

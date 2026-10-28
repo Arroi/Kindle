@@ -3,6 +3,7 @@ import type {
   CatalogItem,
   CatalogMeta,
   Deployment,
+  Links,
   DeploymentSpec,
   Modality,
   ModelImport,
@@ -126,6 +127,8 @@ export const api = {
     request<SecretDetails>(`/_kui/api/secrets/${name}`, { method: "PUT", body: json({ value }) }),
   clearSecret: (name: string) => request<SecretDetails>(`/_kui/api/secrets/${name}`, { method: "DELETE" }),
   reloadSecrets: () => request<SecretDetails>("/_kui/api/secrets/reload", { method: "POST" }),
+  addLink: (url: string, api_key: string) => request<Links>("/_kui/api/links", { method: "POST", body: json({ url, api_key }) }),
+  removeLink: (id: string) => request<Links>(`/_kui/api/links/${id}`, { method: "DELETE" }),
 };
 
 /** Calls to the public gateway from the Studio (cookie auth + studio header). */

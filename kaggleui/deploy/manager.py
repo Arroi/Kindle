@@ -85,25 +85,27 @@ class DeploymentManager:
     def get(self, dep_id: str) -> Deployment | None:
         return self.deployments.get(dep_id)
 
-    def ready(self, modality: str | None = None) -> list[Deployment]:
-        return [d for d in self.deployments.values()
-                if d.status == "ready" and d.backend is not None and (modality is None or d.spec.modality == modality)]
+    def ready(self, modality: str | None = None, *, linked: bool = True) -> list[Deployment]:
+        """Ready deployments, plus the models of linked sessions unless ``linked`` is False."""
+        local = [d for d in self.deployments.values()
+                 if d.status == "ready" and d.backend is not None and (modality is None or d.spec.modality == modality)]
+        return local + self.state.links.deployments(modality) if linked else local
 
-    def resolve(self, model: str | None, modality: str | None = None) -> Deployment | None:
+    def resolve(self, model: str | None, modality: str | None = None, *, linked: bool = True) -> Deployment | None:
         """Find the deployment a request's ``model`` field refers to.
 
         Exact name match first; otherwise, if only one model of that modality is running, use it
-        (so clients with a hard-coded model name like ``gpt-4o`` still work).
+        (so clients with a hard-coded model name like ``gpt-4o`` still work). When a linked session
+        serves the same model, requests alternate between the copies.
         """
-        candidates = self.ready(modality)
+        candidates = self.ready(modality, linked=linked)
         if model:
-            for d in candidates:
-                if model in (d.served_name, d.id, d.spec.model.id):
-                    return d
-        if len(candidates) == 1:
-            return candidates[0]
-        if candidates and not model:
-            return candidates[0]
+            matches = [d for d in candidates if model in (d.served_name, d.id, d.spec.model.id)]
+            if matches:
+                return self.state.links.pick([d for d in matches if d.served_name == matches[0].served_name])
+        if candidates and (not model or len({d.served_name for d in candidates}) == 1):
+            first = candidates[0].served_name
+            return self.state.links.pick([d for d in candidates if d.served_name == first])
         return None
 
     # -- lifecycle ----------------------------------------------------------------------------

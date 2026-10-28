@@ -142,6 +142,16 @@ The public root link opens Studio access for guests. Guests enter the **Studio p
 
 Interactive sessions stop when idle. For long runs, set up a model once, then click **Deployments → Export launch cell** and use that cell in **Save Version → Save & Run All**. Batch runs last up to about 12 hours and auto-deploy everything in the preset. Batch runs don't show output live, so add a `KAGGLEUI_NOTIFY_URL` secret (an [ntfy.sh](https://ntfy.sh) topic URL or a Discord webhook) to get the link pushed to you.
 
+### Linked sessions (pool two GPU sessions)
+
+Run KaggleUI in two sessions with the **same accelerator**, for example two `GPU T4 x2` sessions on different platforms. In one of them, open **Access & API → Linked sessions** and paste the other session's link and API key. The other session's running models then appear in this session's API, Studio and `/v1/models`. When both sessions run the same model, requests alternate between them, so two sessions can handle twice the requests.
+
+- Linking is refused unless both sessions report the same GPU model and count. If the other session later changes hardware, the link pauses and shows why.
+- Text (chat, completions, embeddings), image, text-to-speech, audio generation and speech-to-text are pooled. Video and world jobs stay on the session that runs them.
+- Each model still has to fit on one session's GPUs. Linking adds request capacity; it doesn't combine VRAM.
+- Links are remembered across app restarts. Re-link if the other session's URL changes.
+- Linking sessions on different platforms is fine. Using several Kaggle accounts to get more GPUs breaks Kaggle's rules.
+
 ### Keys & tokens (Hugging Face, ngrok, …)
 
 The easiest way: open **Access & API → Keys & tokens** in the panel and paste the key. Your Hugging Face token is checked on the spot, and the panel shows the account it belongs to. Keys entered there stay on the session's temporary disk only, never in `/kaggle/working` or the notebook output.

@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..engines.base import Unsupported, UpstreamError
+from ..links import HOP_HEADER
 
 if TYPE_CHECKING:
     from ..deploy.manager import Deployment
@@ -57,7 +58,8 @@ def check_access(request: Request, surface: str) -> None:
 
 def find(request: Request, model: str | None, modality: str) -> Deployment:
     st = state_of(request)
-    dep = st.manager.resolve(model, modality)
+    # A request forwarded by a linked session is served here, never forwarded again.
+    dep = st.manager.resolve(model, modality, linked=not request.headers.get(HOP_HEADER))
     if dep is None:
         running = [d.served_name for d in st.manager.ready(modality)]
         hint = f" Running: {', '.join(running)}." if running else f" No {MODALITY_LABEL[modality]} is running yet."

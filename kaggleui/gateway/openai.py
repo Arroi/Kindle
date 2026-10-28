@@ -151,6 +151,24 @@ def _model_entry(d) -> dict:
             "capabilities": d.info.get("capabilities", []), "reasoning": d.info.get("reasoning")}
 
 
+def _unique(deps: list) -> list:
+    """One entry per model name; a model served here and on a linked session is listed once."""
+    seen: set[str] = set()
+    return [d for d in deps if not (d.served_name in seen or seen.add(d.served_name))]
+
+
+@router.get("/v1/kaggleui/node")
+async def node(request: Request):
+    """What a linked hub needs to know about this session: its GPUs and its own ready models."""
+    from ..links import node_info
+
+    try:
+        check_access(request, "openai")
+    except GatewayError as e:
+        return openai_error(e)
+    return node_info(state_of(request))
+
+
 @router.get("/v1/models")
 async def list_models(request: Request):
     try:
@@ -160,7 +178,7 @@ async def list_models(request: Request):
             check_access(request, "openai")
     except GatewayError as e:
         return openai_error(e)
-    deps = state_of(request).manager.ready()
+    deps = _unique(state_of(request).manager.ready())
     if request.headers.get("anthropic-version"):
         data = [{"type": "model", "id": d.served_name, "display_name": d.served_name,
                  "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(d.ready_at or d.created_at))}

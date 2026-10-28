@@ -44,8 +44,11 @@ async def tags(request: Request):
         check_access(request, "ollama")
     except GatewayError as e:
         return ollama_error(e)
-    models = []
+    models, seen = [], set()
     for d in state_of(request).manager.ready("text"):
+        if d.served_name in seen:  # also running on a linked session
+            continue
+        seen.add(d.served_name)
         ts = datetime.fromtimestamp(d.ready_at or d.created_at, timezone.utc).isoformat()
         models.append({"name": d.served_name, "model": d.served_name, "modified_at": ts, "size": d.vram_estimate,
                        "digest": d.id, "details": {"format": "gguf" if d.spec.model.engine == "ollama" else "safetensors",

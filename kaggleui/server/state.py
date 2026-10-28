@@ -10,6 +10,7 @@ from ..catalog.service import CatalogService
 from ..config import Paths
 from ..deploy.manager import DeploymentManager
 from ..interfaces.manager import InterfaceManager
+from ..links import LinkManager
 from ..schemas import Preset, Settings
 from ..system.probe import Probe
 from ..tunnels.manager import TunnelManager
@@ -41,6 +42,7 @@ class AppState:
     manager: DeploymentManager = field(init=False)
     interfaces: InterfaceManager = field(init=False)
     updates: Updates = field(init=False)
+    links: LinkManager = field(init=False)
 
     def __post_init__(self) -> None:
         self.auth = Auth(self.paths.home / "session.key")
@@ -52,6 +54,7 @@ class AppState:
         self.manager = DeploymentManager(self)
         self.interfaces = InterfaceManager(self)
         self.updates = Updates(self)
+        self.links = LinkManager(self)
 
     def main_url(self) -> str:
         t = self.tunnels.get("main")

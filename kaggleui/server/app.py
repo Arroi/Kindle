@@ -22,6 +22,7 @@ from ..engines.world_engine import list_recipes
 from ..gateway import anthropic as anthropic_gw
 from ..gateway import ollama_compat as ollama_gw
 from ..gateway import openai as openai_gw
+from ..links import LinkError
 from ..schemas import MODALITIES, DeploymentSpec, Preset, SettingsPatch
 from ..secretstore import secret_status
 from ..tunnels.manager import PROVIDER_LABELS
@@ -41,13 +42,14 @@ def create_app(state: AppState) -> FastAPI:
     async def lifespan(app: FastAPI):
         state.bus.bind_loop(asyncio.get_running_loop())
         tasks = [asyncio.create_task(_metrics_loop(state)), asyncio.create_task(_startup(state)),
-                 asyncio.create_task(state.updates.run())]
+                 asyncio.create_task(state.updates.run()), asyncio.create_task(state.links.run())]
         try:
             yield
         finally:
             for t in tasks:
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            await state.links.close()
             await state.imports.close()
             await state.manager.shutdown()
             from ..engines.ollama import OllamaServer
@@ -172,6 +174,7 @@ def create_app(state: AppState) -> FastAPI:
             "main_url": state.main_url(),
             "streaming_ok": bool(main and main.supports_sse),
             "deployments": state.manager.list(),
+            "links": state.links.list(),
             "started_at": state.started_at,
         }
 
@@ -442,6 +445,30 @@ def create_app(state: AppState) -> FastAPI:
         asyncio.create_task(_open_main_tunnel(state))
         return {"ok": True}
 
+    # -- linked sessions ---------------------------------------------------------------------
+    @app.get("/_kui/api/links")
+    async def get_links(request: Request):
+        require_admin(request)
+        return state.links.list()
+
+    @app.post("/_kui/api/links")
+    async def add_link(request: Request, body: dict = Body(...)):
+        require_admin(request)
+        try:
+            await state.links.add(str(body.get("url") or ""), str(body.get("api_key") or ""))
+        except LinkError as e:
+            raise HTTPException(e.status, e.message) from e
+        return state.links.list()
+
+    @app.delete("/_kui/api/links/{link_id}")
+    async def remove_link(request: Request, link_id: str):
+        require_admin(request)
+        try:
+            await state.links.remove(link_id)
+        except LinkError as e:
+            raise HTTPException(e.status, e.message) from e
+        return state.links.list()
+
     @app.get("/_kui/api/preset")
     async def preset(request: Request):
         require_admin(request)
@@ -505,6 +532,14 @@ def create_app(state: AppState) -> FastAPI:
                         "options": d.spec.options, "model_id": d.spec.model.id, "source": d.spec.model.source,
                         "adapter": d.info.get("adapter"),
                         "interface": d.interface, "engine": d.spec.model.engine, "runtime": d.info.get("runtime")})
+        local = {d.served_name for d in state.manager.deployments.values()}
+        for d in state.links.deployments():
+            if d.served_name in local:
+                continue  # the local entry already covers it; requests alternate between both
+            local.add(d.served_name)
+            out.append({"id": d.id, "name": d.served_name, "modality": d.spec.modality, "status": "ready",
+                        "message": "Ready", "progress": 1.0, "controls": None, **d.info, "options": {}, "model_id": d.served_name,
+                        "source": "linked", "interface": {}, "engine": "linked"})
         return out
 
     @app.get("/_kui/api/studio/worlds/{ident}/content")
