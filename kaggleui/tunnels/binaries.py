@@ -1,4 +1,4 @@
-"""Download tunnel binaries (cloudflared, ngrok) on demand."""
+"""Download tunnel binaries (cloudflared, ngrok, Gradio's frpc) on demand."""
 
 from __future__ import annotations
 
@@ -78,4 +78,25 @@ async def ensure_ngrok(bin_dir: Path) -> str:
             local.write_bytes(zf.read("ngrok"))
     _make_exec(local)
     os.environ.setdefault("NGROK_CONFIG", str(bin_dir / "ngrok.yml"))
+    return str(local)
+
+
+FRPC_VERSION = "0.3"
+
+
+async def ensure_frpc(bin_dir: Path) -> str:
+    """Gradio's patched frpc client, the same binary ``gradio share=True`` uses (no pip install needed)."""
+    local = bin_dir / f"frpc_gradio_{FRPC_VERSION}"
+    if local.exists():
+        return str(local)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    base = f"https://cdn-media.huggingface.co/frpc-gradio-{FRPC_VERSION}/frpc_{_os()}_{_arch()}"
+    try:
+        data = await _download(base)
+    except httpx.HTTPStatusError:
+        data = await _download(f"{base}_v{FRPC_VERSION}")  # older naming
+    tmp = local.with_suffix(".part")
+    tmp.write_bytes(data)
+    _make_exec(tmp)
+    tmp.replace(local)
     return str(local)

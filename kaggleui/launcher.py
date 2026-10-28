@@ -70,8 +70,11 @@ def installed_version() -> str:
 
 def _show(state: dict) -> None:
     note = ""
-    if state.get("tunnel", {}) and state["tunnel"].get("provider") == "cloudflare":
+    provider = (state.get("tunnel") or {}).get("provider")
+    if provider == "cloudflare":
         note = "App updates keep this link. A fresh notebook session, full stop or tunnel reconnect creates a new one."
+    elif provider == "gradio":
+        note = "Gradio share links expire after about 72 hours. While this cell runs, a replacement link is printed here."
     _display(card_html(state["url"], state["admin_token"], state.get("password"), state.get("api_key"), note),
              card_text(state["url"], state["admin_token"], state.get("password"), state.get("api_key")))
 

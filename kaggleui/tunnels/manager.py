@@ -1,4 +1,4 @@
-"""Expose local ports publicly: Cloudflare quick tunnels (default), named tunnels, or ngrok.
+"""Expose local ports publicly: Cloudflare quick tunnels (default), named tunnels, ngrok, or Gradio share links.
 
 Kaggle has no inbound ports, so every URL the user opens goes through one of these.
 """
@@ -9,23 +9,30 @@ import asyncio
 import json
 import os
 import re
+import secrets
 import socket
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
+import httpx
+
 from ..config import Paths
 from ..proc import ManagedProcess
-from .binaries import ensure_cloudflared, ensure_ngrok
+from .binaries import ensure_cloudflared, ensure_frpc, ensure_ngrok
 from .persistent import PersistentProcess, binding, read_record, stop_saved_tunnel
 
 QUICK_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
+GRADIO_SUCCESS_RE = re.compile(r"start proxy success: (\S+)")
+GRADIO_URL_RE = re.compile(r"https://[a-zA-Z0-9.-]+\.gradio\.live")
+GRADIO_TUNNEL_APIS = ("https://api.gradio.app/v3/tunnel-request", "https://api.gradio.live/v3/tunnel-request")
 
 PROVIDER_LABELS = {
     "cloudflare": "Cloudflare quick tunnel",
     "cloudflare_named": "Cloudflare named tunnel",
     "ngrok": "ngrok",
+    "gradio": "Gradio share link",
     "none": "Local only",
 }
 
@@ -182,6 +189,8 @@ class TunnelManager:
             await self._run_cloudflare_named(t)
         elif t.provider == "ngrok":
             await self._run_ngrok(t)
+        elif t.provider == "gradio":
+            await self._run_gradio(t)
         else:
             raise ValueError(f"unknown tunnel provider {t.provider}")
 
@@ -258,4 +267,54 @@ class TunnelManager:
         rc = await t.proc.wait()
         if t.status != "stopped":
             t.error = t.error or f"ngrok exited ({rc})"
+            t.url = None
+
+    async def _gradio_relay(self, t: Tunnel) -> tuple[str, list[str]]:
+        """Ask Gradio's API for a relay server; returns ``host:port`` and frpc TLS arguments."""
+        override = os.environ.get("GRADIO_SHARE_SERVER_ADDRESS")
+        if override:
+            return override, []
+        relay, error = None, None
+        async with httpx.AsyncClient(timeout=30) as client:
+            for api in GRADIO_TUNNEL_APIS:
+                try:
+                    r = await client.get(api)
+                    r.raise_for_status()
+                    relay = r.json()[0]
+                    break
+                except (httpx.HTTPError, ValueError, LookupError) as e:
+                    error = e
+        if relay is None:
+            raise RuntimeError(f"Gradio's share server is unavailable: {error}")
+        tls: list[str] = []
+        # Gradio verifies the relay with its root CA. Alternate plain connections on retries in
+        # case the TLS handshake is what fails in this container.
+        if relay.get("root_ca") and t.restarts % 2 == 0:
+            ca = self.paths.cache / f"gradio-share-ca-{t.name}.pem"  # one per tunnel: they start concurrently
+            ca.write_text(relay["root_ca"])
+            tls = ["--tls_enable", "--tls_trusted_ca_file", str(ca)]
+        return f"{relay['host']}:{int(relay['port'])}", tls
+
+    async def _run_gradio(self, t: Tunnel) -> None:
+        exe = await ensure_frpc(self.paths.bin)
+        server, tls = await self._gradio_relay(t)
+        cmd = [exe, "http", "-n", secrets.token_urlsafe(32), "-l", str(t.port), "-i", "127.0.0.1",
+               "--uc", "--sd", "random", "--ue", "--server_addr", server, "--disable_log_color", *tls]
+
+        def on_line(line: str) -> None:
+            m = GRADIO_SUCCESS_RE.search(line) or GRADIO_URL_RE.search(line)
+            if m:
+                url = m.group(1) if m.re is GRADIO_SUCCESS_RE else m.group(0)
+                t.url = url if url.startswith("http") else f"https://{url}"
+                t.status = "up"
+                t.error = None
+                self._changed(t)
+            elif "login to server failed" in line:
+                t.error = line.strip()[:300]
+
+        await self._start_process(t, cmd, on_line)
+        rc = await t.proc.wait()
+        if t.status != "stopped":
+            # Share links also expire after about 72 hours; the supervisor opens a new one.
+            t.error = t.error or f"frpc exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
             t.url = None

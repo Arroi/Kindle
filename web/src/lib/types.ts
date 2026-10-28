@@ -54,7 +54,7 @@ export interface Settings {
   exposure: { provider: TunnelProvider };
 }
 
-export type TunnelProvider = "cloudflare" | "cloudflare_named" | "ngrok" | "none";
+export type TunnelProvider = "cloudflare" | "cloudflare_named" | "ngrok" | "gradio" | "none";
 
 export interface Tunnel {
   name: string;

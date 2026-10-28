@@ -10,6 +10,9 @@ from .schemas import Preset
 
 ON_KAGGLE = os.path.isdir("/kaggle/working") or "KAGGLE_KERNEL_RUN_TYPE" in os.environ
 ON_COLAB = "COLAB_RELEASE_TAG" in os.environ or "COLAB_GPU" in os.environ
+# marimo's hosted notebooks. Cloudflare quick tunnels don't work there; Gradio share links do.
+ON_MOLAB = (os.environ.get("KAGGLEUI_PLATFORM") == "molab"
+            or any(key.upper().startswith("MOLAB") for key in os.environ))
 
 DEFAULT_PORT = int(os.environ.get("KAGGLEUI_PORT", "8890"))
 
@@ -61,4 +64,6 @@ def default_tunnel() -> str:
     env = os.environ.get("KAGGLEUI_TUNNEL")
     if env:
         return env
+    if ON_MOLAB:
+        return "gradio"
     return "cloudflare" if (ON_KAGGLE or ON_COLAB) else "none"

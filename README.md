@@ -98,6 +98,19 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
 - vLLM runs in **bf16** on TPU, and TPU sessions are limited to about **9 hours** (the session bar accounts for this).
 - TPU usage on Kaggle is quota-limited per week; if no TPU option appears in the notebook settings, your account has no remaining TPU quota.
 
+### Running on molab
+
+Cloudflare quick tunnels don't connect from [molab](https://molab.marimo.io), so KaggleUI uses a **Gradio share link** (`https://….gradio.live`) there instead. That's the same relay `gradio share=True` uses, with no account and no Gradio install. Paste this into a cell:
+
+```python
+import subprocess, sys
+subprocess.run("curl -fsSL https://raw.githubusercontent.com/UltraFEmotes/KaggleUI/main/install.sh | bash", shell=True, check=True)
+import kaggleui
+kaggleui.launch(tunnel="gradio")
+```
+
+The cell keeps running, which also keeps the molab container awake. Gradio share links expire after about 72 hours. KaggleUI then opens a new one and prints the new card in the cell. Interfaces such as Open WebUI get their own share links. You can also pick **Gradio share link** under exposure in the panel on any platform, or set `KAGGLEUI_TUNNEL=gradio`.
+
 ### If the link won't open
 
 From v0.2.3, the main public tunnel survives app server restarts and in-app updates within the same Kaggle session. This happens automatically, with no account or domain setup. Keep your current link bookmarked. `kaggleui.stop()` deliberately stops both the app and its tunnel, including a retained tunnel whose server has crashed.

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import psutil
 
-from ..config import ON_COLAB, ON_KAGGLE, Paths
+from ..config import ON_COLAB, ON_KAGGLE, ON_MOLAB, Paths
 from ..util import GiB, MiB
 
 GPU_SESSION_LIMIT = 12 * 3600
@@ -170,7 +170,7 @@ class Probe:
         vm = psutil.virtual_memory()
         accel = "gpu" if gpus else ("tpu" if tpus else "cpu")
         return HardwareProfile(
-            platform="kaggle" if ON_KAGGLE else ("colab" if ON_COLAB else "local"),
+            platform="kaggle" if ON_KAGGLE else ("colab" if ON_COLAB else ("molab" if ON_MOLAB else "local")),
             accelerator=accel,
             accelerator_label=self._label(gpus, tpus, accel),
             gpus=gpus,

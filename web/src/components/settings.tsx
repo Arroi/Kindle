@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Cloud, Globe2, Laptop, RefreshCw, Zap } from "lucide-react";
+import { AlertTriangle, Check, Cloud, Globe2, Laptop, Radio, RefreshCw, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { api } from "../lib/api";
@@ -83,6 +83,9 @@ export function ExposurePicker({ value, onChange }: { value: TunnelProvider; onC
         badge={<Tag tone="signal">streams</Tag>}
       >
         {sec.NGROK_AUTHTOKEN ? "Real-time streaming; free static domain via NGROK_DOMAIN." : "Add an NGROK_AUTHTOKEN secret to enable."}
+      </OptionCard>
+      <OptionCard active={value === "gradio"} onClick={() => onChange("gradio")} icon={<Radio className="size-4" />} title="Gradio share link" badge={<Tag tone="signal">streams</Tag>}>
+        No account needed. Works where Cloudflare is blocked, such as molab. Links expire after about 72 hours and are replaced automatically.
       </OptionCard>
       <OptionCard active={value === "none"} onClick={() => onChange("none")} icon={<Laptop className="size-4" />} title="Local only">
         No public URL. Only reachable from inside the notebook.
