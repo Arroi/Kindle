@@ -44,6 +44,20 @@ class ManagedProcess:
             await self.stop(timeout=2)
             raise
         self._pumps = [asyncio.create_task(self._pump())]
+        sacrifice(self.proc.pid, 1000)
+
+
+def sacrifice(pid: int, score: int) -> None:
+    """Make the kernel's out-of-memory killer pick this process before the notebook.
+
+    Model runners are the big allocators; if the container runs out of memory, losing one of them
+    fails a deployment with a visible error, while losing the notebook kernel kills the whole sandbox.
+    Raising a process's own score needs no privileges. Children inherit it.
+    """
+    try:
+        Path(f"/proc/{pid}/oom_score_adj").write_text(str(score))
+    except OSError:
+        pass
 
     async def _pump(self) -> None:
         assert self.proc and self.proc.stdout

@@ -119,7 +119,8 @@ def runtime_vram(c: Candidate) -> int | None:
     if m == "text":
         p_b = (c.params or w / 0.6) / 1e9
         kv_per_token = 40_000 * max(p_b, 0.1) ** 0.6  # ≈128 KB/token for an 8B GQA model
-        return int(w + kv_per_token * c.ctx + 0.7 * GB)
+        slots = 2 if c.engine == "ollama" else 1  # Ollama reserves the context for each parallel slot
+        return int(w + kv_per_token * c.ctx * slots + 0.7 * GB)
     if m == "image":
         return int(w * 1.15 + 1.2 * GB)
     if m == "video":

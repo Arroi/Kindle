@@ -19,6 +19,7 @@ import psutil
 
 from ..config import ON_COLAB, ON_KAGGLE, ON_MOLAB, Paths
 from ..util import GiB, MiB
+from .memory import container_memory
 
 GPU_SESSION_LIMIT = 12 * 3600
 TPU_SESSION_LIMIT = 9 * 3600
@@ -167,7 +168,8 @@ class Probe:
             return self._fake_snapshot()
         gpus = self._gpus()
         tpus = [] if gpus else self._tpus()
-        vm = psutil.virtual_memory()
+        # The container's own limit, not the host's RAM: offload plans must fit what we may really use.
+        used, limit = container_memory()
         accel = "gpu" if gpus else ("tpu" if tpus else "cpu")
         return HardwareProfile(
             platform="kaggle" if ON_KAGGLE else ("colab" if ON_COLAB else ("molab" if ON_MOLAB else "local")),
@@ -176,8 +178,8 @@ class Probe:
             gpus=gpus,
             tpus=tpus,
             cpu_count=psutil.cpu_count(logical=True) or 1,
-            ram_total=vm.total,
-            ram_available=vm.available,
+            ram_total=limit,
+            ram_available=max(limit - used, 0),
             disks=self._disks(),
             run_type=os.environ.get("KAGGLE_KERNEL_RUN_TYPE"),
             session_started=self._started,

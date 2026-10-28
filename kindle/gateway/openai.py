@@ -16,7 +16,9 @@ from .common import (
     GatewayError,
     call_with_failover,
     check_access,
+    context_of,
     find,
+    fit_reply,
     openai_error,
     sse_openai,
     state_of,
@@ -159,7 +161,8 @@ async def _json(request: Request) -> dict:
 def _model_entry(d) -> dict:
     return {"id": d.served_name, "object": "model", "created": int(d.ready_at or d.created_at),
             "owned_by": "kindle", "modality": d.spec.modality,
-            "capabilities": d.info.get("capabilities", []), "reasoning": d.info.get("reasoning")}
+            "capabilities": d.info.get("capabilities", []), "reasoning": d.info.get("reasoning"),
+            "context_length": context_of(d)}
 
 
 def _unique(deps: list) -> list:
@@ -218,10 +221,10 @@ async def chat_completions(request: Request):
         body = await _json(request)
         if body.get("stream"):
             dep, stream = await stream_with_failover(request, body.get("model"), "text",
-                                                     lambda d: d.backend.chat_stream(body))
+                                                     lambda d: d.backend.chat_stream(fit_reply(body, d)))
             return StreamingResponse(sse_openai(stream, dep.served_name),
                                      media_type="text/event-stream", headers=SSE_HEADERS)
-        dep, resp = await call_with_failover(request, body.get("model"), "text", lambda d: d.backend.chat(body))
+        dep, resp = await call_with_failover(request, body.get("model"), "text", lambda d: d.backend.chat(fit_reply(body, d)))
         resp["model"] = dep.served_name
         return resp
     except Exception as e:  # noqa: BLE001
@@ -234,7 +237,7 @@ async def completions(request: Request):
         check_access(request, "openai")
         body = await _json(request)
         dep, resp = await call_with_failover(request, body.get("model"), "text",
-                                             lambda d: d.backend.completions({**body, "stream": False}))
+                                             lambda d: d.backend.completions(fit_reply({**body, "stream": False}, d)))
         resp["model"] = dep.served_name
         return resp
     except Exception as e:  # noqa: BLE001

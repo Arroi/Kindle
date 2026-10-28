@@ -15,6 +15,7 @@ from .common import (
     call_with_failover,
     check_access,
     find,
+    fit_reply,
     stream_with_failover,
     wrap,
 )
@@ -73,10 +74,10 @@ async def messages(request: Request):
         thinking = wants_thinking(body)
         if body.get("stream"):
             dep, stream = await stream_with_failover(request, body.get("model"), "text",
-                                                     lambda d: d.backend.chat_stream(oai))
+                                                     lambda d: d.backend.chat_stream(fit_reply(oai, d)))
             return StreamingResponse(openai_stream_to_anthropic(stream, dep.served_name, thinking),
                                      media_type="text/event-stream", headers=SSE_HEADERS)
-        dep, resp = await call_with_failover(request, body.get("model"), "text", lambda d: d.backend.chat(oai))
+        dep, resp = await call_with_failover(request, body.get("model"), "text", lambda d: d.backend.chat(fit_reply(oai, d)))
         return openai_to_anthropic(resp, dep.served_name, thinking)
     except Exception as e:  # noqa: BLE001
         return anthropic_error(wrap(e))

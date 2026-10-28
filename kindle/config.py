@@ -17,11 +17,25 @@ ON_MOLAB = (os.environ.get("KINDLE_PLATFORM") == "molab"
 DEFAULT_PORT = int(os.environ.get("KINDLE_PORT", "8890"))
 
 
+def default_home() -> str:
+    """Where models, caches and logs go. Kaggle and Colab: /tmp (a real disk). Elsewhere, e.g. molab:
+    the roomiest folder that isn't stored in RAM, since downloading models into a RAM-backed /tmp
+    runs the notebook out of memory. Pinned in KINDLE_HOME so the notebook and the server agree."""
+    if not os.environ.get("KINDLE_HOME"):
+        if ON_KAGGLE or ON_COLAB:
+            os.environ["KINDLE_HOME"] = "/tmp/kindle"
+        else:
+            from .system.memory import roomiest_home
+
+            os.environ["KINDLE_HOME"] = str(roomiest_home())
+    return os.environ["KINDLE_HOME"]
+
+
 class Paths:
     """Everything big lives on the ephemeral disk, never in /kaggle/working (20 GB, saved as output)."""
 
     def __init__(self, home: Path | None = None):
-        self.home = Path(home or os.environ.get("KINDLE_HOME", "/tmp/kindle"))
+        self.home = Path(home or default_home())
         self.models = self.home / "models"
         self.hf_home = self.models / "hf"
         self.ollama_models = self.models / "ollama"

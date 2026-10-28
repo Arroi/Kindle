@@ -69,6 +69,34 @@ def find(request: Request, model: str | None, modality: str, exclude: frozenset[
     return dep
 
 
+def context_of(dep: Deployment) -> int | None:
+    """The context window a local deployment was launched with (None for linked sessions' copies)."""
+    if dep.spec.model.engine == "linked":
+        return None
+    value = dep.spec.options.get("ctx") or dep.info.get("num_ctx")
+    return int(value) if value else (8192 if dep.spec.modality == "text" else None)
+
+
+def fit_reply(body: dict, dep: Deployment) -> dict:
+    """Shrink a requested reply length that can't fit the context window.
+
+    Agents ask for long replies (Claude Code: 32K) regardless of the model. vLLM and SGLang reject a
+    request whose prompt plus max_tokens exceeds the window; capping it lets the reply run until the
+    window is full instead. The prompt size is estimated from its characters.
+    """
+    ctx = context_of(dep)
+    if not ctx:
+        return body
+    prompt = len(json.dumps(body.get("messages") or body.get("prompt") or "")) + len(json.dumps(body.get("tools") or []))
+    room = max(ctx - int(prompt / 3.2) - 32, 256)
+    out = body
+    for key in ("max_tokens", "max_completion_tokens"):
+        value = body.get(key)
+        if isinstance(value, int) and value > room:
+            out = {**out, key: room}
+    return out
+
+
 MAX_ATTEMPTS = 3
 
 

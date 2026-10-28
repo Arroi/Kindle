@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import platform
+import shutil
 import tempfile
 
 import httpx
@@ -58,8 +59,9 @@ class OllamaServer:
                 "OLLAMA_MODELS": os.environ.get("OLLAMA_MODELS", str(ctx.paths.ollama_models)),
                 "OLLAMA_KEEP_ALIVE": "-1",
                 "OLLAMA_MAX_LOADED_MODELS": "4",
-                # Agents fire parallel requests (sub-agents, background summaries); 2 slots queued them.
-                "OLLAMA_NUM_PARALLEL": os.environ.get("KINDLE_OLLAMA_PARALLEL", "4"),
+                # Ollama reserves the full context for every slot, so slots multiply memory with long
+                # contexts. Two keep an agent's side requests moving; the fit check counts both.
+                "OLLAMA_NUM_PARALLEL": os.environ.get("KINDLE_OLLAMA_PARALLEL", "2"),
                 "OLLAMA_ORIGINS": "*",
             }
             env.pop("CUDA_VISIBLE_DEVICES", None)
@@ -76,24 +78,113 @@ class OllamaServer:
             raise DeployError("Ollama didn't start within 60s")
 
     async def _binary(self, ctx: EngineContext) -> str:
-        exe = which("ollama", [ctx.paths.bin])
+        exe = which("ollama", [ctx.paths.bin / "ollama-dist" / "bin", ctx.paths.bin])
         if exe:
             return exe
         if platform.system() != "Linux":
             raise DeployError("Ollama isn't installed. Get it from https://ollama.com/download "
                               "(or start Kindle with --mock-engines for UI development).")
-        ctx.progress("installing", None, "Installing Ollama (about 30s)")
-        script = ("command -v zstd >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq zstd) "
-                  ">/dev/null 2>&1; curl -fsSL https://ollama.com/install.sh | sh")
-        rc = await run_cmd(script, on_line=ctx.log)
-        exe = which("ollama", [ctx.paths.bin])
-        if rc != 0 or not exe:
-            raise DeployError("Installing Ollama failed. Is Internet enabled in the notebook settings?")
-        return exe
+        return await install_ollama(ctx)
 
     async def stop(self) -> None:
         if self.proc:
             await self.proc.stop()
+
+
+OLLAMA_ARCHIVE = "https://ollama.com/download/ollama-linux-{arch}.tar.zst"
+OLLAMA_DISK = 8 * 1000**3  # archive (~1.5 GB) plus the unpacked CUDA runtimes
+
+
+async def install_ollama(ctx: EngineContext) -> str:
+    """Install Ollama into Kindle's own folder, without root.
+
+    Ollama's install.sh needs root or sudo, apt-get for zstd, and writes several GB to /usr/local.
+    Hosted notebooks often have neither root nor room there, so every deployment failed. The release
+    archive is self-contained (bin/ollama finds its libraries in ../lib/ollama), so it can live here.
+    """
+    arch = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(platform.machine().lower())
+    if not arch:
+        raise DeployError(f"Ollama has no Linux build for {platform.machine()}")
+    dest = ctx.paths.bin / "ollama-dist"
+    staging = ctx.paths.bin / "ollama-dist.partial"
+    archive = ctx.paths.cache / f"ollama-linux-{arch}.tar.zst"
+    free = shutil.disk_usage(ctx.paths.bin).free
+    if free < OLLAMA_DISK:
+        raise DeployError(f"Installing Ollama needs about {OLLAMA_DISK / 1e9:.0f} GB of disk; {free / 1e9:.1f} GB is free "
+                          f"at {ctx.paths.home}. Free space or set KINDLE_HOME to a bigger disk.")
+    url = OLLAMA_ARCHIVE.format(arch=arch)
+    ctx.log(f"Installing Ollama from {url} into {dest} (no root needed)")
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(connect=20, read=120, write=60, pool=20)) as c:
+            async with c.stream("GET", url) as r:
+                r.raise_for_status()
+                total = int(r.headers.get("content-length") or 0)
+                got, last = 0, 0.0
+                with archive.open("wb") as out:
+                    async for block in r.aiter_bytes(1 << 20):
+                        out.write(block)
+                        got += len(block)
+                        now = asyncio.get_running_loop().time()
+                        if now - last > 1:
+                            last = now
+                            ctx.progress("installing", got / total if total else None,
+                                         f"Downloading Ollama: {got / 1e9:.2f}" + (f" / {total / 1e9:.2f} GB" if total else " GB"))
+    except httpx.HTTPError as exc:
+        archive.unlink(missing_ok=True)
+        raise DeployError(f"Couldn't download Ollama ({type(exc).__name__}: {exc}). Is the notebook online?") from exc
+    ctx.progress("installing", None, "Unpacking Ollama")
+    if _zstd_module() is None:
+        from .install import pip_install
+
+        await pip_install(ctx, ["zstandard"], label="the zstd decompressor")
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        await asyncio.to_thread(_unpack_zst, archive, staging)
+    except Exception as exc:  # noqa: BLE001 - a corrupt download or a full disk
+        shutil.rmtree(staging, ignore_errors=True)
+        raise DeployError(f"Couldn't unpack Ollama: {type(exc).__name__}: {exc}") from exc
+    finally:
+        archive.unlink(missing_ok=True)
+    exe = staging / "bin" / "ollama"
+    if not exe.exists():
+        shutil.rmtree(staging, ignore_errors=True)
+        raise DeployError("The Ollama archive had no bin/ollama; its layout may have changed.")
+    exe.chmod(0o755)
+    shutil.rmtree(dest, ignore_errors=True)
+    staging.rename(dest)
+    ctx.log(f"Ollama installed at {dest}")
+    return str(dest / "bin" / "ollama")
+
+
+def _zstd_module():
+    try:
+        from compression import zstd  # Python 3.14+
+
+        return lambda f: zstd.ZstdFile(f)
+    except ImportError:
+        pass
+    try:
+        import zstandard
+
+        return lambda f: zstandard.ZstdDecompressor().stream_reader(f)
+    except ImportError:
+        return None
+
+
+def _unpack_zst(archive, dest) -> None:
+    import importlib
+    import tarfile
+
+    importlib.invalidate_caches()
+    opener = _zstd_module()
+    if opener is None:
+        raise RuntimeError("no zstd decompressor available")
+    dest.mkdir(parents=True)
+    with archive.open("rb") as raw, opener(raw) as stream, tarfile.open(fileobj=stream, mode="r|") as tar:
+        try:
+            tar.extractall(dest, filter="data")
+        except TypeError:  # Pythons before the extraction-filter backport
+            tar.extractall(dest)  # noqa: S202 - official Ollama release archive
 
 
 def model_ref(spec: DeploymentSpec) -> str | None:

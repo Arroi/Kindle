@@ -47,7 +47,8 @@ def create_app(state: AppState) -> FastAPI:
         state.bus.bind_loop(asyncio.get_running_loop())
         tasks = [asyncio.create_task(_metrics_loop(state)), asyncio.create_task(_startup(state)),
                  asyncio.create_task(state.updates.run()), asyncio.create_task(state.links.run()),
-                 asyncio.create_task(state.manager.watch())]
+                 asyncio.create_task(state.manager.watch()),
+                 asyncio.create_task(state.manager.guard_memory())]
         try:
             yield
         finally:

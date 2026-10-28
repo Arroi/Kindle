@@ -14,11 +14,14 @@ from dataclasses import dataclass, field
 from pathlib import PurePath
 from typing import TYPE_CHECKING, Any
 
+import psutil
+
 from ..engines import registry
 from ..engines.base import Backend
 from ..engines.context import DeployError, EngineContext
 from ..proc import ManagedProcess
 from ..schemas import DeploymentSpec
+from ..system.memory import container_memory
 from ..util import short_id
 
 if TYPE_CHECKING:
@@ -77,6 +80,22 @@ def default_name(spec: DeploymentSpec) -> str:
 
 
 WATCH_SECONDS = 15
+MEMORY_CHECK_SECONDS = 1
+MEMORY_LIMIT_FRACTION = 0.9
+
+
+def _rss(dep: Deployment) -> int:
+    """Resident memory of a deployment's processes and their children."""
+    total = 0
+    for proc in dep.processes:
+        if not proc.proc or proc.proc.returncode is not None:
+            continue
+        try:
+            root = psutil.Process(proc.proc.pid)
+            total += sum(p.memory_info().rss for p in [root, *root.children(recursive=True)])
+        except psutil.Error:
+            continue
+    return total
 RESTART_WINDOW = 900
 MAX_RESTARTS = 3
 
@@ -146,6 +165,35 @@ class DeploymentManager:
                     strikes.pop(dep.id, None)
                     reason = f"process {', '.join(dead)} exited" if dead else "stopped answering health checks"
                     await self._crashed(dep, reason)
+
+    async def guard_memory(self) -> None:
+        """Stop the hungriest deployment before the container runs out of memory.
+
+        Hosted notebooks kill the whole sandbox (notebook included) at their memory limit, with no
+        error anywhere. A deployment stopped here shows exactly why in the panel and the cell.
+        """
+        if self.state.mock:
+            return  # simulated engines use no memory, and a dev machine isn't a container
+        while True:
+            await asyncio.sleep(MEMORY_CHECK_SECONDS)
+            try:
+                used, limit = container_memory()
+            except Exception:  # noqa: BLE001 - unreadable cgroup: nothing to guard
+                continue
+            if not limit or used < limit * MEMORY_LIMIT_FRACTION:
+                continue
+            active = [d for d in self.deployments.values() if d.status in ACTIVE]
+            if not active:
+                continue
+            victim = max(active, key=lambda d: (_rss(d), d.created_at))
+            message = (f"Stopped: the notebook was about to run out of memory ({used / 1e9:.1f} of {limit / 1e9:.1f} GB "
+                       "in use), which would have shut down the whole session. Choose a smaller model or quant, a "
+                       "shorter context, or turn off RAM offload.")
+            self._log(victim, f"ERROR: {message}")
+            print(f"[kindle] {victim.served_name}: {message}", flush=True)
+            await self.stop(victim.id, remove=False)
+            self._fail(victim, message)
+            await asyncio.sleep(10)  # let the memory come back before judging again
 
     async def _crashed(self, dep: Deployment, reason: str) -> None:
         self._log(dep, f"ERROR: the runner {reason} after it was ready.")

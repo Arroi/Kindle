@@ -148,6 +148,23 @@ How many sessions: add up the GGUF size plus about 2 GB per GPU and 4 GB on the 
 
 Keep every cell running. If a helper's session ends or its link changes (relays expire after about 72 hours), the model on the head fails; re-link the helper and restart the deployment. Use molab within its fair-use terms: pooling is meant for your own sessions, not for collecting GPUs across accounts.
 
+### When something fails
+
+- Each status line shows the container's real memory use against its limit (`RAM 6.2/32 GB`). Hosted notebooks report the host machine's RAM to programs, but the sandbox is shut down at its own limit, taking the notebook with it ("sandbox stopped responding"). Kindle measures the real limit from the container. If a deployment would run it out, Kindle stops that deployment first, with an error saying so.
+- A failed deployment prints its error and last log lines in the cell, not only in the panel.
+- Models, caches and Ollama go to the roomiest folder that isn't stored in RAM (shown as **Disk** on the card). Set `KINDLE_HOME` to choose one yourself.
+- Ollama installs into that folder without root, so it works where the notebook user isn't root.
+- For a full report, run this in a new cell and share the output:
+
+  ```python
+  import kindle.molab
+  kindle.molab.report()
+  ```
+
+### Context windows
+
+New deployments default to the longest context window that comfortably fits the GPU, up to the model's maximum: 128K for most current models on a large GPU, instead of 8K. Pick another length under the model's settings. Replies that wouldn't fit the window (agents often ask for 32K) are shortened to fit instead of being rejected. `/v1/models` lists each model's `context_length`.
+
 ### If the link won't open
 
 From v0.2.3, the main public tunnel survives app server restarts and in-app updates within the same Kaggle session. This happens automatically, with no account or domain setup. Keep your current link bookmarked. `kindle.stop()` deliberately stops both the app and its tunnel, including a retained tunnel whose server has crashed.

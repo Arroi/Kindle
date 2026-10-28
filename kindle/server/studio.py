@@ -7,7 +7,7 @@ import time
 
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ..gateway.common import stream_with_failover, wrap
+from ..gateway.common import fit_reply, stream_with_failover, wrap
 from .state import AppState
 
 
@@ -34,7 +34,7 @@ async def studio_ws(ws: WebSocket, state: AppState) -> None:
                 raise RuntimeError(state.updates.status()["message"])
             body = {"messages": msg.get("messages") or [], **(msg.get("params") or {})}
             dep, stream = await stream_with_failover(ws, msg.get("model"), "text",  # type: ignore[arg-type]
-                                                     lambda d: d.backend.chat_stream(body))
+                                                     lambda d: d.backend.chat_stream(fit_reply(body, d)))
             async for chunk in stream:
                 if chunk.get("usage"):
                     usage = chunk["usage"]

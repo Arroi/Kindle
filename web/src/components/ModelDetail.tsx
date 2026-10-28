@@ -108,7 +108,7 @@ function EngineOptions({
   const set = (k: string, v: unknown) => onChange({ ...options, [k]: v === "" ? undefined : v });
   const m = item.modality;
   if (m === "text") {
-    const fallback = Math.min(8192, item.context_length ?? 8192);
+    const fallback = Math.min(32768, item.context_length ?? 32768);
     const maxCtx = Math.max(item.context_length ?? CTX_UNKNOWN_MAX, CTX_MIN);
     const ctx = Number(options.ctx ?? fallback);
     return (

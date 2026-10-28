@@ -28,6 +28,8 @@ CURATED_PATH = Path(__file__).with_name("curated.yaml")
 VERDICT_ORDER = {"best": 0, "good": 1, "tight": 2, "worst": 3}
 VARIANT_WORDS = ("mini", "vl", "vision", "multimodal", "coder", "math", "audio", "omni", "flash", "base", "pt")
 ENRICH_BUDGET = 1.2  # seconds a search waits for exact sizes before answering with what it has
+CONTEXT_STEPS = (131072, 65536, 32768, 16384)  # default context windows tried, longest first
+UNKNOWN_CONTEXT = 32768  # assumed maximum when a model doesn't declare one
 DIFFUSERS_ENGINES = ("diffusers", "diffusers_video", "diffusers_world")
 LEGACY_KOKORO_NOTE = "Old Kokoro v0.19 weights. The kokoro library loads v1.0: use hexgrad/Kokoro-82M."
 SINGLE_FILE_NOTE = ("Single-file or original-format checkpoint (ComfyUI style), not a diffusers pipeline. "
@@ -664,6 +666,27 @@ class CatalogService:
         )
 
     def _apply_fit(self, it: dict, hw: HardwareProfile) -> Fit:
+        """Fit plus the default context window: the longest standard window that still fits well.
+
+        Engines fall back to 8K when nothing is set, which cuts off agents (and Ollama silently drops
+        the start of longer prompts). A big GPU easily holds 64K–128K for most models.
+        """
+        f = self._fit_base(it, hw)
+        if (it["modality"] != "text" or "ctx" in (it.get("options") or {}) or f.verdict == "worst"
+                or f.placement not in ("single", "split")):
+            return f
+        limit = int(it.get("context_length") or UNKNOWN_CONTEXT)
+        for ctx in CONTEXT_STEPS:
+            if ctx > limit:
+                continue
+            trial = {**it, "options": {**(it.get("options") or {}), "ctx": ctx}}
+            g = assess(self._candidate(trial), hw)
+            if g.verdict in ("best", "good") and g.placement == f.placement:
+                it["spec"] = self._spec(trial, g)
+                return g
+        return f
+
+    def _fit_base(self, it: dict, hw: HardwareProfile) -> Fit:
         # GGUF repos on HF: choose the best quant for this machine.
         if it["source"] == "hf" and it.get("engine") == "ollama" and it.get("params"):
             quant, f = pick_quant(float(it["params"]), None, self._candidate(it), hw)

@@ -14,6 +14,7 @@ import psutil
 from . import __version__
 from .config import DEFAULT_PORT, Paths, default_tunnel, load_preset
 from .notify import card_html, card_text
+from .proc import sacrifice
 from .secretstore import kaggle_sourced, load_kaggle_secrets
 from .tunnels.persistent import read_record, request_handoff, saved_processes, stop_saved_tunnel
 
@@ -254,7 +255,8 @@ def launch(preset=None, *, block: bool = True, heartbeat: float | None = 20, tun
             env.setdefault(key, retained[field])
     with open(paths.logs / "server.log", "a") as log:
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-                                env=env)
+                                env={**env, "KINDLE_HOME": str(paths.home)})
+    sacrifice(proc.pid, 500)  # under memory pressure the server goes before this notebook (its models go first)
     print("Starting Kindle…", flush=True)
     deadline = time.time() + 180
     state = None
