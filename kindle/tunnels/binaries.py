@@ -1,12 +1,14 @@
-"""Download tunnel binaries (cloudflared, ngrok, burrow, Gradio's frpc) on demand."""
+"""Download tunnel binaries (cloudflared, ngrok, burrow, Gradio's frpc) and the shayef client on demand."""
 
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import platform
 import shutil
 import stat
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -79,6 +81,38 @@ async def ensure_ngrok(bin_dir: Path) -> str:
     _make_exec(local)
     os.environ.setdefault("NGROK_CONFIG", str(bin_dir / "ngrok.yml"))
     return str(local)
+
+
+SHAYEF_SOURCE = "git+https://github.com/Arroi/shayefrelay@main"
+_shayef_fetched: set[Path] = set()
+
+
+async def ensure_shayef(cache_dir: Path) -> Path | None:
+    """The newest shayef client, from its repo (SHAYEF_SOURCE overrides), once per server start, so its
+    fixes reach notebooks without a Kindle release. Installed into its own folder, not site-packages.
+    None when it can't be fetched: Kindle then runs the copy it bundles (kindle/_vendor/shayef)."""
+    target = cache_dir / "shayef-client"
+    if target in _shayef_fetched:
+        return target
+    source = os.environ.get("SHAYEF_SOURCE") or SHAYEF_SOURCE
+    staging = target.with_name("shayef-client.part")
+    shutil.rmtree(staging, ignore_errors=True)
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "pip", "install", "-q", "--no-deps", "--target", str(staging), f"shayef @ {source}",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        proc.kill()
+        out = b"timed out"
+    if proc.returncode != 0 or not (staging / "shayef" / "__main__.py").is_file():
+        tail = " | ".join(out.decode(errors="replace").strip().splitlines()[-2:])
+        print(f"[kindle] Couldn't fetch the shayef client from {source} ({tail}); using the bundled copy.", flush=True)
+        return None
+    shutil.rmtree(target, ignore_errors=True)  # a running shayef already has its modules loaded
+    staging.rename(target)
+    _shayef_fetched.add(target)
+    return target
 
 
 async def ensure_burrow(bin_dir: Path) -> str:

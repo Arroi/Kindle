@@ -34,6 +34,7 @@ PROTOCOL_QUIC = "quic"
 PROTOCOL_HTTP2 = "http2"
 
 CONN_INDEX_RE = re.compile(r"connIndex=(\d+)")
+_SUGGESTED_RE = re.compile("suggested_protocol=([A-Za-z0-9_]+)")
 
 # Substrings that mean "the UDP path to the edge is not working".
 _QUIC_SYMPTOMS = (
@@ -46,13 +47,23 @@ _QUIC_HINTS = ("quic", "udp")
 
 MAX_BACKOFF = 30.0
 
+# How long to wait for a QUIC connection before trying HTTP/2 instead.
+#
+# This exists because the relay does not exit when it cannot reach the edge:
+# it retries internally, forever. Waiting for the process to die before
+# reconsidering the transport means never reconsidering it. A sandbox that
+# blocks UDP but allows TCP 443 -- which is most of them, since the client
+# reached the control plane over 443 to get here -- would otherwise hang
+# until the caller's timeout with no fallback ever attempted.
+FALLBACK_AFTER = 15.0
+
 
 class Supervisor(object):
     """Owns one relay connector child process."""
 
     def __init__(self, binary, target_url, token, metrics_port=None,
                  protocol=PROTOCOL_QUIC, extra_args=(), on_state=None,
-                 max_restarts=None):
+                 max_restarts=None, fallback_after=FALLBACK_AFTER):
         self.binary = binary
         self.target_url = target_url
         self.token = token
@@ -60,6 +71,7 @@ class Supervisor(object):
         self.protocol = protocol
         self.extra_args = list(extra_args)
         self.on_state = on_state
+        self.fallback_after = fallback_after
         self.max_restarts = max_restarts
 
         self.state = STOPPED
@@ -73,6 +85,8 @@ class Supervisor(object):
         # connect, so a window of it is kept rather than discarded.
         self.recent = collections.deque(maxlen=60)
         self.precheck = None
+        self.tcp_ok = None
+        self.suggested_protocol = None
 
         self._process = None
         self._thread = None
@@ -80,8 +94,11 @@ class Supervisor(object):
         self._lock = threading.Lock()
         self._quic_failures = 0
         self._protocol_switched = False
+        self._switch_pending = False
         self._reported_errors = 0
+        self._reported_errors_lock = threading.Lock()
         self._first_connect = threading.Event()
+        self._watchdog = None
 
     # -- lifecycle -------------------------------------------------------
 
@@ -92,7 +109,37 @@ class Supervisor(object):
         self._thread = threading.Thread(target=self._supervise,
                                         name="shayef-connector", daemon=True)
         self._thread.start()
+        if self.protocol == PROTOCOL_QUIC and self.fallback_after:
+            self._watchdog = threading.Thread(
+                target=self._watch_for_stall, name="shayef-fallback",
+                daemon=True)
+            self._watchdog.start()
         return self
+
+    def _watch_for_stall(self):
+        """Fall back to HTTP/2 if QUIC has not connected in time.
+
+        Deliberately not conditional on recognising an error string: the
+        failure that matters here produced no message this code knew how to
+        match, and a transport that has not connected in fifteen seconds is
+        not working regardless of what it did or did not say about why.
+        """
+        if self._stop.wait(self.fallback_after):
+            return
+        if self._first_connect.is_set() or self.connections:
+            return
+        if self.protocol != PROTOCOL_QUIC or self._protocol_switched:
+            return
+        self._request_switch(
+            reason="no QUIC connection after %gs" % self.fallback_after)
+
+    def _request_switch(self, reason=None):
+        """Switch transport and bounce the relay so it takes effect."""
+        if self._protocol_switched:
+            return
+        self._switch_protocol(reason=reason)
+        self._switch_pending = True
+        self._terminate()
 
     def wait_connected(self, timeout=60):
         """Block until the connector registers at least one edge connection."""
@@ -154,6 +201,14 @@ class Supervisor(object):
 
             self.connected_at = None
             self.restarts += 1
+
+            if self._switch_pending:
+                # We stopped it on purpose to change transport.
+                self._switch_pending = False
+                self.restarts -= 1
+                backoff = 1.0
+                log.info("restarting the relay", protocol=self.protocol)
+                continue
 
             if self._should_switch_protocol():
                 self._switch_protocol()
@@ -265,6 +320,33 @@ class Supervisor(object):
             self._first_connect.set()
             return
 
+        # The relay's precheck ends by naming the transport it thinks will
+        # work. Taking its word for it beats both guessing from error strings
+        # and waiting out a timer -- it has just measured both paths.
+        if "precheck complete" in lowered:
+            match = _SUGGESTED_RE.search(message)
+            if match:
+                suggested = match.group(1).strip().lower()
+                self.suggested_protocol = suggested
+                if (suggested in (PROTOCOL_QUIC, PROTOCOL_HTTP2)
+                        and suggested != self.protocol
+                        and not self.connections
+                        and not self._protocol_switched):
+                    self._switch_protocol(
+                        to=suggested,
+                        reason="the relay's own precheck recommends it")
+                    self._switch_pending = True
+                    self._terminate()
+            return
+
+        if "tcp connectivity" in lowered and ("fail" in lowered or "pass" in lowered):
+            self.tcp_ok = "pass" in lowered
+            if not self.tcp_ok:
+                self.last_error = (
+                    "the relay's own check says TCP to the edge is blocked too")
+                log.warn("TCP to the shayef edge is blocked here as well")
+            return
+
         # The relay runs its own connectivity precheck and prints the
         # verdict. Acting on it beats waiting for dial errors that may never
         # match a known phrase.
@@ -275,8 +357,10 @@ class Supervisor(object):
                 self._quic_failures += 1
                 self.last_error = (
                     "the relay's own check says UDP to the edge is blocked")
-                log.warn("UDP to the shayef edge is blocked here",
-                         detail="falling back to HTTP/2")
+                # Its own check already said UDP will not work, so there is
+                # nothing to wait for.
+                self._request_switch(
+                    reason="the relay's own check says UDP is blocked")
             return
 
         if "summary: environment is healthy" in lowered:
@@ -284,6 +368,11 @@ class Supervisor(object):
             return
 
         if any(symptom in lowered for symptom in _QUIC_SYMPTOMS):
+            # Counted, not acted on. One dial failure is not proof the path is
+            # unusable, and permanently downgrading the transport on a single
+            # hiccup would be worse than waiting. The authoritative signals --
+            # the relay's own precheck and its suggested protocol -- switch
+            # straight away; this leaves the ambiguous case to the watchdog.
             self._quic_failures += 1
             self.last_error = message
             log.debug("quic symptom observed", count=self._quic_failures)
@@ -317,12 +406,12 @@ class Supervisor(object):
                 and (self._quic_failures > 0
                      or _looks_like_quic(self.last_error)))
 
-    def _switch_protocol(self):
-        self.protocol = PROTOCOL_HTTP2
+    def _switch_protocol(self, to=PROTOCOL_HTTP2, reason=None):
+        self.protocol = to
         self._protocol_switched = True
         self._quic_failures = 0
-        log.warn("UDP path to the shayef edge looks blocked; "
-                 "retrying over HTTP/2", protocol=self.protocol)
+        log.warn("switching the relay to %s" % to,
+                 reason=reason or "the UDP path to the edge looks blocked")
 
     def _set_state(self, state):
         if state == self.state:
@@ -343,6 +432,8 @@ class Supervisor(object):
             "state": self.state,
             "protocol": self.protocol,
             "precheck": self.precheck,
+            "tcp_ok": self.tcp_ok,
+            "suggested_protocol": self.suggested_protocol,
             "last_error": self.last_error,
             "restarts": self.restarts,
             "recent": list(self.recent)[-lines:],

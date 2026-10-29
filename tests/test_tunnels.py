@@ -123,6 +123,7 @@ async def test_shayef_is_gated_by_kindles_api_key(paths, monkeypatch):
     monkeypatch.setenv("SHAYEF_TOKEN", "shy-token")
     monkeypatch.setenv("SHAYEF_NAME", "my-kindle")
     monkeypatch.setattr(manager, "ensure_cloudflared", AsyncMock(return_value="/k/bin/cloudflared"))
+    monkeypatch.setattr(manager, "ensure_shayef", AsyncMock(return_value=None))  # GitHub unreachable: bundled copy
     monkeypatch.setattr(manager, "PersistentProcess", Process)
     tunnels = manager.TunnelManager(paths, shayef_key=lambda: "kui-key")
     tunnel = manager.Tunnel("main", "shayef", 8890, persistent=True)
@@ -134,7 +135,7 @@ async def test_shayef_is_gated_by_kindles_api_key(paths, monkeypatch):
         assert cmd[cmd.index("--access") + 1] == "key"
         assert seen["env"]["SHAYEF_KEY"] == "kui-key"  # API clients pass the gate with the key they already send
         assert "shy-token" not in " ".join(cmd) and "kui-key" not in " ".join(cmd)  # never where ps shows it
-        assert seen["env"]["SHAYEF_RELAY"] == "/k/bin/cloudflared"
+        assert seen["env"]["SHAYEF_RELAY"] == "/k/bin/cloudflared" and "PYTHONPATH" not in seen["env"]
         assert tunnel.info()["link_key"] == "kui-key"
         assert tunnel.url is None and tunnel.status == "starting"
         tunnel.proc.on_line("  - hostname ready reused=False url=https://my-kindle.shayef.me")

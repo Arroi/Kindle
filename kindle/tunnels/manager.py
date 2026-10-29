@@ -21,7 +21,7 @@ import httpx
 
 from ..config import Paths
 from ..proc import ManagedProcess
-from .binaries import ensure_burrow, ensure_cloudflared, ensure_frpc, ensure_ngrok
+from .binaries import ensure_burrow, ensure_cloudflared, ensure_frpc, ensure_ngrok, ensure_shayef
 from .persistent import PersistentProcess, binding, read_record, stop_saved_tunnel
 
 QUICK_URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
@@ -340,11 +340,14 @@ class TunnelManager:
                 t.refused = True  # shayef doesn't retry these itself, so waiting on them only delays the fallback
                 self._changed(t)
 
-        # The client ships inside Kindle (kindle/_vendor). The token and key reach it through the environment,
-        # never the command line, where ps shows them.
-        cmd = [sys.executable, "-u", "-m", "kindle._vendor.shayef", "up", str(t.port), name,
+        # The newest client from its repo, else the copy Kindle bundles. The token and key reach it through
+        # the environment, never the command line, where ps shows them.
+        fetched = await ensure_shayef(self.paths.cache)
+        cmd = [sys.executable, "-u", "-m", "shayef" if fetched else "kindle._vendor.shayef", "up", str(t.port), name,
                "--access", "key" if t.link_key else "open", "--label", "Kindle"]
         env = {"SHAYEF_RELAY": relay, "SHAYEF_HOME": str(home), "SHAYEF_KEY": t.link_key or ""}
+        if fetched:
+            env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(fetched), os.environ.get("PYTHONPATH"))))
         await self._start_process(t, cmd, on_line, env=env)
         rc = await t.proc.wait()
         if t.status != "stopped":
