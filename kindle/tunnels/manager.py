@@ -58,6 +58,7 @@ class Tunnel:
     proc: ManagedProcess | PersistentProcess | None = None
     task: asyncio.Task | None = None
     persistent: bool = False
+    refused: bool = False  # the provider said no for good (shayef's `error:`): fall back instead of waiting
     link_key: str | None = None  # the access key a link needs as ?k=, when the tunnel is gated by one
 
     def info(self) -> dict:
@@ -187,7 +188,7 @@ class TunnelManager:
                         t.error = None
                         self._changed(t)
                 return t.url
-            if t and t.status == "error" and t.restarts >= 3:
+            if t and ((t.status == "error" and t.restarts >= 3) or t.refused):
                 return None
             await asyncio.sleep(0.5)
         return None
@@ -316,6 +317,7 @@ class TunnelManager:
         home.mkdir(parents=True, exist_ok=True)
         name = os.environ.get("SHAYEF_NAME") or "kindle"
         t.link_key = self._secret("shayef") or None
+        t.refused = False
 
         def on_line(line: str) -> None:
             url = SHAYEF_URL_RE.search(line)
@@ -335,6 +337,8 @@ class TunnelManager:
                 t.error = f"{t.error} {problem.group(2).strip()}"[:300]
             elif problem or relay_problem:
                 t.error = (problem.group(2) if problem else relay_problem.group(1)).strip()[:300]
+                t.refused = True  # shayef doesn't retry these itself, so waiting on them only delays the fallback
+                self._changed(t)
 
         # The client ships inside Kindle (kindle/_vendor). The token and key reach it through the environment,
         # never the command line, where ps shows them.

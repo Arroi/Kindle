@@ -183,12 +183,49 @@ class Tunnel(object):
             if self.supervisor.state == FAILED:
                 log.error("the relay failed to come up",
                           detail=self.supervisor.last_error or "unknown")
+                self._explain_failure()
                 return False
             if self.supervisor.state == CONNECTED:
                 return True
             time.sleep(0.25)
-        log.warn("the relay has not connected after %ss; still trying" % timeout)
+        log.warn("the relay has not connected after %ss" % timeout)
+        self._explain_failure()
         return False
+
+    def _explain_failure(self):
+        """Say why, in the relay's own words.
+
+        A hostname with no connector behind it serves a 1033 from the edge,
+        which tells a visitor nothing. Printing the relay's own account of
+        the failure here is the difference between a diagnosable problem and
+        a mystery.
+        """
+        detail = self.supervisor.explain()
+        print("")
+        print("    The address exists but nothing is behind it yet, so it will")
+        print("    return an edge error until the relay connects.")
+        print("")
+        print("      state     %s" % detail["state"])
+        print("      protocol  %s" % detail["protocol"])
+        if detail["precheck"]:
+            print("      network   %s" % detail["precheck"])
+        if detail["last_error"]:
+            print("      error     %s" % str(detail["last_error"])[:150])
+        if detail["recent"]:
+            print("")
+            print("    Last lines from the relay:")
+            for line in detail["recent"]:
+                print("      %s" % str(line)[:160])
+        print("")
+        if detail["precheck"] == "udp blocked":
+            print("    UDP to the edge is blocked here. shayef has already retried")
+            print("    over HTTP/2; if it still will not connect, outbound 443 is")
+            print("    blocked too and this network cannot carry a tunnel.")
+        else:
+            print("    Most often this is a sandbox blocking outbound traffic.")
+            print("    Run `shayef doctor`, and check the host allows outbound")
+            print("    UDP 7844 or TCP 443 to the edge.")
+        print("")
 
     def stop(self, release=False):
         """Stop serving. `release` also gives up the hostname."""
@@ -283,6 +320,9 @@ class Tunnel(object):
             "access": self.access,
             "stopped": self.stopped,
             "relay": relay,
+            "relay_detail": (self.supervisor.explain()
+                             if self.supervisor and self.status != "connected"
+                             else None),
             "guard": guard,
             "beacon": self.beacon.describe() if self.beacon else None,
             "metrics": self.metrics.summary(),

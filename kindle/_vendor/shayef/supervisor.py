@@ -11,6 +11,7 @@ Responsibilities, in order of how often they matter in a notebook:
     resumed and the relay has to come back on its own.
 """
 
+import collections
 import json
 import re
 import subprocess
@@ -68,12 +69,18 @@ class Supervisor(object):
         self.started_at = None
         self.connected_at = None
 
+        # The relay's own output is the only evidence of why it will not
+        # connect, so a window of it is kept rather than discarded.
+        self.recent = collections.deque(maxlen=60)
+        self.precheck = None
+
         self._process = None
         self._thread = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._quic_failures = 0
         self._protocol_switched = False
+        self._reported_errors = 0
         self._first_connect = threading.Event()
 
     # -- lifecycle -------------------------------------------------------
@@ -122,6 +129,7 @@ class Supervisor(object):
             "connection_count": len(self.connections),
             "restarts": self.restarts,
             "last_error": self.last_error,
+            "precheck": self.precheck,
             "uptime": (time.time() - self.started_at) if self.started_at else 0,
             "connected_for": (time.time() - self.connected_at) if self.connected_at else 0,
         }
@@ -236,6 +244,7 @@ class Supervisor(object):
             return
         message = _message_of(line)
         lowered = message.lower()
+        self.recent.append(message)
 
         # Order matters: "unregistered tunnel connection" contains
         # "registered tunnel connection", so the negative case is tested
@@ -256,6 +265,24 @@ class Supervisor(object):
             self._first_connect.set()
             return
 
+        # The relay runs its own connectivity precheck and prints the
+        # verdict. Acting on it beats waiting for dial errors that may never
+        # match a known phrase.
+        if "udp connectivity" in lowered and ("fail" in lowered or "pass" in lowered):
+            passed = "pass" in lowered
+            self.precheck = "udp ok" if passed else "udp blocked"
+            if not passed:
+                self._quic_failures += 1
+                self.last_error = (
+                    "the relay's own check says UDP to the edge is blocked")
+                log.warn("UDP to the shayef edge is blocked here",
+                         detail="falling back to HTTP/2")
+            return
+
+        if "summary: environment is healthy" in lowered:
+            self.precheck = self.precheck or "healthy"
+            return
+
         if any(symptom in lowered for symptom in _QUIC_SYMPTOMS):
             self._quic_failures += 1
             self.last_error = message
@@ -263,14 +290,25 @@ class Supervisor(object):
             return
 
         if _is_error(line, lowered):
-            self.last_error = message
+            # A retry notice is a symptom, not the cause; letting it
+            # overwrite last_error buries the dial error that explains the
+            # failure.
+            if "retrying connection" not in lowered:
+                self.last_error = message
             if "no such host" in lowered or "lookup" in lowered:
                 log.warn("relay dns problem", detail=message[:160])
             elif "token" in lowered or "unauthorized" in lowered or "401" in lowered:
                 log.error("the edge rejected the relay", detail=message[:160])
                 self._set_state(FAILED)
             else:
-                log.debug("relay error", detail=message[:160])
+                # Visible, not debug-only: a relay that cannot connect is the
+                # single most important thing to be able to explain, and
+                # burying this is what made it undiagnosable.
+                self._reported_errors += 1
+                if self._reported_errors <= 3:
+                    log.warn("relay error", detail=message[:160])
+                else:
+                    log.debug("relay error", detail=message[:160])
 
     def _should_switch_protocol(self):
         return (self.protocol == PROTOCOL_QUIC
@@ -298,6 +336,17 @@ class Supervisor(object):
                 pass
 
     # -- metrics ---------------------------------------------------------
+
+    def explain(self, lines=12):
+        """Why the relay is not connected, in the relay's own words."""
+        return {
+            "state": self.state,
+            "protocol": self.protocol,
+            "precheck": self.precheck,
+            "last_error": self.last_error,
+            "restarts": self.restarts,
+            "recent": list(self.recent)[-lines:],
+        }
 
     def readiness(self):
         """The relay's own readiness endpoint, when metrics are enabled."""

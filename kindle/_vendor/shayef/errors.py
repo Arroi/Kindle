@@ -23,9 +23,23 @@ class ConfigError(ShayefError):
 class ControlPlaneError(ShayefError):
     """shayef.me refused or could not answer a request."""
 
-    def __init__(self, message, status=None, hint=None):
+    def __init__(self, message, status=None, hint=None, code=None):
         super().__init__(message, hint=hint)
         self.status = status
+        # A stable code from the control plane, when it sent one. Callers can
+        # branch on this to decide whether to fall back rather than wait.
+        self.code = code
+
+    @property
+    def permanent(self):
+        """True when waiting and retrying cannot change the outcome.
+
+        Worth checking before a long retry loop: a caller that wants to fall
+        back to something else should do it immediately on a permanent
+        refusal instead of timing out.
+        """
+        from .client import PERMANENT_CODES
+        return self.code in PERMANENT_CODES
 
 
 class RelayError(ShayefError):

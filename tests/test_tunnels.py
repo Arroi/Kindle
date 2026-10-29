@@ -144,6 +144,7 @@ async def test_shayef_is_gated_by_kindles_api_key(paths, monkeypatch):
         tunnel.proc.on_line("  error: my-kindle.shayef.me belongs to another client.")
         tunnel.proc.on_line("  hint:  Pick another SHAYEF_NAME.")
         assert tunnel.error == "my-kindle.shayef.me belongs to another client. Pick another SHAYEF_NAME."
+        assert tunnel.refused  # wait_url stops here, so molab falls back at once instead of after 90 s
         tunnel.proc.on_line("  x the edge rejected the relay detail=Unauthorized: invalid tunnel token")
         assert tunnel.error == "Unauthorized: invalid tunnel token"
     finally:

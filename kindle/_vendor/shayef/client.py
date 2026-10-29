@@ -21,6 +21,19 @@ from .version import __version__
 USER_AGENT = "shayef/%s" % __version__
 RETRY_STATUS = (429, 500, 502, 503, 504)
 
+# Refusals that will not become successes by waiting. A 503 is normally worth
+# a retry, but a 503 meaning "the operator has not set this up" is not, and
+# retrying it just makes a clear failure look like a flaky network -- which
+# pushes callers into long timeouts instead of falling back straight away.
+PERMANENT_CODES = frozenset([
+    "not_configured",
+    "name_taken",
+    "reserved_name",
+    "not_owner",
+    "bad_name",
+    "bad_service",
+])
+
 
 class Session(object):
     """What the control plane hands back when a session is opened."""
@@ -75,11 +88,14 @@ class ControlPlane(object):
                 response = urllib.request.urlopen(request, timeout=self.timeout)
             except urllib.error.HTTPError as exc:
                 raw = exc.read()
-                if exc.code in RETRY_STATUS and attempt < attempts - 1:
+                error = _error(exc.code, raw, method, path)
+                retryable = (exc.code in RETRY_STATUS
+                             and error.code not in PERMANENT_CODES)
+                if retryable and attempt < attempts - 1:
                     last = exc
                     time.sleep(_backoff(attempt))
                     continue
-                raise _error(exc.code, raw, method, path)
+                raise error
             except (urllib.error.URLError, socket.timeout) as exc:
                 last = exc
                 if attempt < attempts - 1:
@@ -205,12 +221,13 @@ def _error(status, raw, method, path):
     message = body.get("error") or "shayef.me rejected %s %s (HTTP %s)." % (
         method, path, status)
     hint = body.get("hint")
+    code = body.get("code")
     if status in (401, 403) and not hint:
         hint = ("The token was rejected. Check SHAYEF_TOKEN, or ask for a new "
                 "one.")
     if status == 409 and not hint:
         hint = "Pick a different name, or close the existing session first."
-    return ControlPlaneError(message, status=status, hint=hint)
+    return ControlPlaneError(message, status=status, hint=hint, code=code)
 
 
 def _backoff(attempt):
