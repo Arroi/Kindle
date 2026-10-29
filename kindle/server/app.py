@@ -229,6 +229,9 @@ def create_app(state: AppState) -> FastAPI:
             raise HTTPException(400, "which must be 'password' or 'api_key'")
         state.auth.regenerate(which)
         _write_state(state)
+        main = state.tunnels.get("main")
+        if which == "api_key" and main and main.provider == "shayef":
+            asyncio.create_task(_open_main_tunnel(state))  # its gate takes the API key; restart it with the new one
         return {"admin_token": state.auth.admin_token, "password": state.auth.password, "api_key": state.auth.api_key}
 
     # -- secrets (keys & tokens) ----------------------------------------------------------------
@@ -782,7 +785,7 @@ async def _open_main_tunnel(state: AppState) -> bool:
         return False
     _write_state(state)
     if url and provider != "none":
-        result = await notify.push(url, state.auth.admin_token)
+        result = await notify.push(url, state.auth.admin_token, state.tunnels.get("main").link_key)
         if result:
             print(f"[kindle] notification {result}", flush=True)
     return True
@@ -831,7 +834,7 @@ async def _startup(state: AppState) -> None:
                 if url and state.tunnels.get("main") is t and t.status == "up":
                     _write_state(state)
                     print(f"[kindle] public URL changed: {url}", flush=True)
-                    await notify.push(url, state.auth.admin_token)
+                    await notify.push(url, state.auth.admin_token, t.link_key)
 
             asyncio.create_task(announce())
 
@@ -839,7 +842,8 @@ async def _startup(state: AppState) -> None:
     if ready:
         print(notify.card_text(state.main_url(), state.auth.admin_token,
                               state.auth.password if state.settings.access.password_enabled else None,
-                              state.auth.api_key if state.settings.api.enabled else None), flush=True)
+                              state.auth.api_key if state.settings.api.enabled else None,
+                              state.tunnels.get("main").link_key if state.tunnels.get("main") else None), flush=True)
 
 
 def response_json(data) -> Response:

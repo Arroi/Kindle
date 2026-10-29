@@ -50,6 +50,7 @@ artifacts = ["kindle/static/**"]
 [tool.ruff]
 line-length = 110
 target-version = "py310"
+extend-exclude = ["kindle/_vendor"]  # shipped unmodified
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

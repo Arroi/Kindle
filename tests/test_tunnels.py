@@ -88,12 +88,79 @@ def test_molab_defaults_to_gradio(monkeypatch):
 
     monkeypatch.delenv("KINDLE_TUNNEL", raising=False)
     monkeypatch.delenv("BURROW_TOKEN", raising=False)
+    monkeypatch.delenv("SHAYEF_TOKEN", raising=False)
     monkeypatch.setattr(config, "ON_MOLAB", True)
     assert config.default_tunnel() == "gradio"
     monkeypatch.setenv("BURROW_TOKEN", "eyJ-key")
     assert config.default_tunnel() == "gradio"  # the hostname is needed too
     monkeypatch.setenv("BURROW_HOSTNAME", "ai.example.com")
     assert config.default_tunnel() == "burrow"
+    monkeypatch.setenv("SHAYEF_TOKEN", "shy-token")
+    assert config.default_tunnel() == "shayef"  # preferred over burrow when both are set
+
+
+async def test_shayef_is_gated_by_kindles_api_key(paths, monkeypatch):
+    started = asyncio.Event()
+    finish = asyncio.Event()
+    seen = {}
+
+    class Process:
+        def __init__(self, paths, cmd, *, on_line, env=None, **kwargs):
+            seen["cmd"], seen["env"] = cmd, env
+            self.on_line = on_line
+            self.tail = []
+
+        def adopt(self):
+            return None
+
+        async def start(self):
+            started.set()
+
+        async def wait(self):
+            await finish.wait()
+            return 0
+
+    monkeypatch.setenv("SHAYEF_TOKEN", "shy-token")
+    monkeypatch.setenv("SHAYEF_NAME", "my-kindle")
+    monkeypatch.setattr(manager, "ensure_cloudflared", AsyncMock(return_value="/k/bin/cloudflared"))
+    monkeypatch.setattr(manager, "PersistentProcess", Process)
+    tunnels = manager.TunnelManager(paths, shayef_key=lambda: "kui-key")
+    tunnel = manager.Tunnel("main", "shayef", 8890, persistent=True)
+    task = asyncio.create_task(tunnels._run_shayef(tunnel))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    try:
+        cmd = seen["cmd"]
+        assert cmd[1:7] == ["-u", "-m", "kindle._vendor.shayef", "up", "8890", "my-kindle"]
+        assert cmd[cmd.index("--access") + 1] == "key"
+        assert seen["env"]["SHAYEF_KEY"] == "kui-key"  # API clients pass the gate with the key they already send
+        assert "shy-token" not in " ".join(cmd) and "kui-key" not in " ".join(cmd)  # never where ps shows it
+        assert seen["env"]["SHAYEF_RELAY"] == "/k/bin/cloudflared"
+        assert tunnel.info()["link_key"] == "kui-key"
+        assert tunnel.url is None and tunnel.status == "starting"
+        tunnel.proc.on_line("  - hostname ready reused=False url=https://my-kindle.shayef.me")
+        assert tunnel.url == "https://my-kindle.shayef.me" and tunnel.status == "starting"
+        tunnel.proc.on_line("  - tunnel is live url=https://my-kindle.shayef.me")
+        assert tunnel.status == "up"
+        tunnel.proc.on_line("  error: my-kindle.shayef.me belongs to another client.")
+        tunnel.proc.on_line("  hint:  Pick another SHAYEF_NAME.")
+        assert tunnel.error == "my-kindle.shayef.me belongs to another client. Pick another SHAYEF_NAME."
+        tunnel.proc.on_line("  x the edge rejected the relay detail=Unauthorized: invalid tunnel token")
+        assert tunnel.error == "Unauthorized: invalid tunnel token"
+    finally:
+        tunnel.status = "stopped"
+        finish.set()
+        await task
+
+
+async def test_shayef_link_is_shared_only_once_it_reaches_kindle(paths, monkeypatch):
+    tunnels = manager.TunnelManager(paths)
+    tunnels.tunnels["main"] = manager.Tunnel("main", "shayef", 8890, url="https://kindle.shayef.me", status="up")
+    errors = []
+    reaches = AsyncMock(side_effect=lambda t: errors.append(t.error) or (None if len(errors) > 1 else "ConnectError"))
+    monkeypatch.setattr(tunnels, "_reaches_kindle", reaches)
+    assert await tunnels.wait_url("main", timeout=5) == "https://kindle.shayef.me"
+    assert errors[1] == "shayef is connected, but https://kindle.shayef.me doesn't reach Kindle (ConnectError)."
+    assert tunnels.tunnels["main"].error is None
 
 
 async def test_burrow_runs_its_agent_with_the_key(paths, monkeypatch):
@@ -151,6 +218,21 @@ async def test_burrow_link_is_shared_only_once_it_reaches_kindle(paths, monkeypa
     assert tunnels.tunnels["main"].error is None
 
 
+def test_a_new_api_key_is_a_new_shayef_binding(monkeypatch):
+    from kindle.tunnels.persistent import binding
+
+    monkeypatch.setenv("SHAYEF_TOKEN", "shy-token")
+    assert binding("shayef", 8890, "old-key") != binding("shayef", 8890, "new-key")
+    assert binding("gradio", 8890) == binding("gradio", 8890, "")
+
+
+def test_panel_link_carries_a_gated_tunnels_key():
+    from kindle.notify import panel_link
+
+    assert panel_link("https://kindle.shayef.me/", "adm") == "https://kindle.shayef.me/?token=adm"
+    assert panel_link("https://kindle.shayef.me", "adm", "kui-key") == "https://kindle.shayef.me/?k=kui-key&token=adm"
+
+
 async def test_burrow_side_tunnels_use_gradio(paths, monkeypatch):
     async def idle(self, t):
         return None
@@ -158,6 +240,7 @@ async def test_burrow_side_tunnels_use_gradio(paths, monkeypatch):
     monkeypatch.setattr(manager.TunnelManager, "_supervise", idle)
     tunnels = manager.TunnelManager(paths)
     assert (await tunnels.open("ui-1", 9001, "burrow")).provider == "gradio"  # burrow's domain maps to one port
+    assert (await tunnels.open("ui-2", 9002, "shayef")).provider == "gradio"  # and so does a shayef name
     await tunnels.close_all()
 
 

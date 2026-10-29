@@ -77,10 +77,14 @@ def _show(state: dict) -> None:
         note = "App updates keep this link. A fresh notebook session, full stop or tunnel reconnect creates a new one."
     elif provider == "burrow":
         note = "Your own domain through burrow: the link stays the same across sessions."
+    elif provider == "shayef":
+        note = ("Your address on shayef.me: the link stays the same across sessions. Only requests with the API "
+                "key get through; this link carries it.")
     elif provider == "gradio":
         note = "Gradio share links expire after about 72 hours. While this cell runs, a replacement link is printed here."
-    _display(card_html(state["url"], state["admin_token"], state.get("password"), state.get("api_key"), note),
-             card_text(state["url"], state["admin_token"], state.get("password"), state.get("api_key")))
+    key = (state.get("tunnel") or {}).get("link_key")
+    _display(card_html(state["url"], state["admin_token"], state.get("password"), state.get("api_key"), note, key),
+             card_text(state["url"], state["admin_token"], state.get("password"), state.get("api_key"), key))
 
 
 def stop(home: str | None = None, *, _preserve_pid: int | None = None, _keep_tunnel: bool = False) -> bool:

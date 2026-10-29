@@ -10,9 +10,10 @@ from .config import DEFAULT_PORT, load_preset
 
 def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
-    p.add_argument("--tunnel", choices=["cloudflare", "cloudflare_named", "burrow", "ngrok", "gradio", "none"],
-                   default=None, help="How to expose the panel (default: cloudflare on Kaggle/Colab; on molab burrow "
-                                      "when BURROW_TOKEN and BURROW_HOSTNAME are set, else gradio; none elsewhere)")
+    p.add_argument("--tunnel", choices=["cloudflare", "cloudflare_named", "burrow", "shayef", "ngrok", "gradio", "none"],
+                   default=None, help="How to expose the panel (default: cloudflare on Kaggle/Colab; on molab shayef "
+                                      "when SHAYEF_TOKEN is set, burrow when BURROW_TOKEN and BURROW_HOSTNAME are, "
+                                      "else gradio; none elsewhere)")
     p.add_argument("--preset", default=None, help="Preset JSON string or file to auto-deploy")
     p.add_argument("--mock-engines", action="store_true", help="Simulate engines (UI development without a GPU)")
     p.add_argument("--fake-hw", choices=["t4x2", "p100", "tpu", "cpu"], default=None,

@@ -20,11 +20,14 @@ import psutil
 from ..config import Paths
 
 
-def binding(provider: str, port: int) -> str:
+def binding(provider: str, port: int, secret: str = "") -> str:
     names = {"ngrok": ("NGROK_AUTHTOKEN", "NGROK_DOMAIN"),
              "cloudflare_named": ("CF_TUNNEL_TOKEN", "CF_TUNNEL_HOSTNAME"),
-             "burrow": ("BURROW_TOKEN", "BURROW_HOSTNAME")}.get(provider, ())
+             "burrow": ("BURROW_TOKEN", "BURROW_HOSTNAME"),
+             "shayef": ("SHAYEF_TOKEN", "SHAYEF_NAME", "SHAYEF_API")}.get(provider, ())
     value = [provider, port, *(os.environ.get(name, "") for name in names)]
+    if secret:  # e.g. shayef's access key: a tunnel started with an old key mustn't be adopted
+        value.append(secret)
     return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 
 

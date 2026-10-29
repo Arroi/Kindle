@@ -106,7 +106,9 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
 
 [molab](https://molab.marimo.io) can't use Cloudflare quick tunnels, so Kindle publishes each session through a **Gradio share link** (`https://….gradio.live`), the relay `gradio share=True` uses. If Kindle's own tunnel doesn't connect, the start script falls back to the tunnel from the `gradio` package.
 
-**Your own domain with burrow:** set `BURROW_TOKEN` (the key from [burrow](https://burroww.lovable.app)'s dashboard) and `BURROW_HOSTNAME` (the domain it serves) in the cell below, and point the tunnel at `http://127.0.0.1:8890` on burrow's dashboard. The head session then serves its panel, API and Gradio interfaces on that domain, and the link stays the same across sessions. Kindle only prints the link once the domain actually reaches it. If burrow doesn't connect, or forwards to another port, the cell says why and falls back to a Gradio share link. Open WebUI and ComfyUI need a second public link, so they get a Gradio share link. Helper sessions use Gradio share links: two sessions on one burrow key would split the domain's requests between them. To switch a running session to burrow, run `kindle.stop()` and then re-run the cell.
+**A fixed address on shayef.me:** set `SHAYEF_TOKEN` (a client token from [shayef.me](https://shayef.me)) in the cell below, and optionally `SHAYEF_NAME` (default `kindle`, served at `https://kindle.shayef.me`). The head session then serves its panel, API and Gradio interfaces there, and the address stays the same across sessions. The shayef client ships inside Kindle, reuses Kindle's cloudflared as its relay, and prints the link only once the address actually reaches Kindle. shayef's gate uses Kindle's **API key** as its key, so nothing without that key reaches Kindle. API clients pass it with the `Authorization: Bearer` or `x-api-key` header they already send, even when the API itself doesn't require a key. Browsers get it once from the card's panel link (`/?k=…&token=…`); shayef moves it into a cookie and drops it from the address bar. A page opened without the link asks for the key: paste the API key. Regenerating the API key restarts the shayef link with the new key, and the cell prints the new panel link. [shayef.me](https://shayef.me)'s dashboard shows the traffic and the blocked requests. If shayef doesn't connect, the cell says why and falls back to a Gradio share link. Open WebUI, ComfyUI and helper sessions use Gradio share links: a second session on the same name would take the address over.
+
+**Your own domain with burrow:** set `BURROW_TOKEN` (the key from [burrow](https://burroww.lovable.app)'s dashboard) and `BURROW_HOSTNAME` (the domain it serves) in the cell below, and point the tunnel at `http://127.0.0.1:8890` on burrow's dashboard. The head session then serves its panel, API and Gradio interfaces on that domain, and the link stays the same across sessions. Kindle only prints the link once the domain actually reaches it. If burrow doesn't connect, or forwards to another port, the cell says why and falls back to a Gradio share link. Open WebUI and ComfyUI need a second public link, so they get a Gradio share link. Helper sessions use Gradio share links: two sessions on one burrow key would split the domain's requests between them. burrow is used only when `SHAYEF_TOKEN` is empty. To switch a running session to shayef or burrow, run `kindle.stop()` and then re-run the cell.
 
 ### One session
 
@@ -120,14 +122,19 @@ Set the Kaggle accelerator to **TPU VM v5e-8** (or a `TPU VM v3-8` session) and 
    REPO = "Arroi/Kindle"  # GitHub repo to install from (must be public for this install line)
    REF = "main"           # branch or tag to install
    UPDATE = False         # True: fetch the latest Kindle from GitHub
-   # Head only: serve the panel on your own domain through burrow (Gradio share links stay the fallback).
+   # Head only: serve the panel at SHAYEF_NAME.shayef.me (Gradio share links stay the fallback).
+   # Keep the token private: shared notebook output would hand it out.
+   SHAYEF_TOKEN = ""      # a client token from shayef.me
+   SHAYEF_NAME = "kindle" # the address: kindle -> https://kindle.shayef.me
+   # Or your own domain through burrow, used when SHAYEF_TOKEN is empty.
    # Point the tunnel at http://127.0.0.1:8890 on burrow's dashboard. Keep the key private.
    BURROW_TOKEN = ""      # the key from burrow's dashboard (eyJ…)
    BURROW_HOSTNAME = ""   # the domain that key serves, e.g. kindle.example.com
 
    import importlib, importlib.metadata, os, subprocess, sys
    os.environ["KINDLE_REPO"] = REPO
-   for _name, _value in (("BURROW_TOKEN", BURROW_TOKEN), ("BURROW_HOSTNAME", BURROW_HOSTNAME)):
+   for _name, _value in (("SHAYEF_TOKEN", SHAYEF_TOKEN), ("SHAYEF_NAME", SHAYEF_NAME),
+                         ("BURROW_TOKEN", BURROW_TOKEN), ("BURROW_HOSTNAME", BURROW_HOSTNAME)):
        if _value:
            os.environ[_name] = _value
    _source = f"kindle @ git+https://github.com/{REPO}@{REF}"

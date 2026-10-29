@@ -99,10 +99,21 @@ def burrow_configured() -> bool:
     return bool(os.environ.get("BURROW_TOKEN") and os.environ.get("BURROW_HOSTNAME"))
 
 
+def shayef_configured() -> bool:
+    return bool(os.environ.get("SHAYEF_TOKEN"))
+
+
+def molab_tunnel() -> str:
+    """The head's link on molab: shayef.me, then burrow, when their secrets are set, else a Gradio share link."""
+    if shayef_configured():
+        return "shayef"
+    return "burrow" if burrow_configured() else "gradio"
+
+
 def default_tunnel() -> str:
     env = os.environ.get("KINDLE_TUNNEL")
     if env:
         return env
     if ON_MOLAB:
-        return "burrow" if burrow_configured() else "gradio"
+        return molab_tunnel()
     return "cloudflare" if (ON_KAGGLE or ON_COLAB) else "none"

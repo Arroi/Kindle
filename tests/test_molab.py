@@ -41,6 +41,7 @@ def _start_with(monkeypatch, tmp_path, fails: set[str], *, crash: bool = False,
 def test_burrow_is_the_heads_primary_link_with_gradio_as_fallback(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("BURROW_TOKEN", "eyJ-key")
     monkeypatch.setenv("BURROW_HOSTNAME", "ai.example.com")
+    monkeypatch.delenv("SHAYEF_TOKEN", raising=False)
     assert _start_with(monkeypatch, tmp_path, set()) == ["burrow"]
     assert "https://burrow.example/?token=adm" in capsys.readouterr().out
     assert _start_with(monkeypatch, tmp_path, {"burrow"}) == ["burrow", "gradio"]
@@ -49,9 +50,20 @@ def test_burrow_is_the_heads_primary_link_with_gradio_as_fallback(monkeypatch, t
     assert "https://gradio.example/?token=adm" in out
 
 
+def test_shayef_is_the_heads_primary_link_when_its_token_is_set(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("SHAYEF_TOKEN", "shy-token")
+    monkeypatch.setenv("BURROW_TOKEN", "eyJ-key")
+    monkeypatch.setenv("BURROW_HOSTNAME", "ai.example.com")
+    assert _start_with(monkeypatch, tmp_path, set()) == ["shayef"]
+    assert "https://shayef.example/?token=adm" in capsys.readouterr().out
+    assert _start_with(monkeypatch, tmp_path, {"shayef"}) == ["shayef", "gradio"]
+    assert "shayef.me tunnel didn't connect (no route to the domain)" in capsys.readouterr().out
+
+
 def test_a_server_that_crashes_is_not_retried_on_other_tunnels(monkeypatch, tmp_path):
     monkeypatch.setenv("BURROW_TOKEN", "eyJ-key")
     monkeypatch.setenv("BURROW_HOSTNAME", "ai.example.com")
+    monkeypatch.delenv("SHAYEF_TOKEN", raising=False)
     tried: list[str] = []
     with pytest.raises(RuntimeError, match="exited during startup"):
         _start_with(monkeypatch, tmp_path, set(), crash=True, tried=tried)
@@ -78,6 +90,7 @@ def test_missing_dependencies_are_installed_before_the_server_starts(monkeypatch
 
 def test_without_burrow_molab_uses_gradio(monkeypatch, tmp_path):
     monkeypatch.delenv("BURROW_TOKEN", raising=False)
+    monkeypatch.delenv("SHAYEF_TOKEN", raising=False)
     assert _start_with(monkeypatch, tmp_path, set()) == ["gradio"]
     with pytest.raises(ValueError, match="BURROW_TOKEN"):
         molab.start("head", tunnel="burrow")
@@ -93,3 +106,8 @@ def test_cards_tell_each_role_what_to_do(capsys, tmp_path, monkeypatch):
     molab._card("head", "https://x.gradio.live", state, str(tmp_path))
     head = capsys.readouterr().out
     assert "https://x.gradio.live/?token=adm" in head and "https://x.gradio.live/v1" in head and "96 GB" in head
+    assert "Traffic" not in head
+    shayef = {**state, "tunnel": {"provider": "shayef", "link_key": "kui-key"}}
+    molab._card("head", "https://kindle.shayef.me", shayef, str(tmp_path))
+    head = capsys.readouterr().out
+    assert "https://kindle.shayef.me/?k=kui-key&token=adm" in head and "Traffic:  https://shayef.me/" in head

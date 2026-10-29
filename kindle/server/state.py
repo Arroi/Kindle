@@ -52,7 +52,8 @@ class AppState:
         self.probe = Probe(self.paths, fake=self.fake_hw)
         self.imports = ModelImports(self.paths.models / "imports", self.paths.envs)
         self.catalog = CatalogService(self.probe.snapshot, imports_root=self.imports.root)
-        self.tunnels = TunnelManager(self.paths, on_change=lambda t: self.bus.publish("tunnel", t.info()))
+        self.tunnels = TunnelManager(self.paths, on_change=lambda t: self.bus.publish("tunnel", t.info()),
+                                     shayef_key=lambda: self.auth.api_key)
         self.manager = DeploymentManager(self)
         self.interfaces = InterfaceManager(self)
         self.updates = Updates(self)

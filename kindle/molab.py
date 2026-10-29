@@ -19,8 +19,9 @@ from pathlib import Path
 import httpx
 
 from . import __version__
-from .config import Paths, burrow_configured, disk_budget
+from .config import Paths, disk_budget, molab_tunnel
 from .launcher import _read_state, _running, _status_line, launch, stop
+from .notify import panel_link
 from .system.memory import container_memory
 from .tunnels.manager import PROVIDER_LABELS
 from .tunnels.persistent import read_record
@@ -81,18 +82,29 @@ def _card(role: str, url: str, state: dict, home: str) -> None:
                   " Keep this cell running. If the link changes (relays expire after ~72 h), link it again."]
     else:
         lines += [" Kindle HEAD: runs the model and serves the API", rule,
-                  f" Panel:    {url}/?token={state.get('admin_token')}",
+                  f" Panel:    {panel_link(url, state.get('admin_token'), _link_key(state))}",
                   f" API:      {url}/v1   (Anthropic clients: {url})",
                   f" API key:  {state.get('api_key')}",
                   *_machine(state, home), rule,
                   " Pooling: start helper sessions with kindle.molab.start(\"helper\"), then link each one",
                   " under Linked sessions here, and deploy a GGUF with the llama.cpp (GPU pool) engine.",
                   " The head needs disk space for the whole GGUF file."]
+    if (state.get("tunnel") or {}).get("provider") == "shayef":
+        api = (os.environ.get("SHAYEF_API") or "https://shayef.me").rstrip("/")
+        if _link_key(state):
+            lines += [rule, " Only requests carrying the API key get through shayef. API clients already send it;",
+                      " browsers get it once from the Panel link."]
+        lines += [rule, f" Traffic:  {api}/   (shayef's dashboard: who is reaching this link)"]
     lines += [rule, ""]
     print("\n".join(lines), flush=True)
 
 
-TUNNEL_SECRETS = {"burrow": ("BURROW_TOKEN", "BURROW_HOSTNAME"),
+def _link_key(state: dict) -> str | None:
+    return (state.get("tunnel") or {}).get("link_key")
+
+
+TUNNEL_SECRETS = {"shayef": ("SHAYEF_TOKEN",),
+                  "burrow": ("BURROW_TOKEN", "BURROW_HOSTNAME"),
                   "cloudflare_named": ("CF_TUNNEL_TOKEN", "CF_TUNNEL_HOSTNAME"),
                   "gradio": ()}
 
@@ -100,22 +112,24 @@ TUNNEL_SECRETS = {"burrow": ("BURROW_TOKEN", "BURROW_HOSTNAME"),
 def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None, tunnel: str | None = None) -> None:
     """Where the public link comes from:
 
+    - ``"shayef"``: your address on shayef.me, SHAYEF_NAME.shayef.me (default kindle). Needs SHAYEF_TOKEN.
     - ``"burrow"``: your own domain through burrow. Needs BURROW_TOKEN (the key from burrow's
       dashboard) and BURROW_HOSTNAME, and the tunnel must point at http://127.0.0.1:8890 there.
     - ``"cloudflare_named"``: your own domain through a Cloudflare named tunnel (CF_TUNNEL_TOKEN and
       CF_TUNNEL_HOSTNAME, its public hostname pointed at http://localhost:8890).
     - ``"gradio"``: a gradio.live share link. No account needed.
 
-    By default the head uses burrow when its two variables are set, else Gradio. Helpers default to
-    Gradio: two sessions on one burrow key would split the hostname's requests between them. If the
+    By default the head uses shayef when SHAYEF_TOKEN is set, else burrow when its two variables are,
+    else Gradio. Helpers default to Gradio: two sessions on one burrow key would split the hostname's
+    requests between them, and a second session on one shayef name takes the hostname over. If the
     chosen tunnel doesn't connect, Kindle falls back to a Gradio share link, then to the gradio
     package's own tunnel.
     """
     if role not in ("head", "helper"):
         raise ValueError('role must be "head" or "helper"')
-    tunnel = tunnel or ("burrow" if role == "head" and burrow_configured() else "gradio")
+    tunnel = tunnel or (molab_tunnel() if role == "head" else "gradio")
     if tunnel not in TUNNEL_SECRETS:
-        raise ValueError('tunnel must be "burrow", "gradio" or "cloudflare_named"')
+        raise ValueError('tunnel must be "shayef", "burrow", "gradio" or "cloudflare_named"')
     missing = [name for name in TUNNEL_SECRETS[tunnel] if not os.environ.get(name)]
     if missing:
         raise ValueError(f"The {PROVIDER_LABELS[tunnel]} needs {' and '.join(missing)} set first")
@@ -187,9 +201,10 @@ def start(role: str = "head", *, heartbeat: float = 20, home: str | None = None,
                 print(_tail(paths.logs / "server.log", 40), flush=True)
                 print("Re-run this cell to start it again, or run kindle.molab.report() for details.", flush=True)
                 return
-            if not external and current.get("url") and current["url"].rstrip("/") != url:
-                url = current["url"].rstrip("/")
-                print("The public link changed:", flush=True)
+            if not external and current.get("url") and (current["url"].rstrip("/") != url
+                                                         or _link_key(current) != _link_key(state)):
+                url, state = current["url"].rstrip("/"), current
+                print("The public link changed:", flush=True)  # or its key, after the API key is regenerated
                 _card(role, url, current, home_dir)
             line = _status_line(current)
             if helper:

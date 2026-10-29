@@ -1,4 +1,4 @@
-"""Expose local ports publicly: Cloudflare quick tunnels (default), named tunnels, burrow, ngrok, or Gradio share links.
+"""Expose local ports publicly: Cloudflare quick tunnels (default), named tunnels, burrow, shayef.me, ngrok, or Gradio share links.
 
 Kaggle has no inbound ports, so every URL the user opens goes through one of these.
 """
@@ -11,6 +11,7 @@ import os
 import re
 import secrets
 import socket
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -28,11 +29,15 @@ GRADIO_SUCCESS_RE = re.compile(r"start proxy success: (\S+)")
 GRADIO_URL_RE = re.compile(r"https://[a-zA-Z0-9.-]+\.gradio\.live")
 BURROW_SERVICE_RE = re.compile(r'"service"\s*:\s*"(https?://[^"]+)"')
 GRADIO_TUNNEL_APIS =("https://api.gradio.app/v3/tunnel-request", "https://api.gradio.live/v3/tunnel-request")
+SHAYEF_URL_RE = re.compile(r"\burl=(https?://\S+)")
+SHAYEF_ERROR_RE = re.compile(r"^\s*(error|hint):\s*(.+)")  # what `shayef up` prints before it exits
+SHAYEF_RELAY_ERROR_RE = re.compile(r"(?:relay failed to come up|edge rejected the relay).*?\bdetail=(.+)")
 
 PROVIDER_LABELS = {
     "cloudflare": "Cloudflare quick tunnel",
     "cloudflare_named": "Cloudflare named tunnel",
     "burrow": "Burrow tunnel",
+    "shayef": "shayef.me tunnel",
     "ngrok": "ngrok",
     "gradio": "Gradio share link",
     "none": "Local only",
@@ -53,20 +58,26 @@ class Tunnel:
     proc: ManagedProcess | PersistentProcess | None = None
     task: asyncio.Task | None = None
     persistent: bool = False
+    link_key: str | None = None  # the access key a link needs as ?k=, when the tunnel is gated by one
 
     def info(self) -> dict:
         return {
             "name": self.name, "provider": self.provider, "label": PROVIDER_LABELS.get(self.provider, self.provider),
             "port": self.port, "url": self.url, "status": self.status, "error": self.error,
-            "restarts": self.restarts, "supports_sse": self.supports_sse,
+            "restarts": self.restarts, "supports_sse": self.supports_sse, "link_key": self.link_key,
         }
 
 
 class TunnelManager:
-    def __init__(self, paths: Paths, on_change: Callable[[Tunnel], None] | None = None):
+    def __init__(self, paths: Paths, on_change: Callable[[Tunnel], None] | None = None,
+                 shayef_key: Callable[[], str] | None = None):
         self.paths = paths
         self.on_change = on_change
+        self.shayef_key = shayef_key  # Kindle's API key: shayef's gate and Kindle's API then take the same key
         self.tunnels: dict[str, Tunnel] = {}
+
+    def _secret(self, provider: str) -> str:
+        return self.shayef_key() if provider == "shayef" and self.shayef_key else ""
 
     def _changed(self, t: Tunnel) -> None:
         if isinstance(t.proc, PersistentProcess):
@@ -84,13 +95,13 @@ class TunnelManager:
         await self.close(name)
         if provider == "cloudflare_named" and name != "main":
             provider = "cloudflare"  # a named tunnel's hostname maps to one fixed port
-        if provider == "burrow" and name != "main":
-            provider = "gradio"  # so does burrow's; and it's used where quick tunnels don't work (molab)
+        if provider in ("burrow", "shayef") and name != "main":
+            provider = "gradio"  # so do burrow's and shayef's; and they're used where quick tunnels don't work (molab)
         if provider == "ngrok" and name != "main":
             provider = "cloudflare"  # free ngrok accounts get one agent session
         if name == "main":
             record = read_record(self.paths)
-            if record and (provider == "none" or record.get("binding") != binding(provider, port)):
+            if record and (provider == "none" or record.get("binding") != binding(provider, port, self._secret(provider))):
                 await asyncio.to_thread(stop_saved_tunnel, self.paths)
         t = Tunnel(name=name, provider=provider, port=port, persistent=name == "main")
         t.supports_sse = provider != "cloudflare"
@@ -130,7 +141,7 @@ class TunnelManager:
     async def _start_process(self, t: Tunnel, cmd: list[str], on_line: Callable[[str], None],
                              env: dict[str, str] | None = None) -> None:
         if t.persistent:
-            proc = PersistentProcess(self.paths, cmd, signature=binding(t.provider, t.port),
+            proc = PersistentProcess(self.paths, cmd, signature=binding(t.provider, t.port, self._secret(t.provider)),
                                      env=env, on_line=on_line)
             record = proc.adopt()
             if record:
@@ -162,12 +173,13 @@ class TunnelManager:
                     except (OSError, asyncio.TimeoutError):
                         await asyncio.sleep(0.5)
                         continue
-                if t.provider == "burrow":
+                if t.provider in ("burrow", "shayef"):
                     problem = await self._reaches_kindle(t)
                     if problem:
                         if not (t.error or "").startswith("burrow forwards"):  # the dashboard's port says more
-                            t.error = (f"burrow is connected, but {t.url} doesn't reach Kindle ({problem}). "
-                                       f"Point the tunnel at http://127.0.0.1:{t.port} on burrow's dashboard.")
+                            t.error = f"{t.provider} is connected, but {t.url} doesn't reach Kindle ({problem})."
+                            if t.provider == "burrow":
+                                t.error += f" Point the tunnel at http://127.0.0.1:{t.port} on burrow's dashboard."
                             self._changed(t)
                         await asyncio.sleep(2)
                         continue
@@ -205,6 +217,8 @@ class TunnelManager:
             await self._run_cloudflare_named(t)
         elif t.provider == "burrow":
             await self._run_burrow(t)
+        elif t.provider == "shayef":
+            await self._run_shayef(t)
         elif t.provider == "ngrok":
             await self._run_ngrok(t)
         elif t.provider == "gradio":
@@ -289,12 +303,56 @@ class TunnelManager:
         if t.status != "stopped":
             t.error = t.error or f"burrow exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
 
+    async def _run_shayef(self, t: Tunnel) -> None:
+        """shayef serves this port at SHAYEF_NAME.shayef.me (default kindle). Its guard is gated by Kindle's
+        API key, so nothing without the key reaches Kindle: API clients pass both checks with the
+        ``Authorization: Bearer``/``x-api-key`` header they already send, and browsers once through a
+        panel link with ``?k=``, which the guard moves into a cookie. The guard also logs the traffic
+        for shayef's dashboard."""
+        if not os.environ.get("SHAYEF_TOKEN"):
+            raise RuntimeError("shayef needs the SHAYEF_TOKEN secret")
+        relay = await ensure_cloudflared(self.paths.bin)  # shayef's relay connector is this same binary
+        home = self.paths.cache / "shayef"
+        home.mkdir(parents=True, exist_ok=True)
+        name = os.environ.get("SHAYEF_NAME") or "kindle"
+        t.link_key = self._secret("shayef") or None
+
+        def on_line(line: str) -> None:
+            url = SHAYEF_URL_RE.search(line)
+            problem = SHAYEF_ERROR_RE.search(line)
+            relay_problem = SHAYEF_RELAY_ERROR_RE.search(line)
+            if "hostname ready" in line and url:
+                t.url = url.group(1).rstrip("/")
+                self._changed(t)
+            elif "tunnel is live" in line and t.url:
+                t.status = "up"
+                t.error = None
+                self._changed(t)
+            elif "relay exited, restarting" in line:
+                t.status = "starting"
+                self._changed(t)
+            elif problem and problem.group(1) == "hint" and t.error:
+                t.error = f"{t.error} {problem.group(2).strip()}"[:300]
+            elif problem or relay_problem:
+                t.error = (problem.group(2) if problem else relay_problem.group(1)).strip()[:300]
+
+        # The client ships inside Kindle (kindle/_vendor). The token and key reach it through the environment,
+        # never the command line, where ps shows them.
+        cmd = [sys.executable, "-u", "-m", "kindle._vendor.shayef", "up", str(t.port), name,
+               "--access", "key" if t.link_key else "open", "--label", "Kindle"]
+        env = {"SHAYEF_RELAY": relay, "SHAYEF_HOME": str(home), "SHAYEF_KEY": t.link_key or ""}
+        await self._start_process(t, cmd, on_line, env=env)
+        rc = await t.proc.wait()
+        if t.status != "stopped":
+            t.error = t.error or f"shayef exited ({rc}): " + " | ".join(list(t.proc.tail)[-3:])
+
     async def _reaches_kindle(self, t: Tunnel) -> str | None:
         """None when the hostname reaches Kindle, else what it reached instead. A connected agent isn't
         enough: the hostname must forward to this port, not to nothing (a gateway error) or another app."""
         try:
             async with httpx.AsyncClient(timeout=8, follow_redirects=False) as client:
-                r = await client.get(f"{t.url}/_kui/api/session")
+                r = await client.get(f"{t.url}/_kui/api/session",
+                                     headers={"X-Shayef-Key": t.link_key} if t.link_key else None)
         except httpx.HTTPError as e:
             return f"{type(e).__name__}: {e}"[:200]
         try:

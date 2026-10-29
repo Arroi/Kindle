@@ -12,15 +12,17 @@ import os
 import httpx
 
 
-def panel_link(url: str, admin_token: str) -> str:
-    return f"{url.rstrip('/')}/?token={admin_token}"
+def panel_link(url: str, admin_token: str, key: str | None = None) -> str:
+    """``key``: a gated tunnel's access key (shayef). Its gate moves it into a cookie and drops it from the URL."""
+    gate = f"k={key}&" if key else ""
+    return f"{url.rstrip('/')}/?{gate}token={admin_token}"
 
 
-async def push(url: str, admin_token: str) -> str | None:
+async def push(url: str, admin_token: str, key: str | None = None) -> str | None:
     target = os.environ.get("KINDLE_NOTIFY_URL")
     if not target:
         return None
-    link = panel_link(url, admin_token)
+    link = panel_link(url, admin_token, key)
     text = f"Kindle is up: {link}"
     try:
         async with httpx.AsyncClient(timeout=10) as c:
@@ -36,8 +38,9 @@ async def push(url: str, admin_token: str) -> str | None:
         return f"failed: {type(e).__name__}"
 
 
-def card_html(url: str, admin_token: str, password: str | None, api_key: str | None, note: str = "") -> str:
-    link = panel_link(url, admin_token)
+def card_html(url: str, admin_token: str, password: str | None, api_key: str | None, note: str = "",
+              key: str | None = None) -> str:
+    link = panel_link(url, admin_token, key)
     rows = [("Control panel", f'<a href="{html.escape(link)}" target="_blank" style="color:#1f6feb;font-weight:600">'
              f'{html.escape(url)}</a>')]
     rows.append(("Admin token", f"<code>{html.escape(admin_token)}</code>"))
@@ -53,9 +56,9 @@ def card_html(url: str, admin_token: str, password: str | None, api_key: str | N
             f'<table style="border-collapse:collapse">{body}</table>{extra}</div>')
 
 
-def card_text(url: str, admin_token: str, password: str | None, api_key: str | None) -> str:
+def card_text(url: str, admin_token: str, password: str | None, api_key: str | None, key: str | None = None) -> str:
     lines = ["", "=" * 64, " Kindle is running", "=" * 64,
-             f" Open:            {panel_link(url, admin_token)}",
+             f" Open:            {panel_link(url, admin_token, key)}",
              f" Admin token:     {admin_token}"]
     if password:
         lines.append(f" Access password: {password}")

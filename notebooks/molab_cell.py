@@ -5,14 +5,19 @@ ROLE = "head"
 REPO = "Arroi/Kindle"  # GitHub repo to install from (must be public for this install line)
 REF = "main"           # branch or tag to install
 UPDATE = False         # True: fetch the latest Kindle from GitHub
-# Head only: serve the panel on your own domain through burrow (Gradio share links stay the fallback).
+# Head only: serve the panel at SHAYEF_NAME.shayef.me (Gradio share links stay the fallback).
+# Keep the token private: shared notebook output would hand it out.
+SHAYEF_TOKEN = ""      # a client token from shayef.me
+SHAYEF_NAME = "kindle" # the address: kindle -> https://kindle.shayef.me
+# Or your own domain through burrow, used when SHAYEF_TOKEN is empty.
 # Point the tunnel at http://127.0.0.1:8890 on burrow's dashboard. Keep the key private.
 BURROW_TOKEN = ""      # the key from burrow's dashboard (eyJ…)
 BURROW_HOSTNAME = ""   # the domain that key serves, e.g. kindle.example.com
 
 import importlib, importlib.metadata, os, subprocess, sys
 os.environ["KINDLE_REPO"] = REPO
-for _name, _value in (("BURROW_TOKEN", BURROW_TOKEN), ("BURROW_HOSTNAME", BURROW_HOSTNAME)):
+for _name, _value in (("SHAYEF_TOKEN", SHAYEF_TOKEN), ("SHAYEF_NAME", SHAYEF_NAME),
+                      ("BURROW_TOKEN", BURROW_TOKEN), ("BURROW_HOSTNAME", BURROW_HOSTNAME)):
     if _value:
         os.environ[_name] = _value
 os.environ["KINDLE_DISK_BUDGET_GB"] = "200" # Run this to configure storage budget.
